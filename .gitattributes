@@ -1,0 +1,9 @@
+# Normalise line endings in the repository, check out native on Windows.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.wasm binary
+*.mp3 binary
+*.ogg binary
+*.glb binary
