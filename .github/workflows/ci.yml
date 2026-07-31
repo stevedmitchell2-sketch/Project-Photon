@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same branch supersedes an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      # Each step runs even if an earlier one failed, so a single push reports every problem
+      # rather than making the contributor discover them one round-trip at a time.
+      - name: Typecheck
+        id: typecheck
+        if: '!cancelled()'
+        run: npm run typecheck
+
+      - name: Lint
+        id: lint
+        if: '!cancelled()'
+        run: npm run lint
+
+      - name: Test
+        id: test
+        if: '!cancelled()'
+        run: npm run test
+
+      - name: Build
+        id: build
+        if: '!cancelled()'
+        run: npm run build
+
+      - name: Upload build output
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: dist/
+          retention-days: 7
+
+  netcode:
+    name: Netcode integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+
+      # Prediction replay fidelity: the live simulation path and the reconciler's replay path must
+      # produce identical motion for identical input. A regression here desynchronises every client.
+      - name: Prediction A/B harness
+        run: npm run predict-ab
+
+      - name: Start dedicated server
+        run: npm run server -- --port 8090 --bots 0 &
+
+      - name: Wait for server
+        run: npx wait-on tcp:8090 -t 30000
+
+      - name: Multi-client network test
+        run: npm run nettest -- --port 8090 --clients 3 --seconds 6
