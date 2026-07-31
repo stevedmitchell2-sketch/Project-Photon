@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-07-31 · **Phase:** Phase 7 - two playtest iterations; input/collision/profiling fixed, 4+ client networking blocked
+**Last updated:** 2026-07-31 · **Phase:** Repository established; 29 tests, CI, docs. Blockers unchanged from Phase 7.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---

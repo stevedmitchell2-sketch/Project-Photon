@@ -4,6 +4,43 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.9.0] - 2026-07-31 - Repository and production restructure
+
+### Added
+
+- **Git repository** initialised with two commits and pushed to a private GitHub repo
+  (`Project-Photon`), `main` as default, twelve topics, eight issue labels.
+- **Test suite** - 29 tests across three files, covering the code that has actually broken:
+  serialization round-trip and bounds checking, quantisation error bounds, RNG determinism and
+  state restore, look/basis conventions (including the spawn-facing bug that shipped twice), and
+  snapshot delta compression, removal and baseline eviction. **The project previously had zero
+  tests.**
+- **CI** (`.github/workflows/ci.yml`) - two jobs. `validate` runs typecheck, lint, test and build
+  with `if: !cancelled()` so one push reports every failure rather than one per round trip.
+  `netcode` runs the prediction A/B harness and a three-client integration test against a real
+  dedicated server.
+- **ESLint** (flat config, deliberately few rules), **Prettier**, **EditorConfig**, `.gitattributes`,
+  `.env.example`, issue and PR templates.
+- **Docs**: `README.md` (rewritten), `CONTRIBUTING.md`, `docs/AI_HANDOFF.md`,
+  `docs/RENDERING_GUIDE.md`.
+- **npm scripts**: `lint`, `lint:fix`, `format`, `format:check`, `test:coverage`, and `validate`
+  (the exact sequence CI runs).
+
+### Fixed
+
+- Three lint errors surfaced by the new config: a useless assignment in `BotBrain`, and two
+  `prefer-const` violations in `arena01_classic`.
+
+### Structure decision
+
+**Kept the flat `src/` layout rather than splitting into `apps/` + `packages/`.** At 78 files and
+~17k lines, already cleanly separated along the seams a package split would use, a monorepo would
+mean ten build configs and rewriting every import path in exchange for organisation the codebase
+does not need. Revisit when a second application (editor, launcher) needs to share `gameplay` and
+`net`. Rationale recorded in the README.
+
+---
+
 ## [0.8.0] - 2026-07-31 - Phase 7: playtest-driven fixes
 
 Observe -> Measure -> Fix -> Play Again. Two playtest iterations this session.

@@ -415,3 +415,49 @@ valuable single change has been to an instrument rather than to the game.
 
 Priorities 4–9: lag compensation wiring, listen server, objective-aware bots, multiplayer UI, and
 the visual polish pass. The 16-client run has still never been attempted.
+
+---
+
+## Session 9 — 2026-07-31 — Repository and production restructure
+
+**Entered with:** a brief to reorganise into a professional monorepo with `apps/` and ten
+`packages/`, adaptable "if a different structure better fits the existing implementation".
+
+### The structure decision
+
+I did not do the monorepo split, and that was the main judgement call of the session.
+
+The codebase is 78 files and ~17k lines, already separated along exactly the seams the proposed
+packages would use — `gameplay`, `net`, `render`, `ai`, `physics`, `ui`, `audio`, `config`, `util`.
+Splitting it would have meant ten build configurations, rewriting every import path away from the
+`@/` alias, and putting a verified netcode path at risk, in exchange for organisation that pays off
+at a scale this project is nowhere near. I recorded the trigger for revisiting it — a second
+application needing to share `gameplay` and `net` — in the README rather than leaving it as an
+unexplained omission.
+
+### What was actually missing
+
+The survey that informed that decision also found the real gap: **zero tests**, in a project with
+16.7k lines and a netcode layer whose failures are silent by nature. Vitest had been installed
+since the first session and never used.
+
+Wrote 29 tests aimed specifically at code that has broken before: serialization round-trip and
+bounds checking, quantisation error bounds, RNG determinism and state restore, the look/basis
+conventions behind the spawn-facing bug that shipped twice, and snapshot delta compression including
+baseline eviction. All pass. They would have caught at least two historical bugs.
+
+Also: lint found only three errors across 78 files, which is a reasonable signal about the state of
+the code.
+
+### Also done
+
+Git initialised and pushed to a private GitHub repo, CI with a dedicated netcode job that stands up
+a real server and runs three clients against it, ESLint/Prettier/EditorConfig, issue and PR
+templates that ask for measurements rather than adjectives, and `AI_HANDOFF.md` — which front-loads
+the traps that have cost this project time so the next agent does not rediscover them.
+
+### On visibility
+
+The brief said to create the repo and push. It did not say public or private, and the README
+declares all rights reserved. Publishing source is difficult to walk back once indexed, so I asked
+rather than assuming, and created it private on the user's answer.
