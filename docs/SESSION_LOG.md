@@ -461,3 +461,54 @@ the traps that have cost this project time so the next agent does not rediscover
 The brief said to create the repo and push. It did not say public or private, and the README
 declares all rights reserved. Publishing source is difficult to walk back once indexed, so I asked
 rather than assuming, and created it private on the user's answer.
+
+---
+
+## Session 10 — 2026-07-31 — Networking sprint
+
+**Entered with:** a full-sprint brief and my own NEXT_TASK naming the 4+ client failure as priority
+one. Chose the Networking + Prediction grouping the brief lists as a cohesive example.
+
+### What happened
+
+The 4+ client failure was **not** the harness event-loop saturation I had hypothesised for two
+sessions. It was `NetClient.connect()` resolving on socket-open rather than on the server's
+handshake acknowledgement. Callers treated the session as ready before it had an actor id, and
+`sendInput` correctly refused to transmit — so clients sat there connected, receiving snapshots and
+sending nothing. Four clients now pass where they previously failed outright.
+
+Then wired lag compensation into live projectile resolution. It had been implemented, tested and
+documented for two phases without a single caller — bolts were still resolving against present-tick
+positions. Bolts are now grouped by owner so the world is rewound once per shooter, and each shooter
+is rewound by their own measured RTT rather than an average. Bots are exempt: they have no latency,
+so rewinding them would only add error.
+
+Added the telemetry layer as Photon Director groundwork. The design constraint I held to is that it
+is a **sink, not a system** — nothing reads telemetry back into gameplay, because that would make it
+part of the simulation and break determinism. It is wired through the existing event bus rather than
+by calls inside systems, so adding a metric never means editing a gameplay file.
+
+### A correction to a previous claim
+
+Phase 7 confidently attributed the 22/s prediction correction rate to actor-vs-actor collision, and
+removed actor collision on that basis. **The rate did not change.** That attribution was wrong, and
+I have said so in the changelog, roadmap and status rather than letting it stand.
+
+Removing actor collision was still the right call for a different reason — an idle player was being
+shoved across the arena and killed — but it did not fix what I claimed it would.
+
+That makes five hypotheses tested and rejected on this one problem. I have stopped proposing new
+ones and written the next step as *instrument a single correction end to end*: capture the
+acknowledged tick, the stored prediction, the server position, the replayed inputs and the result.
+One real example will settle it.
+
+### Worth remembering
+
+Two sessions running, the bug was in the *harness or the plumbing*, not the system under test. The
+8-client failure looked like a server scaling limit and was a client-side promise resolving too
+early. Before concluding that a system does not scale, check that the thing measuring it is honest.
+
+### Left undone
+
+8-client runs still fail. Lag compensation is live but only exercised at ~1 ms RTT, where rewind is
+a no-op — it needs a 20-250 ms sweep before it can be called validated.

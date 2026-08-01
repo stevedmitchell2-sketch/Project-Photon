@@ -110,6 +110,10 @@ export class NetClient {
   onKicked: ((reason: string) => void) | null = null;
   onConnected: ((actorId: number) => void) | null = null;
 
+  /** Resolves when the server's handshake acknowledgement arrives. */
+  private readyResolve: (() => void) | null = null;
+  private readyReject: ((error: Error) => void) | null = null;
+
   constructor(
     private readonly transport: Transport,
     private readonly director: MatchDirector,
@@ -131,9 +135,27 @@ export class NetClient {
     return this.localActorId;
   }
 
-  /** Sends the handshake. Resolves when the server accepts. */
-  async connect(playerName: string, preferredTeam: string | null): Promise<void> {
+  /**
+   * Opens the transport, sends the handshake, and resolves only once the server has acknowledged.
+   *
+   * Resolving on socket-open alone is not enough: the session is not usable until the server has
+   * assigned an actor id, and `sendInput` correctly refuses to send before that. A caller that
+   * treats socket-open as "connected" will silently transmit nothing — which is exactly how the
+   * multi-client harness produced clients that were connected, receiving snapshots, and sending
+   * zero packets.
+   */
+  async connect(
+    playerName: string,
+    preferredTeam: string | null,
+    timeoutMs = 10_000,
+  ): Promise<void> {
     await this.transport.connect();
+
+    const ready = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
+
     const writer = new ByteWriter(128);
     writer.u8(ClientMessage.Handshake);
     writer.varint(PROTOCOL_VERSION);
@@ -141,6 +163,18 @@ export class NetClient {
     writer.string(preferredTeam ?? '');
     this.send(writer.finish());
     this.windowStartMs = now();
+
+    const timer = setTimeout(() => {
+      this.readyReject?.(new Error(`handshake not acknowledged within ${timeoutMs} ms`));
+    }, timeoutMs);
+
+    try {
+      await ready;
+    } finally {
+      clearTimeout(timer);
+      this.readyResolve = null;
+      this.readyReject = null;
+    }
   }
 
   /**
@@ -283,7 +317,9 @@ export class NetClient {
         case ServerMessage.Kick: {
           const reason = reader.u8() as KickReason;
           this.stats.connected = false;
-          this.onKicked?.(KICK_REASON_TEXT[reason] ?? 'Disconnected');
+          const text = KICK_REASON_TEXT[reason] ?? 'Disconnected';
+          this.onKicked?.(text);
+          this.readyReject?.(new Error(text));
           break;
         }
         default:
@@ -304,6 +340,7 @@ export class NetClient {
     const accepted = reader.u8() === 1;
     if (!accepted) {
       this.onKicked?.('Server rejected the connection');
+      this.readyReject?.(new Error('server rejected the connection'));
       return;
     }
     this.clientId = reader.varint();
@@ -314,6 +351,7 @@ export class NetClient {
     this.clientTick = this.serverTick;
     this.stats.connected = true;
     this.onConnected?.(this.localActorId);
+    this.readyResolve?.();
   }
 
   /**

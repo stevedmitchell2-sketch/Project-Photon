@@ -104,6 +104,14 @@ export class ProjectileSystem {
     return projectile;
   }
 
+  /**
+   * Advances every bolt and resolves collisions.
+   *
+   * `rewind` is the lag-compensation hook. When supplied, bolts are resolved in owner order and the
+   * world is rewound to each shooter's view of it before their bolts are tested — so a hit is
+   * judged against what that player actually saw, not against where the target has since moved.
+   * Passing `undefined` resolves everything against the present tick, which is correct offline.
+   */
   step(
     state: MatchState,
     physics: PhysicsWorld,
@@ -111,8 +119,41 @@ export class ProjectileSystem {
     events: EventBus<GameEvents>,
     friendlyFire: boolean,
     onDamage: (attacker: Actor, victim: Actor, amount: number, headshot: boolean) => void,
+    rewind?: (ownerId: number, resolve: () => void) => void,
   ): void {
-    const actives = this.pool.active;
+    if (rewind) {
+      // Group by owner so the world is rewound once per shooter rather than once per bolt.
+      const byOwner = new Map<number, Projectile[]>();
+      for (const p of this.pool.active) {
+        let list = byOwner.get(p.ownerId);
+        if (!list) {
+          list = [];
+          byOwner.set(p.ownerId, list);
+        }
+        list.push(p);
+      }
+      // Stable owner order keeps resolution deterministic across client and server.
+      for (const ownerId of [...byOwner.keys()].sort((a, b) => a - b)) {
+        const owned = byOwner.get(ownerId)!;
+        rewind(ownerId, () => {
+          this.advance(owned, state, physics, dt, events, friendlyFire, onDamage);
+        });
+      }
+      return;
+    }
+    this.advance([...this.pool.active], state, physics, dt, events, friendlyFire, onDamage);
+  }
+
+  /** Advances a specific set of bolts. Split out so lag compensation can batch by shooter. */
+  private advance(
+    actives: Projectile[],
+    state: MatchState,
+    physics: PhysicsWorld,
+    dt: number,
+    events: EventBus<GameEvents>,
+    friendlyFire: boolean,
+    onDamage: (attacker: Actor, victim: Actor, amount: number, headshot: boolean) => void,
+  ): void {
     for (let i = actives.length - 1; i >= 0; i--) {
       const p = actives[i];
       const config = WEAPONS[p.weapon];

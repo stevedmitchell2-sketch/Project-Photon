@@ -7,6 +7,7 @@ import { MOVEMENT } from '@/config/movement';
 import type { TeamId } from '@/config/teams';
 import { DEFAULT_WEAPON } from '@/config/weapons';
 import type { EventBus } from '@/engine/EventBus';
+import { Telemetry } from '@/engine/Telemetry';
 import { createInputFrame } from '@/input/InputFrame';
 import type { ArenaDefinition } from '@/maps/MapTypes';
 import { resolveSpawns } from '@/maps/resolveSpawns';
@@ -17,11 +18,31 @@ import { applyDamage, resetActorVitals, stepRegeneration } from './CombatSystem'
 import { stepMovement } from './MovementSystem';
 import { ProjectileSystem } from './ProjectileSystem';
 import { PropSystem } from './PropSystem';
+import { LagCompensator } from '@/net/LagCompensation';
 import { createGameMode, type GameMode } from './modes';
 import { SpawnSystem } from './SpawnSystem';
 import { TriggerSystem } from './TriggerSystem';
 import { stepWeapon } from './WeaponSystem';
 import type { Actor, GameEvents, MatchState } from './types';
+
+/**
+ * Interpolation delay clients render at, in milliseconds.
+ *
+ * Must match `Interpolator`'s default. The shooter aims at a world this far in the past, so the
+ * server must rewind by the same amount — the two constants are halves of one decision.
+ */
+const INTERPOLATION_DELAY_MS = 75;
+
+/** Keeps the physics capsule aligned with a rewound actor position. */
+const syncActor =
+  (physics: PhysicsWorld) =>
+  (actor: Actor): void => {
+    physics.setCharacterPosition(actor.bodyHandle, {
+      x: actor.position.x,
+      y: actor.position.y + actor.height * 0.5,
+      z: actor.position.z,
+    });
+  };
 
 /** Match-clock callouts, in the order they fire. */
 const COUNTDOWNS: Array<{ at: number; text: string; priority: 'low' | 'high' }> = [
@@ -45,6 +66,19 @@ export class MatchDirector {
   readonly state: MatchState;
   readonly projectiles = new ProjectileSystem();
   readonly props: PropSystem;
+  /**
+   * Server-side rewind history. Enabled only when this director is authoritative — a client
+   * rewinding its own predicted world would fight its own reconciliation.
+   */
+  readonly lagCompensator = new LagCompensator();
+  /**
+   * Match telemetry. Disabled by default — enabling it costs one branch per event.
+   * Groundwork for Photon Director; nothing reads it back into gameplay.
+   */
+  readonly telemetry = new Telemetry();
+  private lagCompensationEnabled = false;
+  /** Per-actor round-trip time in ms, supplied by the server session. */
+  private readonly actorRtt = new Map<number, number>();
   readonly triggers: TriggerSystem;
   /** Mode strategy. Owns scoring and win conditions; never touches movement or physics. */
   readonly gameMode: GameMode;
@@ -69,6 +103,9 @@ export class MatchDirector {
     this.props = new PropSystem(arena, physics);
     this.triggers = new TriggerSystem(arena);
     this.gameMode = createGameMode(settings);
+    this.telemetry.createHeatmap('deaths', arena.bounds);
+    this.telemetry.createHeatmap('shots', arena.bounds);
+    this.wireTelemetry();
 
     // Route noises to bots that can hear them. Subscribing once here keeps the emitters
     // (weapons, movement) unaware that hearing exists at all.
@@ -96,6 +133,75 @@ export class MatchDirector {
       killFeed: [],
       winner: null,
     };
+  }
+
+  /**
+   * Subscribes telemetry to the event stream.
+   *
+   * Deliberately driven by events rather than by calls sprinkled through the systems: gameplay code
+   * stays unaware telemetry exists, and adding a new metric never means editing a system.
+   */
+  private wireTelemetry(): void {
+    const t = this.telemetry;
+
+    this.events.on('shot_fired', (e) => {
+      t.recordAt(
+        { tick: this.state.tick, time: this.state.time, category: 'weapon', type: 'fired', actorId: e.actorId, team: e.team },
+        e.origin,
+        'shots',
+      );
+    });
+
+    this.events.on('damage_dealt', (e) => {
+      t.record({
+        tick: this.state.tick,
+        time: this.state.time,
+        category: 'combat',
+        type: e.headshot ? 'headshot' : 'hit',
+        actorId: e.attackerId,
+        target: e.victimId,
+        value: e.amount,
+      });
+    });
+
+    this.events.on('actor_died', (e) => {
+      t.recordAt(
+        { tick: this.state.tick, time: this.state.time, category: 'combat', type: 'death', actorId: e.actorId, target: e.killerId },
+        e.position,
+        'deaths',
+      );
+    });
+
+    this.events.on('actor_spawned', (e) => {
+      t.recordAt(
+        { tick: this.state.tick, time: this.state.time, category: 'match', type: 'respawn', actorId: e.actorId, team: e.team },
+        e.position,
+      );
+    });
+
+    this.events.on('weapon_recharge_start', (e) => {
+      t.record({ tick: this.state.tick, time: this.state.time, category: 'weapon', type: 'recharge', actorId: e.actorId });
+    });
+
+    this.events.on('score_changed', (e) => {
+      t.record({ tick: this.state.tick, time: this.state.time, category: 'objective', type: 'score', team: e.team, value: e.score });
+    });
+
+    this.events.on('match_ended', (e) => {
+      t.record({ tick: this.state.tick, time: this.state.time, category: 'match', type: 'ended', team: e.winner ?? undefined });
+      t.flush();
+    });
+  }
+
+  /** Turns on rewind-based hit validation. Called by NetServer; never by a client. */
+  enableLagCompensation(enabled: boolean): void {
+    this.lagCompensationEnabled = enabled;
+    if (!enabled) this.lagCompensator.clear();
+  }
+
+  /** Reports a client's measured RTT so its shots can be rewound by the right amount. */
+  setActorLatency(actorId: number, rttMs: number): void {
+    this.actorRtt.set(actorId, rttMs);
   }
 
   get mode() {
@@ -240,16 +346,22 @@ export class MatchDirector {
     }
 
     // 3. Projectiles resolve after movement so they hit where actors actually ended up.
+    //    On the server, each shooter's bolts are tested against the world as that shooter saw it.
+    if (this.lagCompensationEnabled) this.lagCompensator.record(state);
+
+    const onDamage = (attacker: Actor, victim: Actor, amount: number, headshot: boolean) => {
+      const result = applyDamage(state, attacker, victim, amount, headshot, this.events);
+      if (result.killed) this.awardKill(attacker, victim);
+    };
+
     this.projectiles.step(
       state,
       this.physics,
       dt,
       this.events,
       this.settings.friendlyFire,
-      (attacker, victim, amount, headshot) => {
-        const result = applyDamage(state, attacker, victim, amount, headshot, this.events);
-        if (result.killed) this.awardKill(attacker, victim);
-      },
+      onDamage,
+      this.lagCompensationEnabled ? this.rewindForOwner : undefined,
     );
 
     // 3b. Trigger volumes, so objective occupancy is current before the mode reads it.
@@ -288,6 +400,25 @@ export class MatchDirector {
       this.events.emit('announcement', { text: cue.text, priority: cue.priority });
     }
   }
+
+  /**
+   * Rewinds the world to a shooter's view time, runs their bolt resolution, and restores.
+   *
+   * Bots have no latency, so they are resolved against the present tick — rewinding for them would
+   * only introduce error. A human client is rewound by `rtt/2 + interpolationDelay`, capped inside
+   * LagCompensator so a client cannot claim arbitrary latency.
+   */
+  private rewindForOwner = (ownerId: number, resolve: () => void): void => {
+    const owner = this.state.actors.get(ownerId);
+    if (!owner || owner.kind === 'bot') {
+      resolve();
+      return;
+    }
+
+    const rtt = this.actorRtt.get(ownerId) ?? 0;
+    const viewTick = LagCompensator.viewTickFor(this.state.tick, rtt, INTERPOLATION_DELAY_MS);
+    this.lagCompensator.withRewind(this.state, viewTick, syncActor(this.physics), resolve);
+  };
 
   /** Deterministic iteration order — Map insertion order is stable, but be explicit about it. */
   private *orderedActors(): Generator<Actor> {

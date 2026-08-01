@@ -108,3 +108,27 @@ railings sealing the staircases out, and global fill masking all level lighting 
 
 A genuinely dark room needs baked ambient occlusion or per-zone light probes — ambient and IBL are
 global and no geometry occludes them. Deferred to M4.
+
+---
+
+## Networking sprint — 2026-07-31
+
+**Delivered**
+
+- 4-client multiplayer moved from FAIL to PASS. `NetClient.connect()` resolved on socket-open rather
+  than on the handshake acknowledgement, so clients transmitted nothing.
+- Lag compensation wired into live projectile resolution, per-shooter, by measured RTT. It had been
+  implemented and tested for two phases without ever being called.
+- Telemetry layer (`engine/Telemetry.ts`) as Photon Director groundwork — ring-buffered events,
+  pluggable sinks, 2D heatmaps, event-bus driven so gameplay stays unaware of it.
+- 41 tests (was 29).
+
+**Corrected**
+
+The Phase 7 claim that actor-vs-actor collision caused the 22/s prediction correction rate was
+**wrong**. Collision was removed; the rate is unchanged. Cause is open and is item 1 of NEXT_TASK.
+
+**Still open**
+
+8-client runs fail (4 works), prediction corrections unexplained, 120 FPS unmeasurable while
+vsync-capped, props and avatars unbatched.

@@ -56,6 +56,9 @@ export interface ServerClient {
   lastSeenMs: number;
   connectedAtTick: number;
   rating: number;
+  /** Smoothed round-trip time in ms, used to size this client's lag-compensation rewind. */
+  rttMs: number;
+  pingSentAt: Map<number, number>;
   validator: ClientValidator;
   /** Buffered inputs not yet consumed, keyed by tick. */
   inputQueue: Map<number, InputFrame>;
@@ -99,6 +102,8 @@ export class NetServer {
     const { director, events } = await this.options.createMatch();
     this.director = director;
     this.events = events;
+    // Only the authoritative director rewinds. A client doing so would fight its own reconciliation.
+    this.director.enableLagCompensation(true);
     this.wireMatchEvents();
     this.running = true;
     this.lastTickMs = now();
@@ -171,6 +176,8 @@ export class NetServer {
       lastSeenMs: now(),
       connectedAtTick: this.director?.state.tick ?? 0,
       rating: 1000,
+      rttMs: 0,
+      pingSentAt: new Map(),
       validator: new ClientValidator(),
       inputQueue: new Map(),
       history: new SnapshotHistory(),
@@ -238,6 +245,16 @@ export class NetServer {
           break;
         case ClientMessage.Ping: {
           const stamp = reader.u32();
+          // The pong round trip is what tells us how far to rewind this client's shots.
+          const sentAt = client.pingSentAt.get(stamp);
+          if (sentAt !== undefined) {
+            client.pingSentAt.delete(stamp);
+            client.rttMs = client.rttMs === 0 ? now() - sentAt : client.rttMs * 0.8 + (now() - sentAt) * 0.2;
+            if (client.actorId >= 0) this.director.setActorLatency(client.actorId, client.rttMs);
+          } else {
+            // First observation of this sequence: record it so the next one measures a round trip.
+            client.pingSentAt.set(stamp, now());
+          }
           const writer = new ByteWriter(16);
           writer.u8(ServerMessage.Pong);
           writer.u32(stamp);

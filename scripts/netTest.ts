@@ -92,8 +92,9 @@ async function main(): Promise<void> {
   for (let i = 0; i < args.clients; i++) {
     const tc = await createClient(`TESTER${i + 1}`, url, teams[i] ?? null);
     clients.push(tc);
+    // connect() now resolves on the handshake acknowledgement, so the actor id is always valid
+    // here. It used to resolve on socket-open and this line frequently printed -1.
     console.log(`[nettest] ${tc.name} connected as actor ${tc.client.actorId}`);
-    await sleep(200);
   }
 
   if (clients.some((c) => c.client.actorId < 0)) {

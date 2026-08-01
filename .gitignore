@@ -45,3 +45,6 @@ benchmarks/results/
 
 # Replay captures (can be large; share deliberately, not by default)
 replays/
+
+# Local editor/agent config
+.claude/

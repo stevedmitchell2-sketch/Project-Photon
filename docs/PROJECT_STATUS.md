@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-07-31 · **Phase:** Repository established; 29 tests, CI, docs. Blockers unchanged from Phase 7.
+**Last updated:** 2026-07-31 · **Phase:** Networking sprint - 4-client multiplayer working, lag compensation live, telemetry added.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -217,3 +217,32 @@ Two playtest iterations. Every fix verified by running the game.
    still showed one client at 22/s.
 4. Lag compensation still not wired into `ProjectileSystem`.
 5. Listen server, objective-aware bots, multiplayer UI, spectator and replay all still outstanding.
+
+---
+
+## Networking sprint (2026-07-31)
+
+### Changed since last status
+
+| Item | Before | After |
+| --- | --- | --- |
+| 4-client multiplayer | FAIL - no snapshots, no input sent | **PASS** - all peers visible, 0 dropped |
+| Lag compensation | Implemented, never called | **Live** - per-shooter rewind by measured RTT |
+| Telemetry | None | Ring-buffered events, heatmaps, pluggable sinks |
+| Tests | 29 | **41** |
+
+### Measured
+
+3 clients with bots and lag compensation active: PASS, 128-133 snapshots each, 0 dropped,
+tx 8.1 KB/s / rx 9.3 KB/s server-side, 25 MB heap.
+
+### Open blockers
+
+1. **8 clients fail.** Server healthy and transmitting (41.7 KB/s, snapshots scaling correctly);
+   clients receive nothing. 4 works, 8 does not - the boundary is now known.
+2. **Prediction corrections at 22/s.** Phase 7 blamed actor-vs-actor collision and removed it. The
+   rate did not change, so that attribution was wrong and the cause is unidentified. The A/B harness
+   shows the replay path is bit-identical to the live path, so it is not the simulation.
+3. **120 FPS target unmeasurable** - vsync-capped at 60.
+4. Draw calls dominated by 137 unbatched prop and avatar meshes vs 21 instanced.
+5. Listen server, objective-aware bots, multiplayer UI, spectator and replay outstanding.

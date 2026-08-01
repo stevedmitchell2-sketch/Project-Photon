@@ -4,6 +4,61 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.10.0] - 2026-07-31 - Networking sprint: scaling, lag compensation, telemetry
+
+Cohesive sprint on Networking + Prediction, the highest-value unfinished work in NEXT_TASK.
+
+### Fixed - 4-client multiplayer now works
+
+`NetClient.connect()` resolved on **socket open** rather than on the server's handshake
+acknowledgement. Callers therefore treated a session as ready before it had an actor id, and
+`sendInput` correctly refused to transmit — producing clients that were connected, receiving
+snapshots, and sending nothing. It now resolves on the acknowledgement, with a timeout, and rejects
+on a kick.
+
+Measured: **4 clients went from FAIL to PASS** (all see all peers, 129-135 snapshots each, 0
+dropped). 8 clients still fail; see Known Issues.
+
+### Added - lag compensation wired into live projectile resolution
+
+`net/LagCompensation.ts` had been implemented and tested for two phases without ever being called.
+`ProjectileSystem.step` now takes an optional rewind hook; bolts are grouped by owner (so the world
+is rewound once per shooter, not once per bolt) and resolved against the world as that shooter saw
+it. Owner order is sorted for determinism.
+
+- `MatchDirector.enableLagCompensation()` - server-only. A client rewinding its own predicted world
+  would fight its own reconciliation.
+- `MatchDirector.setActorLatency()` - `NetServer` now measures per-client RTT from the ping round
+  trip and feeds it in, so each shooter is rewound by their own latency rather than an average.
+- Bots are never rewound - they have no latency, so rewinding them would only add error.
+
+### Added - telemetry (Photon Director groundwork)
+
+`engine/Telemetry.ts`: ring-buffered event recording with pluggable sinks and 2D heatmaps.
+
+Three properties make it safe to leave in a shipped build: it returns immediately when disabled
+(one branch per event), it is bounded by a ring buffer rather than a growing list, and it is a
+**sink, not a system** - nothing reads telemetry back into gameplay, which would break determinism.
+
+Wired via the existing event bus rather than calls inside systems, so gameplay code stays unaware
+telemetry exists and new metrics need no system edits. Records shots, hits, headshots, deaths,
+respawns, recharges, score changes and match end, with death and shot heatmaps.
+
+### Tests
+
+12 new tests (41 total): telemetry disabled-cost, ring wraparound, sink delivery and removal,
+event copying, heatmap bounds rejection, normalisation and ranking.
+
+### Known issues
+
+- **8 clients still fail.** Server accepts all 8 and transmits 41.7 KB/s with correctly-scaling
+  snapshots; clients receive nothing. Now a much narrower problem than "anything above 3".
+- **Prediction corrections remain at 22/s.** Phase 7 attributed these to actor-vs-actor collision
+  and removed it; corrections did not improve, so **that attribution was wrong**. The cause is still
+  open.
+
+---
+
 ## [0.9.0] - 2026-07-31 - Repository and production restructure
 
 ### Added
