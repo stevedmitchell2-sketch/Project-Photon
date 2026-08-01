@@ -4,6 +4,90 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.14.0] - 2026-08-01 - Sprint 8: the ten-second death, and what the frame actually costs
+
+Two long-standing beliefs measured and found wrong, and the instrument that had been missing since
+Sprint 4 finally built.
+
+### Spawn placement was not the problem
+
+The Sprint 7 playtest finding — "you die roughly ten seconds after every spawn" — was reproduced
+exactly by a new headless harness (`npm run spawn-audit`) and then attributed. Median lifetime at
+the default difficulty was **10.0 s**, split as **7.1 s finding a fight + 2.38 s losing it**.
+
+Spawn placement needed no change at all: the median spawn put the nearest enemy **30.3 m** away,
+**none** were within 15 m, and only **2%** had line of sight to an enemy. The existing scoring —
+threat weighting, line-of-sight avoidance, recency cooldown — was already doing its job.
+
+What made the game feel unfair was that the *default opponent* shot like a good human: 360 ms
+reaction, 3.4 degrees of aim error, engaging out to 45 m. The difficulty ladder was compressed at
+the bottom and had no headroom at the top, so `medium` was effectively a hard setting.
+
+Rebalanced against measurement:
+
+| difficulty | median life before | after |
+| easy       | 16.2 s             | 26.7 s |
+| medium     | **10.0 s**         | **~14 s** (three seeds) |
+| hard       |  8.1 s             | 10.5 s |
+| expert     | —                  |  8.5 s |
+
+Lives ending inside ten seconds at the default fell from **50% to ~32%**.
+
+The one genuine gap in the spawn system was **occupancy**: threat, sight lines and recency were all
+scored, but nothing checked whether the point was physically free. Added.
+
+### Frame timing, at last
+
+Frames per second cannot answer the 120 FPS question on a vsynced display — it pins the interval to
+one refresh regardless of how much work the frame did. `RendererStats` now measures **CPU frame
+time** (bracketed across the frame's callbacks) and **GPU frame time** (via
+`EXT_disjoint_timer_query_webgl2`, collected asynchronously so it never stalls the pipeline).
+
+The first measurement:
+
+| CPU | **1.4-1.9 ms** |
+| GPU | **12.0-12.5 ms** |
+| 120 FPS budget | 8.33 ms |
+
+**The frame is GPU-bound with the CPU nearly idle, and fragment-bound rather than
+draw-call-bound.** Halving `renderScale` takes GPU to 4.8 ms; removing every dynamic light saves
+2.3 ms; post-processing, shadows and the volumetric shafts are all effectively free.
+
+Draw calls were never the constraint, which means the batching work of Sprints 6-7 was optimising
+the wrong axis — and the reason nobody noticed is that the instrument could not tell.
+
+**120 FPS is not currently achievable**: closing the gap needs a 32% cut, roughly `renderScale` 0.6.
+The target is not being met by quietly gutting resolution. The real lever is per-pixel cost.
+
+### Bugs fixed
+
+- **Disabling every post effect turned off rendering.** `RendererStats` registers a positive-priority
+  `useFrame`, which hands R3F's render loop to whoever renders manually — normally `EffectComposer`.
+  With bloom, vignette, grain and chromatic aberration all off, `PostFX` returned null, the composer
+  unmounted and nothing rendered: a black screen with zero draw calls, reachable from the settings
+  menu. Now falls back to a direct scene render.
+
+### Presentation
+
+- **Charge ring around the crosshair.** Remaining shots as tick marks, recharge as a sweeping arc —
+  different in shape, not only colour — in the team accent. The cell counter was in the screen
+  corner, which is the wrong place for the one thing a player needs while aiming.
+- **Crosshair legibility**: dual drop-shadow and a centre pip, so the point of aim stays readable at
+  full spread and against a bloomed wall.
+- **Bloom reduced** across all presets (0.55/0.85/1.1 -> 0.35/0.5/0.68). Interleaved measurement puts
+  the GPU difference at -0.08 ms: this is entirely a readability change. At the old values the
+  emissive fixtures washed out whatever was under the crosshair.
+- **Team accent variables** in CSS, mirroring the simulation's team colours.
+
+### Method
+
+Two measurement traps found and recorded in RENDERING_GUIDE.md: **GPU time is view-dependent** (the
+same preset read 8.68 ms and 12.43 ms minutes apart, so A/B must be interleaved), and **repeated
+in-tab reloads degrade the WebGL context** (4 FPS and a 10x simulation-time jump that no graphics
+setting can explain). A promising 3 ms bloom saving evaporated to -0.08 ms under interleaved test.
+
+---
+
 ## [0.13.0] - 2026-08-01 - Sprint 7: four production bugs, latency validated, 16 clients
 
 The sprint set out to close the last infrastructure blockers. It found four genuine production

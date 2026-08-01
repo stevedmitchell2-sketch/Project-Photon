@@ -131,3 +131,93 @@ From playtesting, in order of impact:
 2. **Weapon orientation looks angled at rest** — likely residual yaw in the idle sway.
 3. **Mid-tone flatness** — surfaces away from a fixture fall to uniform grey. More contrast between
    lit and unlit regions would help both readability and atmosphere.
+
+---
+
+## Measuring the frame (Sprint 8)
+
+For four sprints the only performance number was frames per second, and it could not answer the
+120 FPS question. **Vsync pins the interval between frames to one display refresh** — 16.67 ms on a
+60 Hz panel — no matter how much work the frame did. A frame doing 2 ms of work and one doing 15 ms
+both report 60 FPS, right up until the second tips over and reports 30. It is a cliff detector, not
+a budget, and three sprints of rendering optimisation had to be argued through draw-call counts
+because of it.
+
+`RendererStats` now measures the two numbers that matter:
+
+- **CPU frame time** — bracketed by `useFrame` callbacks at priority `-1000` and `+1000`, so it
+  spans the frame's actual work and excludes the block on vsync.
+- **GPU frame time** — `EXT_disjoint_timer_query_webgl2`. Never polled to completion (that stalls
+  the CPU on the GPU and changes the frame being measured); results are collected when ready,
+  typically two or three frames later. Samples flagged `GPU_DISJOINT_EXT` are discarded.
+
+Both appear in the HUD readout and in telemetry. `frameBudgetMs` is `max(cpu, gpu)` — CPU and GPU
+overlap, so the larger is the honest bound.
+
+### What the first measurement found
+
+| | |
+| --- | --- |
+| CPU | **1.4–1.9 ms** |
+| GPU | **12.0–12.5 ms** |
+| 120 FPS budget | 8.33 ms |
+| Draw calls | ~145 |
+| Triangles | ~20k |
+
+**The frame is GPU-bound with the CPU nearly idle, and it is fragment-bound rather than
+draw-call-bound.** Attribution, measured by toggling one setting at a time:
+
+| Change | GPU |
+| --- | --- |
+| baseline | 12.3 ms |
+| all post-processing off | 12.2 ms |
+| + shadows off | 12.3 ms |
+| + volumetric off | 12.5 ms |
+| `maxDynamicLights` 8 → 0 | **9.9 ms** |
+| `renderScale` 1.0 → 0.5 | **4.8 ms** |
+| `renderScale` 1.0 → 0.25 | **3.0 ms** |
+
+Resolution is the dominant term and dynamic lights are second (~2.3 ms). Post-processing, shadows
+and the volumetric shafts are all effectively free. **Draw calls were never the constraint** — which
+means the batching work of Sprints 6–7 was optimising the wrong axis, and the reason nobody noticed
+is that the instrument could not tell.
+
+### 120 FPS is not currently achievable
+
+Reaching 8.33 ms from 12.2 ms needs a 32% cut, which is roughly `renderScale` 0.6 — a serious
+quality loss. The real lever is **per-pixel cost**: fewer lights evaluated per fragment, cheaper
+materials on non-metallic surfaces, less transparent overdraw. That is architectural work, not a
+settings tweak, and it is the first rendering item in `NEXT_TASK.md`.
+
+The target is not being quietly met by gutting resolution.
+
+### Two traps when measuring
+
+1. **GPU time is view-dependent.** The same preset measured 8.68 ms from one vantage and 12.43 ms
+   from another minutes later. Any A/B must be **interleaved** (ABABAB) so view drift cancels, never
+   sequential. A promising 3 ms "saving" from lowering bloom intensity evaporated to −0.08 ms under
+   an interleaved test.
+2. **Repeated in-tab reloads degrade the WebGL context.** After roughly a dozen reloads the same
+   scene reported 4 FPS, GPU 28 ms, CPU 36 ms and — the giveaway — simulation time up 10× to 5.9 ms,
+   which no graphics setting can affect. A fresh preview restored 60 FPS / 13.1 ms / 1.6 ms. **If
+   the simulation time moves, suspect the browser, not the code.**
+
+## Bloom is a readability setting, not a performance one
+
+`bloomIntensity` was reduced across all three presets in Sprint 8 (0.55/0.85/1.1 → 0.35/0.5/0.68).
+Interleaved measurement puts the GPU difference at **−0.08 ms — nothing**. The change is entirely
+about legibility: at the old values the emissive fixtures bled into two large white-cyan blooms that
+sat in the middle of the screen from most positions on the deck and washed out whatever was under
+the crosshair. The neon still reads as neon at the lower values.
+
+Related, and still open: the light shafts were diagnosed from a screenshot as the offender here in
+Sprint 7 and fixed, and were not the main problem. Bloom was.
+
+## Turning off every post effect used to turn off rendering
+
+`RendererStats` registers a `useFrame` at a positive priority, which switches R3F out of automatic
+rendering and hands the loop to whoever renders manually — normally `EffectComposer`. With bloom,
+vignette, grain and chromatic aberration all disabled, `PostFX` returned `null`, the composer
+unmounted, and nothing rendered: a black screen with **zero draw calls**, reachable from the
+settings menu. `PostFX` now falls back to a `PlainRender` component that draws the scene directly at
+the same priority the composer would have used.

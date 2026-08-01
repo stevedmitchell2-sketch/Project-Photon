@@ -278,3 +278,88 @@ which spent its budget on infrastructure.
 
 The pattern from session 2 held again in a new form: **the light-shaft fix was made against a
 misdiagnosis** that a screenshot supported and actually playing refuted.
+
+---
+
+# Playtest Session 4 — 2026-08-01 (Sprint 8)
+
+Two forms of evaluation this session, because the previous three had a blind spot: a human tester
+poking at the game for two minutes is a sample size of two minutes.
+
+1. **Headless audit** (`npm run spawn-audit`) — a real bot match observed through the event stream,
+   100+ completed lives per run, three seeds. This is where the numbers come from.
+2. **Played build** — the browser preview, for the things a harness cannot see.
+
+## The headline finding was tested, and half of it was wrong
+
+Sprint 7 reported "you die roughly ten seconds after every spawn" and listed three candidate causes.
+The audit reproduced the symptom exactly — **median lifetime 10.0 s** at the default difficulty —
+and then separated the causes, which is the part that mattered:
+
+| | |
+| --- | --- |
+| median lifetime | 10.0 s |
+| = time to find a fight | 7.1 s |
+| + time to lose it | 2.38 s |
+| median nearest enemy at spawn | **30.3 m** |
+| spawns within 15 m of an enemy | **0%** |
+| spawns with enemy line of sight | **2%** |
+
+**Spawn placement was never the problem.** The scoring system — threat weighting, line-of-sight
+avoidance, recency cooldown — was doing exactly what it was built to do. What was wrong was the
+opponent: `medium`, the default, reacted in 360 ms with 3.4° of aim error and engaged out to 45 m.
+That is a good human. The ladder was compressed at the bottom, so the default was effectively hard.
+
+## After the rebalance
+
+| difficulty | median life | died under 10 s |
+| --- | --- | --- |
+| easy | 26.7 s | 11% |
+| **medium (default)** | **~14 s** (three seeds) | **~32%** |
+| hard | 10.5 s | 46% |
+| expert | 8.5 s | 60% |
+
+Played build, corroborating: two deaths in a continuous stretch, at **5.7 s and 42.2 s**. The 42 s
+life is notable because the tester was largely stationary — in Sprint 7 a stationary player died
+inside ten seconds on every one of three deployments. Sample of two, so it is consistent with the
+audit rather than evidence in its own right.
+
+## Visual clarity
+
+**Improved.** The two large white-cyan blooms that sat in the middle of the screen from most
+positions on the deck are gone, and surfaces behind them now read. Reducing `bloomIntensity` was the
+whole fix, and it costs nothing (−0.08 ms GPU under interleaved measurement).
+
+Worth recording that Sprint 7 diagnosed the *light shafts* as this problem from a screenshot, fixed
+them, and was wrong — the shafts are the faint grey wedges; bloom was the bright shapes. The shaft
+fade is still a correct change; it just was not this one.
+
+## HUD
+
+**The charge ring is the clearest win of the sprint from a player's seat.** Remaining shots now sit
+in peripheral vision at the point of aim instead of in the bottom-right corner, and recharge is a
+sweeping arc rather than a different colour of the same shape — readable without looking away from
+the fight, and readable without relying on colour.
+
+Crosshair legibility is fixed. The dual drop-shadow and centre pip keep it visible against a lit
+wall, which it was not before.
+
+## Still open, ordered by player impact
+
+1. **Fights are point-blank.** Median engagement range is **7.0 m at every difficulty**, unchanged by
+   any tuning. Bots close distance before shooting regardless of `engageRange`. A laser tag arena
+   where every fight is a shotgun duel is not what this weapon is designed around.
+2. **No team colour in the environment.** The HUD now carries the accent; the arena does not.
+3. **Arena presentation unstarted** — holograms, LED walls, scoreboards, signage.
+4. **Environment FX unstarted** — fog, dust, vents, conduits, steam.
+5. **Audio unstarted** this sprint.
+6. **120 FPS not achievable.** GPU 12.2 ms against an 8.33 ms budget, fragment-bound.
+
+## Method note
+
+The audit harness is the most useful thing built this sprint. Three sprints of playtesting produced
+the *symptom* correctly every time and the *cause* wrongly every time, because a human tester can
+feel that something is unfair but cannot see which of three systems produced it. One 11-second
+headless run separated them.
+
+**Play the game to find out what is wrong. Measure it to find out why.**

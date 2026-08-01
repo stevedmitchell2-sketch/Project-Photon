@@ -23,7 +23,8 @@
     "validate": "npm run typecheck && npm run lint && npm run test && npm run build",
     "latency-sweep": "tsx scripts/latencySweep.ts",
     "predict-align": "tsx scripts/predictionAlign.ts",
-    "scale": "tsx scripts/processScale.ts"
+    "scale": "tsx scripts/processScale.ts",
+    "spawn-audit": "tsx scripts/spawnAudit.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",

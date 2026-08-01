@@ -23,11 +23,24 @@ export interface GraphicsSettings {
   showFps: boolean;
 }
 
+/**
+ * Quality presets.
+ *
+ * `bloomIntensity` was reduced across the board in Sprint 8 (0.55/0.85/1.1 -> 0.35/0.5/0.68). This
+ * is a readability change, not a performance one: GPU timing showed the bloom pass costs
+ * essentially nothing, but at the old intensities the emissive light fixtures bled into two large
+ * white-cyan blooms that sat in the middle of the screen from most positions on the deck and washed
+ * out anything behind them — including whatever was under the crosshair. The neon still reads as
+ * neon at the lower values; it just stops eating the frame.
+ *
+ * The frame is fragment-bound, so `renderScale` and `maxDynamicLights` are the two settings that
+ * actually move GPU time here. See RENDERING_GUIDE.md for the measured attribution.
+ */
 export const QUALITY_PRESETS: Record<QualityPreset, Partial<GraphicsSettings>> = {
   performance: {
     renderScale: 0.75,
     bloom: true,
-    bloomIntensity: 0.55,
+    bloomIntensity: 0.35,
     volumetricLight: false,
     shadows: false,
     shadowMapSize: 512,
@@ -42,7 +55,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<GraphicsSettings>> =
   balanced: {
     renderScale: 1,
     bloom: true,
-    bloomIntensity: 0.85,
+    bloomIntensity: 0.5,
     volumetricLight: true,
     shadows: true,
     shadowMapSize: 1024,
@@ -57,7 +70,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<GraphicsSettings>> =
   quality: {
     renderScale: 1,
     bloom: true,
-    bloomIntensity: 1.1,
+    bloomIntensity: 0.68,
     volumetricLight: true,
     shadows: true,
     shadowMapSize: 2048,
@@ -76,7 +89,8 @@ export const defaultGraphicsSettings = (): GraphicsSettings => ({
   fov: 95,
   renderScale: 1,
   bloom: true,
-  bloomIntensity: 0.85,
+  // Must match the `balanced` preset — this is the value a fresh install starts on.
+  bloomIntensity: 0.5,
   volumetricLight: true,
   shadows: true,
   shadowMapSize: 1024,

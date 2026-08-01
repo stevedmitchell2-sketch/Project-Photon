@@ -20,6 +20,17 @@ export interface SpawnChoice {
 
 const RECENT_USE_WINDOW = 6; // seconds
 
+/**
+ * Radius around a spawn point that must be clear of other living actors.
+ *
+ * Slightly wider than two character capsules, so a spawn is rejected before anyone ends up inside
+ * anyone else. Occupancy was the one item on the Sprint 8 spawn list with no implementation behind
+ * it: threat, line of sight and recency were all scored, but nothing checked whether the point was
+ * physically free. At six players a side the team spawn cluster is small enough that two respawns
+ * landing together is not a rare event.
+ */
+const OCCUPANCY_RADIUS = 1.6;
+
 export class SpawnSystem {
   /** spawn index -> match time it was last used. */
   private readonly lastUsed = new Map<number, number>();
@@ -89,6 +100,11 @@ export class SpawnSystem {
       if (other.id === actor.id || !other.alive) continue;
       const hostile = freeForAll || other.team !== actor.team;
       const d2 = distSq3(position, other.position);
+
+      // Occupancy. Anyone standing on the pad disqualifies it outright, friend or enemy — the
+      // penalty is large enough that a clear point always wins, but it stays a score rather than a
+      // hard filter so a fully contested spawn set still returns something rather than nothing.
+      if (d2 < OCCUPANCY_RADIUS * OCCUPANCY_RADIUS) score -= 500;
 
       if (hostile) {
         // Heavy penalty inside a duel's worth of distance, tapering to nothing by 30 m.

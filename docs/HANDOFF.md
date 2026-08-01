@@ -59,6 +59,7 @@ npm run validate                 # typecheck + lint + 46 tests + build
 | `npm run predict-align -- --latency 150` | Is reconciliation comparing a prediction against the server state for the *same* tick? |
 | `npm run scale -- --clients 16` | Client count, CPU, memory, bandwidth, process-per-client. |
 | `npm run predict-ab` | Is the replay path bit-identical to the live path? |
+| `npm run spawn-audit -- --seconds 180 --bots 6` | How long does a life last, and what ends it? Separates spawn placement from bot skill from time-to-kill. |
 
 **Read this before trusting any measurement in this repository.** Five sprints running, the
 highest-value change has been to an instrument rather than to a game system:
@@ -67,6 +68,7 @@ highest-value change has been to an instrument rather than to a game system:
 - the draw-call counter was reset by the post-processing chain;
 - `connect()` resolved on socket-open, so clients were "connected" and sending nothing;
 - the server re-simulated stale input on starved ticks;
+- frames-per-second could never have answered the 120 FPS question, because vsync pins it;
 - **server-side RTT was never measured at all**, so lag compensation did nothing;
 - **clients never adopted their server-assigned actor id**, so any server whose counter had advanced
   past 1 broke them.
@@ -92,14 +94,15 @@ problem.
 
 ### Not solid
 
-1. **You die ten seconds after every spawn.** The biggest problem in the project. Three candidate
-   causes — spawn placement, bot accuracy, time-to-kill — which must be isolated one at a time.
-2. **Residual prediction corrections** on some clients. Narrowed to a specific, testable
+1. **Every fight is point-blank.** Median engagement range is 7.0 m at every difficulty and does not
+   respond to `engageRange`. The weapon's falloff, spread, ADS and travel time are never exercised.
+2. **120 FPS is not achievable.** GPU 12.0–12.5 ms against an 8.33 ms budget, CPU idle at 1.4–1.9 ms.
+   Fragment-bound. Now measured rather than unknown.
+3. **The arena has no team identity.** The HUD carries the team accent; the environment does not.
+4. **Residual prediction corrections** on some clients. Narrowed to a specific, testable
    observation; not a blocker.
-3. **Bloom blows out the frame centre.**
-4. **120 FPS is unmeasurable** — vsync pins frame time at 1/60 s. Open since Sprint 4.
-5. **Most of the visual identity is unstarted**: arena presentation, environment FX, audio polish,
-   team-coloured lighting, crosshair.
+5. **Most of the visual identity is unstarted**: arena presentation (holograms, LED walls,
+   scoreboards), environment FX (fog, dust, vents, steam), and the whole audio pass.
 
 ### Not started
 
@@ -107,8 +110,10 @@ Arenas 02-04, authored characters, multiplayer UI, spectator, replay, voice, edi
 
 ## What to do next
 
-[NEXT_TASK.md](./NEXT_TASK.md) is ordered. The short version: **stop working on infrastructure.**
-It is validated. The game is now the constraint, and the first item is making it survivable to spawn.
+[NEXT_TASK.md](./NEXT_TASK.md) is ordered. The short version: **the arena needs to become a place.**
+Infrastructure is validated, spawning is fair, and the frame is now measurable. What is missing is
+identity — team colour in the world, arena presentation, environment effects, audio — plus one
+gameplay fix (fights happen at 7 m) and one rendering direction (per-pixel cost).
 
 ## Map of the codebase
 
@@ -142,5 +147,13 @@ docs/           This directory
 - **Do not use client-side travelled distance as a movement measure.** It sums per-tick position
   deltas, which include correction teleports. One Sprint 7 client reported 130 m of travel where the
   server recorded 46 m.
+- **GPU time is view-dependent.** The same preset measured 8.68 ms and 12.43 ms from different
+  vantages. Any graphics A/B must be **interleaved** (ABAB), never sequential.
+- **Repeated in-tab reloads degrade the WebGL context.** After a dozen reloads the same scene read
+  4 FPS with simulation time up 10× — which no graphics setting can affect. Restart the preview. If
+  simulation time moves after a rendering change, suspect the browser, not the code.
+- **Something must always render.** `RendererStats` runs a positive-priority `useFrame`, which takes
+  R3F out of automatic rendering. If you make the `EffectComposer` conditional, provide a fallback
+  that renders the scene, or the screen goes black.
 - **PowerShell `Get-Content | Set-Content` mangles UTF-8** in this repo. Use the editor tools or
   Python with an explicit encoding.

@@ -7,6 +7,19 @@
   --photon-danger: #ff4d6d;
   --photon-warn: #ffd84d;
   --hud-scale: 1;
+
+  /*
+   * Team accents, mirroring `config/teams.ts`.
+   *
+   * Duplicated deliberately: the simulation's team colours are numbers consumed by Three.js
+   * materials, and the HUD needs CSS colours. Rather than converting at runtime on every render,
+   * the two are kept in step by hand — there are four of them and they change roughly never. If a
+   * fifth team ever appears, both places need the entry.
+   */
+  --team-red: #ff2d55;
+  --team-blue: #2d7bff;
+  --team-green: #2dff87;
+  --team-gold: #ffc93d;
 }
 
 * {
@@ -261,6 +274,19 @@ body {
 }
 
 /* Crosshair */
+
+/*
+ * The charge ring sits behind the reticle and must never intercept a click — the canvas below it
+ * owns pointer lock, and an SVG swallowing the first click would break aiming entirely.
+ */
+.crosshair-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
+}
 
 .crosshair {
   position: absolute;

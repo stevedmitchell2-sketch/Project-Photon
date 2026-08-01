@@ -23,7 +23,7 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **Ten-second time-to-death from spawn** | Highest-value item in the project. Reproduced on every Sprint 7 deployment. Three candidate causes — spawn placement, bot accuracy, time-to-kill — which must be isolated separately before any is tuned. See NEXT_TASK item 1. |
+| **Every fight is point-blank** | Median engagement range is 7.0 m at *every* difficulty and does not respond to `engageRange` (26–62 m across profiles). Bots close to contact before shooting, so the weapon design — falloff bands, spread, ADS, travel time — is never exercised. Highest-value gameplay item. |
 | **Objective-aware bots** | Five of seven modes are unplayable offline. Add a `capture-objective` branch between `engage` and `search`; `investigate` is the template. |
 | **Overtime / sudden death verification** | `MatchFlow` implements the phase; it has never been observed firing in a real match. |
 | **Round transitions for Elimination** | Round restart logic exists in the mode but no round-boundary respawn wave. |
@@ -34,8 +34,8 @@ start — vague aspirations belong in `ROADMAP.md`.
 | Item | Notes |
 | --- | --- |
 | **Batch props** | Avatars are done — instanced in Sprint 7, draw calls no longer scale with player count. Arena props (2–8 meshes each) are the remaining unbatched geometry. Not geometry-bound — 12.6k triangles. |
-| **Bloom blows out the frame centre** | The dominant visual artefact. Two large white-cyan teardrops from emissive fixtures wash out anything behind them. Bigger contributor than the light shafts, which were misdiagnosed as the offender in Sprint 7. |
-| **Crosshair legibility** | Thin grey cross, nearly invisible against a pale wall. Needs an outline or contrasting core. |
+| **Per-pixel cost blocks 120 FPS** | GPU 12.0–12.5 ms against an 8.33 ms budget, CPU idle at 1.4–1.9 ms. Fragment-bound: lights per fragment (2.3 ms), full PBR on non-metallic architecture, transparent overdraw. Draw calls are not the constraint. |
+| **Dynamic-light budget is a flat cap** | `maxDynamicLights` caps arena fixtures only; impact flashes, prop beacons and the muzzle light sit outside it. Should be one budget culled by distance and screen influence. |
 | **No team colour in the environment** | Every strip and fixture is cyan regardless of which team holds a room. The objective banner is the only team-state signal on screen. |
 | **Vsync-independent frame timing** | 120 FPS target is unmeasurable while frame time is pinned at exactly 1/60 s. Until this exists, no optimisation claim can be verified. |
 | **Global dynamic-light budget** | `graphics.maxDynamicLights` caps arena fixtures only. Impact flashes, prop beacons and the muzzle light are outside it. Should be one budget. |

@@ -24,6 +24,10 @@ export interface HudSnapshot {
   scores: Array<{ key: string; label: string; team: TeamId; score: number }>;
   fps: number;
   simMs: number;
+  /** CPU time spent producing the frame, excluding the block on vsync. */
+  cpuMs: number;
+  /** GPU time for the frame, or -1 where the timer-query extension is unavailable. */
+  gpuMs: number;
   drawCalls: number;
   /** Central objective room: who holds it, and whether it is being fought over. */
   objective: {
@@ -90,6 +94,8 @@ const emptyHud = (): HudSnapshot => ({
   scores: [],
   fps: 0,
   simMs: 0,
+  cpuMs: 0,
+  gpuMs: 0,
   drawCalls: 0,
   objective: { label: 'CENTRAL ROOM', controllingTeam: null, contested: false, occupants: 0, heldSeconds: 0 },
 });

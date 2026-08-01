@@ -157,7 +157,9 @@ export function Hud({ game }: { game: Game }) {
           </div>
           {graphics.showFps && (
             <div className="perf">
-              {hud.fps.toFixed(0)} FPS · SIM {hud.simMs.toFixed(2)}MS · {hud.drawCalls} DRAW
+              {hud.fps.toFixed(0)} FPS · CPU {hud.cpuMs.toFixed(1)} · GPU{' '}
+              {hud.gpuMs > 0 ? hud.gpuMs.toFixed(1) : '—'} · SIM {hud.simMs.toFixed(2)} ·{' '}
+              {hud.drawCalls} DRAW
             </div>
           )}
         </div>

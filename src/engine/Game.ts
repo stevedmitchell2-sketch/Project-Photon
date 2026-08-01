@@ -12,6 +12,7 @@ import type { Actor, GameEvents } from '@/gameplay/types';
 import { InputManager, type InputSettings } from '@/input/InputManager';
 import { buildArena, getArena, type BuiltArena } from '@/maps/MapBuilder';
 import { initPhysics, PhysicsWorld } from '@/physics/PhysicsWorld';
+import { useSettings } from '@/state/settingsStore';
 import { useUi } from '@/state/uiStore';
 import { clamp, damp, dist3, forwardFromLook, groundBasis, lerp, speedXZ, type Vec3 } from '@/util/math';
 import { NetClient } from '@/net/NetClient';
@@ -94,7 +95,22 @@ export class Game {
   };
 
   /** Renderer counters, published by the render tree and surfaced on the performance overlay. */
-  readonly renderStats = { drawCalls: 0, triangles: 0, programs: 0 };
+  /**
+   * Renderer counters and frame budget.
+   *
+   * `cpuMs` and `gpuMs` are what the 120 FPS target is actually written against. Frames per second
+   * cannot answer it on a vsynced display — see `RendererStats` — so `frameBudgetMs` is the number
+   * to watch: the frame fits in 8.33 ms or it does not.
+   */
+  readonly renderStats = {
+    drawCalls: 0,
+    triangles: 0,
+    programs: 0,
+    cpuMs: 0,
+    gpuMs: 0,
+    frameBudgetMs: 0,
+    gpuAvailable: false,
+  };
 
   /** Live renderer handles, set once the canvas mounts. Used by the performance overlay and tools. */
   renderer: { gl: unknown; scene: unknown; camera: unknown } | null = null;
@@ -185,6 +201,10 @@ export class Game {
       handle.__PHOTON__ = this as Game & { probeLighting?: unknown };
       // Lighting validation is loaded lazily so the probe's Three.js imports stay out of the
       // production bundle entirely.
+      // Graphics settings on the dev handle, so a frame-cost attribution pass can toggle one
+      // effect at a time and read the GPU timer back. Doing this through the settings menu works
+      // but cannot isolate a single effect — the presets change several at once.
+      (handle.__PHOTON__ as unknown as { settings?: unknown }).settings = useSettings;
       void import('@/dev/netProbe').then((module) => {
         (handle.__PHOTON__ as unknown as { probeNet?: unknown }).probeNet = () =>
           module.probeNetcode(this.match.state);
@@ -445,6 +465,8 @@ export class Game {
       fps: this.loop.stats.fps,
       simMs: this.loop.stats.simMs,
       drawCalls: this.renderStats.drawCalls,
+      cpuMs: this.renderStats.cpuMs,
+      gpuMs: this.renderStats.gpuMs,
       objective: this.objectiveStatus(),
     });
 

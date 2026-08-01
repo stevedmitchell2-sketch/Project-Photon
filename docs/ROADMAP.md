@@ -13,7 +13,8 @@ scope rationale and [ARCHITECTURE.md](./ARCHITECTURE.md) for the invariants each
 | M4 — Art & Audio | Mixamo rigs, motion matching, weapon animation set, VO announcer, soundtrack, texture streaming | ⬜ Not started |
 | M5 — Netcode | Client half, multiplayer UI, spectator, replay, voice | 🟨 Client half done and validated; UI, spectator, replay and voice outstanding |
 | **Phase 7 — Alpha Stabilisation** | Disconnect bug, latency validation, process-per-client scaling, avatar instancing, telemetry | ✅ **Complete** — see CHANGELOG 0.13.0 |
-| **Phase 8 — Vertical Slice Production** | Time-to-death tuning, bloom, crosshair, arena presentation, environment FX, audio, arena content | ⬜ **Next** — the transition out of infrastructure |
+| **Phase 8 — Gameplay & Presentation** | Spawn audit, difficulty rebalance, frame-timing instrument, bloom, crosshair, charge ring | 🟨 **Gameplay and HUD done; arena presentation, environment FX and audio not started** |
+| **Phase 9 — Arena Identity** | Team-coloured environment, holograms, LED walls, fog, dust, vents, audio pass, engagement-range fix, per-pixel cost | ⬜ **Next** |
 | M6 — Tools & Ship | Map/spawn/lighting/bot-path editors, weapon tuning, replays, telemetry, CI perf budgets | ⬜ Not started |
 
 ---

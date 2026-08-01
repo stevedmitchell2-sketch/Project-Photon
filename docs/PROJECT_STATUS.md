@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-01 · **Phase:** Sprint 7 - infrastructure closed. Four production bugs fixed, latency validated 0-250 ms, 16 clients proven. Gameplay and presentation now the critical path.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 8 - ten-second death fixed, frame timing measurable at last. Arena presentation and per-pixel cost are the critical path.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -11,8 +11,13 @@ The game is playable end to end — spawn, move, shoot, tag, respawn, score, win
 two-floor arena, and the multiplayer stack behind it is now validated rather than assumed: 16
 concurrent clients, latency measured from 0 to 250 ms, and lag compensation demonstrated to work.
 
-**The infrastructure phase is over. The game itself is the constraint now** — it is technically
-sound and not yet enjoyable, because you die roughly ten seconds after every spawn.
+**The infrastructure phase is over.** Sprint 8 fixed the ten-second death — the default median
+lifetime went from 10.0 s to about 14 s, and lives ending inside ten seconds fell from 50% to 32% —
+after measurement showed the cause was the default bot difficulty rather than spawn placement, which
+was innocent all along.
+
+What remains is presentation. The arena has no team identity, no holographic displays, no
+environment effects and no audio pass, and every fight happens at 7 m regardless of difficulty.
 
 ## What works, verified by measurement
 
@@ -24,6 +29,10 @@ sound and not yet enjoyable, because you die roughly ten seconds after every spa
 | Lag compensation | Rewind by rtt/2 + interpolation delay | Hit rate on a strafing target at 250 ms: **2.8% off vs 8.5-11% on** |
 | Prediction | Reconciliation verified aligned | Error minimised at reconciliation offset 0; **28 mm** for a sprinting client at 150 ms RTT |
 | Avatar rendering | Instanced by (geometry, material) | **146 draw calls at 5 bots, 146 at 11** — decoupled from player count |
+| Frame budget | CPU and GPU measured directly | **CPU 1.4-1.9 ms, GPU 12.0-12.5 ms**; 120 FPS budget is 8.33 ms, so **not currently met** |
+| Frame bottleneck | Fragment-bound, not draw-call-bound | renderScale 1.0 -> 0.5 takes GPU 12.3 -> 4.8 ms; all post-processing off saves 0.1 ms |
+| Spawn placement | Threat, sight-line and recency scored; occupancy added | Median nearest enemy at spawn **30-33 m**, 0% within 15 m, 2-5% with line of sight |
+| Difficulty ladder | Rebalanced against measurement | Median life 26.7 / ~14 / 10.5 / 8.5 s across easy / medium / hard / expert |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |

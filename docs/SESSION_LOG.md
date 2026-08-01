@@ -6,6 +6,49 @@ attempted, what was learned, and what a future session should not repeat.
 ---
 
 
+
+## Session 14 — 2026-08-01 — Sprint 8: Gameplay & Presentation
+
+**Brief:** spawn system 2.0 as priority one, then visual identity, laser presentation, HUD 2.0, team
+identity, arena atmosphere, performance to 120 FPS, gameplay review, telemetry, refactoring, docs.
+
+**Outcome:** Parts A, G, H and K delivered. Part D delivered in part (crosshair, charge ring, team
+accents). Parts B, C, E, F largely not delivered. Part I partially — the audit is new telemetry, but
+no new recorded fields beyond it.
+
+### What actually happened
+
+Priority one was "make spawning intelligent and fair". The first thing built was a harness to
+measure whether it was unfair, and it was not: the median spawn put the nearest enemy 30 m away,
+none within 15 m, 2% with line of sight. **The system the brief asked to rebuild was already
+working.** The ten-second death was the default bot difficulty, which shot like a good human.
+
+That is the third consecutive sprint where the reported symptom was right and the reported cause was
+wrong, and the second where the planned fix would have been aimed at an innocent system.
+
+The other half of the sprint went to the frame-timing instrument, open since Sprint 4. Building it
+inverted the project understanding of its own renderer within about a minute of first running: the
+CPU is idle at 1.4–1.9 ms, the GPU is at 12.0–12.5 ms, and the frame is fragment-bound. **Draw calls
+were never the constraint**, which means two sprints of batching work was optimising the wrong axis.
+
+### The thing worth remembering
+
+Two false performance findings were caught before they reached a document:
+
+1. A 3 ms "saving" from lowering bloom intensity, which evaporated to −0.08 ms once the A/B was
+   interleaved rather than sequential — GPU time turns out to be strongly view-dependent.
+2. A catastrophic-looking regression (4 FPS, GPU 28 ms) that was a degraded WebGL context after a
+   dozen in-tab reloads. The giveaway was **simulation time** rising 10×, which no graphics change
+   can cause.
+
+Both would have been plausible in a report. Neither was true.
+
+### The other thing worth remembering
+
+The brief asked for 120 FPS. It is not achievable at current settings — closing the gap needs a 32%
+cut, roughly renderScale 0.6. That was reported as a measured "no" rather than met by quietly
+dropping resolution.
+
 ## Session 13 — 2026-08-01 — Sprint 7: Closed Alpha Stabilisation
 
 **Brief:** resolve the disconnect/stale-state bug, complete latency validation 20-250 ms, finish the

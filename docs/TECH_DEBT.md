@@ -5,6 +5,41 @@ they are paid or consciously accepted.
 
 ---
 
+## Paid in Sprint 8
+
+### 120 FPS was unmeasurable — **fixed**
+
+The oldest item in the register, open since Sprint 4. Frames per second cannot answer the question
+on a vsynced display: the interval is pinned to one refresh regardless of the work done. CPU frame
+time is now bracketed across the frame, and GPU frame time comes from
+`EXT_disjoint_timer_query_webgl2`.
+
+The first measurement inverted the project's understanding of its own renderer: **CPU 1.4–1.9 ms,
+GPU 12.0–12.5 ms, fragment-bound.** Draw calls were never the constraint, so the batching work of
+Sprints 6–7 was optimising the wrong axis. Not wasted — the avatar instancing is still correct and
+still needed at 16 players — but it was never what stood between the build and its target.
+
+### Disabling every post effect turned off rendering — **fixed**
+
+`RendererStats` registers a positive-priority `useFrame`, which switches R3F out of automatic
+rendering. With bloom, vignette, grain and chromatic aberration all off, `PostFX` returned null,
+`EffectComposer` unmounted and nothing rendered — a black screen with zero draw calls, reachable
+from the settings menu. Now falls back to a direct scene render at the same priority.
+
+### The ten-second death — **fixed, and the diagnosis was wrong**
+
+Carried into this sprint as three candidate causes to isolate. Measurement cleared spawn placement
+outright: median nearest enemy at spawn 30.3 m, none within 15 m, 2% with line of sight. The cause
+was that `medium` shot like a good human. Rebalanced; default median life 10.0 s → ~14 s, deaths
+inside ten seconds 50% → 32%.
+
+### Spawn occupancy was never checked — **fixed**
+
+Threat, sight lines and recency were all scored; nothing checked whether the point was physically
+free.
+
+---
+
 ## Paid in Sprint 7
 
 Kept rather than deleted, because what each one turned out to be is more useful than the fact that
@@ -90,30 +125,26 @@ for some clients and not others.
 **Cost:** a correction every snapshot on affected clients. Visible as micro-stutter under latency;
 not visible in single-player. Next step is written out in NEXT_TASK item 3.
 
-### Ten-second time-to-death from spawn
+### Arena has no team identity
 
-Not a code defect but the largest gap between this build and a playable game, and it belongs here
-because it has a measurable cost and a known set of causes. Reproduced on every Sprint 7 deployment.
-Scores ran 7–15 in 50 seconds at 6 per team.
-
-**Cost:** the game is not currently enjoyable, which makes every playtest finding beyond it hard to
-gather.
+Every strip and fixture is cyan whoever holds the room. The HUD now carries the team accent; the
+environment does not, so the objective banner is still the only team-state signal on screen.
 
 ---
 
 ## Medium — affects velocity or confidence
 
-### 120 FPS is unmeasurable
+### 120 FPS is not achievable at current visual settings
 
-Open since Sprint 4 and now the oldest unaddressed item. Frame time is pinned at exactly 1/60 s by
-vsync, so no optimisation claim above 60 FPS can be verified. This sprint's avatar instancing had to
-be demonstrated through draw-call counts instead, which is weaker evidence than a frame time.
+Now measured rather than unknown. Closing 12.2 ms to 8.33 ms needs a 32% cut, roughly
+`renderScale` 0.6 — a serious quality loss. The target is deliberately **not** being met by gutting
+resolution. The real work is per-pixel: light count per fragment, material cost on non-metallic
+architecture, transparent overdraw.
 
-### Bloom blows out the frame centre
+### Every fight happens at 7 m
 
-Two large white-cyan teardrops from the emissive fixtures wash out anything behind them from most
-positions on the deck. Notable because the light shafts were diagnosed as the offender, fixed, and
-found not to have been the main problem — the fix was correct but aimed at the wrong thing.
+Median engagement range is identical at every difficulty and does not respond to `engageRange`. The
+weapon is designed around ranged combat that never happens.
 
 ### Arena props still unbatched
 
