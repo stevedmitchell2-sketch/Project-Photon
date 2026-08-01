@@ -6,6 +6,7 @@ import { LIGHTING } from '@/config/lighting';
 import type { AccessibilitySettings } from '@/state/settingsStore';
 import { DEG2RAD } from '@/util/math';
 import { ArenaEnvironment } from './ArenaEnvironment';
+import { ArenaArchitecture } from './ArenaArchitecture';
 import { ArenaMesh } from './ArenaMesh';
 import { ArenaProps } from './ArenaProps';
 import { useGame } from './GameContext';
@@ -91,6 +92,7 @@ export function Scene({ graphics, accessibility }: Props) {
       ))}
 
       <ArenaMesh arena={arena} shadows={graphics.shadows} />
+      <ArenaArchitecture />
       <TeamIdentity
         colorblind={accessibility.colorblindPalette}
         maxLights={graphics.maxDynamicLights}
