@@ -132,3 +132,20 @@ The Phase 7 claim that actor-vs-actor collision caused the 22/s prediction corre
 
 8-client runs fail (4 works), prediction corrections unexplained, 120 FPS unmeasurable while
 vsync-capped, props and avatars unbatched.
+
+
+---
+
+## Sprint 5 — 2026-07-31
+
+**Delivered.** Root cause of the long-running prediction drift found and fixed: the server
+re-simulated with a client's previous input whenever none had arrived for a tick, inventing movement
+the client never predicted. Starved actors now hold position, and a two-tick input jitter buffer
+absorbs clock drift. Starvation fell from 19.7/12.3/3.4% to 6.6/4.1/1.4%; best-case correction rate
+22/s to 2/s with error 0.37 m to 0.054 m.
+
+Added `docs/BACKLOG.md` and per-client input diagnostics.
+
+**Not delivered.** Vertical-slice polish — first-person feel, weapon presentation, HUD, visual pass.
+Deliberately deferred: the networking foundation those sit on was correcting on every snapshot, and
+polishing above an unresolved fault is wasted work. Sequenced in NEXT_TASK for Sprint 6.

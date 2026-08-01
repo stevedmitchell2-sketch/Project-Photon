@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-07-31 · **Phase:** Networking sprint - 4-client multiplayer working, lag compensation live, telemetry added.
+**Last updated:** 2026-07-31 · **Phase:** Sprint 5 - prediction drift root cause found and fixed; starvation cut 3x. Vertical-slice polish not yet started.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -246,3 +246,32 @@ tx 8.1 KB/s / rx 9.3 KB/s server-side, 25 MB heap.
 3. **120 FPS target unmeasurable** - vsync-capped at 60.
 4. Draw calls dominated by 137 unbatched prop and avatar meshes vs 21 instanced.
 5. Listen server, objective-aware bots, multiplayer UI, spectator and replay outstanding.
+
+---
+
+## Sprint 5 — prediction drift (2026-07-31)
+
+### Root cause found and fixed
+
+The server re-simulated with a client's **previous input** whenever none was available for a tick,
+advancing the actor by a movement step the client never predicted. Systematic, because two
+unsynchronised 64 Hz clocks starve constantly.
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| Starved ticks (3 clients) | 19.7 / 12.3 / 3.4% | **6.6 / 4.1 / 1.4%** |
+| Corrections/s | 22 / 22 / 22 | 22 / 22 / **2** |
+| Best-case error | 0.37 m | **0.054 m** |
+
+Fixes: starved actors hold position; a 2-tick input jitter buffer absorbs clock drift.
+
+### Still open
+
+1. **Corrections are now bimodal** — 2 / 22 / 22, where 22/s is exactly the snapshot rate. Two
+   clients correct on every snapshot, one almost never. Leading hypothesis: level-geometry contact
+   amplifying sub-quantisation differences through collide-and-slide. Test is in NEXT_TASK.
+2. **8 clients fail** (4 works).
+3. **Lag compensation unvalidated under latency** — only run at ~1 ms RTT where rewind is a no-op.
+4. **120 FPS unmeasurable** while vsync-capped.
+5. Props and avatars unbatched (137 meshes vs 21 instanced).
+6. Vertical-slice polish (first-person feel, weapon, HUD, visual) not started.

@@ -512,3 +512,55 @@ early. Before concluding that a system does not scale, check that the thing meas
 
 8-client runs still fail. Lag compensation is live but only exercised at ~1 ms RTT, where rewind is
 a no-op — it needs a 20-250 ms sweep before it can be called validated.
+
+---
+
+## Session 11 — 2026-07-31 — Sprint 5: prediction drift root cause
+
+**Entered with:** a vertical-slice brief spanning eleven steps, and my own NEXT_TASK naming
+prediction-correction instrumentation as priority one. Step 2 of the brief asked for exactly that,
+so the two agreed.
+
+### What happened
+
+Found the cause by **reading the server tick loop** rather than by hypothesising again. When no input
+was available for a client on a given tick, the server re-simulated with that client's previous
+input — advancing the actor by a movement step the client never predicted. Two 64 Hz clocks that are
+not phase-locked starve constantly, so this was continuous systematic drift, and the arithmetic
+matched: one starved tick at sprint speed is 0.13 m against observed errors of 0.05–0.37 m.
+
+Then instrumented it before fixing it, which was the right order — the correlation was decisive:
+3.4% starvation on the client correcting at 2/s, 12.3% and 19.7% on the two correcting at 22/s.
+
+Two fixes: starved actors hold position rather than replaying stale input, and a two-tick jitter
+buffer primes a cushion before the server starts consuming. Starvation fell roughly threefold.
+
+### What this makes six
+
+Six hypotheses have now been examined for this one defect. Four were wrong, and **two of those were
+previously reported as fixes** — the actor-collision attribution in Phase 7, and the tick-clock
+coupling in Phase 4. Both are corrected in the docs.
+
+The lesson I would keep: I found this one by reading the loop line by line, having exhausted the
+things that were plausible from a distance. Five rounds of reasoning about the symptom produced
+nothing; twenty minutes of reading the code that actually runs produced it immediately.
+
+### It is not finished
+
+Corrections are still 2 / 22 / 22, and the shape changed: bimodal rather than continuous, with 22/s
+being exactly the snapshot rate. Two clients correct on every single snapshot; one almost never
+does. Starvation reduction did not move them, so something structural separates those clients — most
+likely that two of the harness's movement patterns run into walls while one sprints through open
+floor, and collide-and-slide amplifies sub-quantisation differences. That is written up as a
+specific, falsifiable test rather than a seventh guess.
+
+### Scope
+
+The brief asked for eleven steps, of which this reached three: repository review, network
+stabilisation, and telemetry groundwork. First-person feel, weapon polish, HUD, match flow and
+visual polish were not touched.
+
+I chose depth over breadth deliberately. The brief said to prefer finishing one subsystem completely
+over touching ten, and prediction drift was the item blocking confidence in everything built on top
+of it. Polishing the feel of a game whose movement disagrees with its server on every snapshot would
+have been decorating an unresolved fault.

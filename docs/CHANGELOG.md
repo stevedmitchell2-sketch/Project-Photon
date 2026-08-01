@@ -4,6 +4,58 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.11.0] - 2026-07-31 - Sprint 5: prediction drift root cause
+
+### Found - the server was inventing movement
+
+When no input was available for a client on a tick, the server **re-simulated with that client's
+previous input**, advancing the actor by a movement step the client never predicted. Two 64 Hz
+clocks that are not phase-locked starve constantly, so this was continuous systematic drift. One
+starved tick at sprint speed is 0.13 m; observed errors were 0.05-0.37 m.
+
+Found by reading the tick loop, then **confirmed by instrumentation** rather than assumed:
+
+| Client | Starved ticks | Corrections/s |
+| --- | --- | --- |
+| A | 3.4% | 2 |
+| B | 12.3% | 22 |
+| C | 19.7% | 22 |
+
+This is the sixth hypothesis examined for this defect. The five before it are recorded in
+NETWORK_ARCHITECTURE.md; four were wrong and two of those were previously reported as fixes.
+
+### Fixed
+
+- **Starved actors hold position** instead of replaying stale input, so the server never simulates a
+  step the client did not.
+- **Input jitter buffer** (`TARGET_INPUT_BUFFER = 2`) primes a cushion before consuming, absorbing
+  ordinary clock drift. Costs ~31 ms of input latency, against correcting several times a second.
+
+Measured: starvation **19.7 / 12.3 / 3.4% -> 6.6 / 4.1 / 1.4%**.
+
+### Added
+
+- `NetServer.inputHealth()` - per-client starvation diagnostics, printed in the server health line.
+- `MatchDirector.setInputStarved()` - locomotion holds for a starved actor; weapons, regeneration
+  and respawn timers still advance.
+- **`docs/BACKLOG.md`** - scoped work behind NEXT_TASK, including a "deliberately not doing" section
+  so settled decisions are not re-proposed.
+
+### Still open
+
+Corrections remain **2 / 22 / 22** - now *bimodal* rather than continuous, and 22/s is exactly the
+snapshot rate, so two clients correct on every snapshot while one almost never does. Starvation
+reduction did not move them. Leading hypothesis is contact with level geometry amplifying
+sub-quantisation differences through collide-and-slide; the test to confirm it is in NEXT_TASK.
+
+### Scope note
+
+This sprint spent its budget on Steps 1-2 and 8 (review, network stabilisation, telemetry). Steps
+3-7 - first-person feel, weapon polish, HUD, match flow, visual polish - were **not** reached. They
+are unblocked and sequenced in NEXT_TASK for Sprint 6.
+
+---
+
 ## [0.10.0] - 2026-07-31 - Networking sprint: scaling, lag compensation, telemetry
 
 Cohesive sprint on Networking + Prediction, the highest-value unfinished work in NEXT_TASK.

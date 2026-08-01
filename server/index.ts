@@ -157,7 +157,13 @@ async function main(): Promise<void> {
         `tx=${(server.bandwidth.sentBytesPerSecond / 1024).toFixed(1)}KB/s ` +
         `rx=${(server.bandwidth.receivedBytesPerSecond / 1024).toFixed(1)}KB/s ` +
         `snapshot=${server.bandwidth.snapshotBytes}B ` +
-        `heap=${(memory.heapUsed / 1024 / 1024).toFixed(0)}MB`,
+        `heap=${(memory.heapUsed / 1024 / 1024).toFixed(0)}MB ` +
+        // Input starvation is the diagnostic for prediction drift: a starved tick means the server
+        // ran ahead of a client's input stream and held that actor rather than guessing.
+        `starved=${server
+          .inputHealth()
+          .map((h) => `${h.starvedPercent}%`)
+          .join(',') || '-'}`,
     );
   }, 10_000);
 

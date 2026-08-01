@@ -1,88 +1,100 @@
 # NEXT TASK
 
-**Read first:** [PROJECT_STATUS.md](./PROJECT_STATUS.md) and
-[NETWORK_BENCHMARK.md](./NETWORK_BENCHMARK.md).
+**Read first:** [PROJECT_STATUS.md](./PROJECT_STATUS.md), [BACKLOG.md](./BACKLOG.md).
 
 Working philosophy: **Observe → Measure → Fix → Play Again.**
 
 ---
 
-## 1. Prediction corrections: 22/s, cause unknown
+## 1. The residual 22/s prediction corrections — now a *bimodal* problem
 
-Top open question — and the previous explanation was **wrong**.
+Sprint 5 found and fixed a genuine systematic cause. It is worth reading what changed before
+picking this up, because the shape of the problem is different now.
 
-Phase 7 attributed the 22/s correction rate to actor-vs-actor collision (the client resolving
-contact against interpolated peers, the server against live ones) and removed actor collision
-entirely. **The correction rate did not change.** That was not the cause.
+### What was found
 
-Already ruled out, with evidence:
+When no input was available for a client on a given tick, the server **re-simulated with that
+client's previous input** — advancing the actor by a movement step the client never predicted. Two
+64 Hz clocks that are not phase-locked starve constantly, so this was continuous, systematic drift.
+At sprint speed one starved tick is 0.13 m; observed errors were 0.05–0.37 m.
 
-| Hypothesis | Verdict |
-| --- | --- |
-| Replay path asymmetry | Ruled out — `npm run predict-ab` shows `stepMovement` reproduces the full `MatchDirector.step()` bit-identically (0 m over 640 ticks) |
-| Comparing across time | Real bug, fixed in Phase 5 |
-| Server skipping inputs | Real bug, fixed — inputs now consumed FIFO |
-| Actor-vs-actor collision | Removed in Phase 7, **no change** |
-| Tolerance below the noise floor | Tried and reverted; masked real errors |
+**The correlation was decisive:**
 
-**Next step: instrument the disagreement rather than hypothesise about it.** For a single
-correction, log the acknowledged tick, the stored prediction for that tick, the server's position,
-the list of replayed inputs, and the resulting position. One captured example will say more than a
-sixth hypothesis.
+| Client | Starved ticks | Corrections/s |
+| --- | --- | --- |
+| A | 3.4% | **2** |
+| B | 12.3% | 22 |
+| C | 19.7% | 22 |
 
-First thing to check: whether the client's stored prediction tick and the server's acknowledged tick
-actually refer to the same simulation step, given each side advances its own counter.
+### What was done
+
+1. A starved actor now **holds position** instead of replaying stale input — the server never
+   simulates a step the client did not.
+2. An **input jitter buffer** (`TARGET_INPUT_BUFFER = 2`) primes a cushion before consuming, so
+   ordinary clock drift no longer empties the queue. Starvation fell from 19.7/12.3/3.4% to
+   **6.6/4.1/1.4%**.
+
+### What remains
+
+Corrections are still **2 / 22 / 22**. That is *bimodal*, not a continuum — and 22/s is exactly the
+20 Hz snapshot rate, meaning two clients correct on **every single snapshot** while one almost never
+does. Starvation reduction did not move them, so the remaining cause is structural.
+
+**Leading hypothesis: contact with level geometry.** The harness gives each client a different
+movement pattern from a different spawn. The one client that stays clean sprints through open floor;
+the two that correct constantly run into walls. Collide-and-slide amplifies a sub-millimetre
+starting difference into a divergent slide along a surface, and once diverged it re-diverges every
+tick.
+
+**How to test it:** run three clients with *identical* patterns in open floor away from geometry.
+If all three drop to ~2/s, geometry contact is confirmed and the fix is to make collide-and-slide
+resolution insensitive to sub-quantisation position differences — most likely by snapping the
+replay's starting position to the same quantisation grid the snapshot uses, so client and server
+begin each slide from bit-identical state.
+
+`server.inputHealth()` reports per-client starvation, and the server health line prints it.
 
 ## 2. The 8-client failure
 
 4 clients pass; 8 fail. The server accepts all 8, transmits 41.7 KB/s with correctly-scaling
-snapshots, and receives nothing back. The boundary between 4 and 8 is the clue.
+snapshots, and receives nothing back.
 
-**Test:** run each client in its own process rather than co-located, to settle whether this is
-harness event-loop saturation (8 full game clients, each with physics, a navigation bake and a
-64 Hz simulation, in one Node process) or a real server-side send-path limit.
-
-Note the precedent: the *previous* "server does not scale" conclusion turned out to be a client-side
-promise resolving too early. Suspect the measuring apparatus first.
+**Test:** run each client in its own process rather than co-located. Precedent matters here — the
+previous "server does not scale" conclusion turned out to be a client-side promise resolving too
+early. Suspect the measuring apparatus first.
 
 ## 3. Validate lag compensation under real latency
 
-Now wired and running, but only exercised at ~1 ms RTT — where rewind is a no-op and proves nothing.
-Use `LocalTransport.simulatedLatencyMs` to sweep 20–250 ms and confirm hit registration stays
-consistent. Record results in NETWORK_BENCHMARK.md.
+Wired and running, but only exercised at ~1 ms RTT where rewind is a no-op and proves nothing.
+Sweep 20–250 ms via `LocalTransport.simulatedLatencyMs` and record in NETWORK_BENCHMARK.md.
 
-## 4. Batch props and avatars
+## 4. Then the vertical-slice polish the Sprint 5 brief asked for
 
-137 individual meshes vs 21 instanced; each bot is ~12 meshes, each prop 2–8. Arena geometry is
-already batched through `MapBuilder`. Not geometry-bound — 12.6k triangles is trivial — so batching
-is the entire win.
+Sprint 5 spent its budget on the networking foundation (Steps 1–2 and 8) and did **not** reach the
+first-person feel, weapon, HUD and visual work in Steps 3–7. Those remain the largest visible
+improvement available, and they are now unblocked:
 
-## 5. Standing backlog
+1. **Batch props and avatars** — 137 unbatched meshes vs 21 instanced. Measurable, mechanical.
+2. **First-person feel** — head tilt while sprinting, landing impulse tuning, FOV transition curves.
+   `MOVEMENT` already exposes every constant these need.
+3. **Weapon polish** — recharge animation, muzzle flash, bolt lighting, scorch decals. The pooled FX
+   systems already exist; this is tuning and authoring, not new architecture.
+4. **HUD polish** — transitions, reactive crosshair, shield pulse.
 
-- **Listen server** — route offline play through `NetServer` + `LocalTransport`.
-- **Objective-aware bots** — five of seven modes unplayable offline.
-- **Multiplayer UI** — `MatchFlow` and `Statistics` already produce what the screens need.
-- **Spectator**, then **replay** — both build on `SnapshotHistory`.
-- **A telemetry sink** — `engine/Telemetry.ts` defines the interface; none ships. A JSON file writer
-  on the server would make match data available for analysis immediately.
+Do these **after** playing the game, not before. Every playtest so far has produced findings.
 
-## 6. Visual polish, in observed-impact order
+## Recommended Sprint 6
 
-1. Light shafts still read as objects rather than atmosphere — fade by view angle.
-2. Weapon orientation looks angled at rest; check for residual yaw in the idle sway.
-3. Mid-tone flatness — surfaces away from a fixture fall to uniform grey.
-
-## Recommended next sprint
-
-1. Instrument one prediction correction end to end (item 1)
+1. Identical-pattern open-floor test to confirm the geometry hypothesis (item 1)
 2. Process-per-client harness test (item 2)
-3. Latency sweep for lag compensation (item 3)
-4. **Play the game** — every playtest so far has produced findings
-5. Batch props and avatars, then re-profile
+3. Latency sweep (item 3)
+4. **Play the game**
+5. Batch props and avatars, re-profile
+6. First-person feel and weapon polish
 
 ## Standing note
 
-Across the last three sessions the highest-value changes were all to *instruments* rather than to
-the game: making the renderer visible, fixing the draw-call counter, and fixing a handshake promise
-that made clients look unscalable. When something cannot be measured honestly, fixing the
-measurement usually outranks whatever was going to be measured.
+Four sprints running, the highest-value change has been to an *instrument* or to *plumbing* rather
+than to a game system: making the renderer visible, fixing the draw-call counter, fixing a handshake
+promise, and now instrumenting input starvation. The pattern is consistent enough to plan around —
+when a system looks broken, first check that the thing measuring it is honest.

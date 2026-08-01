@@ -79,6 +79,8 @@ export class MatchDirector {
   private lagCompensationEnabled = false;
   /** Per-actor round-trip time in ms, supplied by the server session. */
   private readonly actorRtt = new Map<number, number>();
+  /** Actors whose input has not arrived for this tick; their movement is held. */
+  private readonly starvedActors = new Set<number>();
   readonly triggers: TriggerSystem;
   /** Mode strategy. Owns scoring and win conditions; never touches movement or physics. */
   readonly gameMode: GameMode;
@@ -197,6 +199,18 @@ export class MatchDirector {
   enableLagCompensation(enabled: boolean): void {
     this.lagCompensationEnabled = enabled;
     if (!enabled) this.lagCompensator.clear();
+  }
+
+  /**
+   * Marks an actor as awaiting input.
+   *
+   * A starved actor's movement is skipped for the tick rather than re-simulated with its previous
+   * input. Repeating the input advances it by a step the owning client never predicted, which is a
+   * systematic source of prediction drift; holding position is the honest alternative.
+   */
+  setInputStarved(actorId: number, starved: boolean): void {
+    if (starved) this.starvedActors.add(actorId);
+    else this.starvedActors.delete(actorId);
   }
 
   /** Reports a client's measured RTT so its shots can be rewound by the right amount. */
@@ -339,7 +353,9 @@ export class MatchDirector {
 
     // 2. Movement and weapons for every actor, in stable id order for determinism.
     for (const actor of this.orderedActors()) {
-      stepMovement(actor, this.physics, dt, this.events);
+      // A starved actor holds position rather than replaying stale input. Weapons, regeneration
+      // and respawn timers still advance — only locomotion waits.
+      if (!this.starvedActors.has(actor.id)) stepMovement(actor, this.physics, dt, this.events);
       stepWeapon(actor, dt, this.projectiles, this.events, this.rng);
       stepRegeneration(actor, dt);
       this.stepRespawn(actor, dt);

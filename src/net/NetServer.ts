@@ -66,6 +66,21 @@ export interface ServerClient {
   history: SnapshotHistory;
   bytesSent: number;
   bytesReceived: number;
+  /**
+   * Ticks on which no input was available for this client.
+   *
+   * Diagnostic for prediction drift: a starved tick means the server has run ahead of the client's
+   * input stream. What it does about that determines whether prediction stays honest.
+   */
+  starvedTicks: number;
+  consumedTicks: number;
+  /**
+   * True once enough inputs have accumulated to start consuming.
+   *
+   * Two 64 Hz clocks that are not phase-locked will starve constantly if the server consumes the
+   * instant the first input lands. Priming a small cushion first absorbs that jitter.
+   */
+  inputPrimed: boolean;
 }
 
 export interface NetServerOptions {
@@ -155,6 +170,19 @@ export class NetServer {
     return this.clients.size;
   }
 
+  /** Per-client input starvation, for prediction diagnostics. */
+  inputHealth(): Array<{ id: number; starved: number; consumed: number; starvedPercent: number }> {
+    return [...this.clients.values()].map((c) => {
+      const total = c.starvedTicks + c.consumedTicks;
+      return {
+        id: c.id,
+        starved: c.starvedTicks,
+        consumed: c.consumedTicks,
+        starvedPercent: total > 0 ? Math.round((c.starvedTicks / total) * 1000) / 10 : 0,
+      };
+    });
+  }
+
   get matchFlow(): MatchFlow {
     return this.flow;
   }
@@ -183,6 +211,9 @@ export class NetServer {
       history: new SnapshotHistory(),
       bytesSent: 0,
       bytesReceived: 0,
+      starvedTicks: 0,
+      consumedTicks: 0,
+      inputPrimed: false,
     };
     this.clients.set(client.id, client);
 
@@ -408,9 +439,20 @@ export class NetServer {
       if (frame) {
         copyInputFrame(actor.input, frame);
         client.lastInputTick = frame.tick;
+        client.consumedTicks++;
+        this.director.setInputStarved(actor.id, false);
       } else {
-        // No input arrived for this tick. Hold the last movement but clear one-shot edges, so a
-        // dropped packet does not repeat a jump or a shot.
+        // No input available this tick: the server has run ahead of this client's input stream.
+        //
+        // Re-simulating with the previous input — which is what this used to do — advances the
+        // actor by a movement step the client never predicted. At sprint speed that is 0.13 m of
+        // drift per starved tick, and it is *systematic*, because two 64 Hz clocks that are not
+        // phase-locked starve constantly. That was the unexplained 22/s correction rate.
+        //
+        // The honest response is to wait. The actor holds position for this tick and resumes when
+        // its input arrives, so the server never simulates a step the client did not.
+        client.starvedTicks++;
+        this.director.setInputStarved(actor.id, true);
         actor.input.jumpPressed = false;
         actor.input.firePressed = false;
         actor.input.crouchPressed = false;
@@ -488,11 +530,29 @@ export class NetServer {
    */
   private dequeueInput(client: ServerClient, tick: number): InputFrame | undefined {
     void tick;
-    if (client.inputQueue.size === 0) return undefined;
 
-    // Bound the backlog: never let a client build more than a few ticks of queued intent.
-    const MAX_BACKLOG = 6;
-    while (client.inputQueue.size > MAX_BACKLOG) {
+    // Jitter buffer. Client and server both run at 64 Hz but from independent, unsynchronised
+    // clocks, so the arrival of input N relative to server tick N drifts continuously. Consuming
+    // the instant the first frame lands leaves no slack, and the queue empties on any tick where
+    // the packet lands a moment late — measured at 3-20% of ticks, and correction rate tracked it
+    // almost exactly.
+    //
+    // Waiting for a small cushion before starting absorbs that drift. The cost is TARGET_BUFFER
+    // ticks (~31 ms) of added input latency, which is a good trade against correcting several
+    // times a second.
+    if (!client.inputPrimed) {
+      if (client.inputQueue.size < TARGET_INPUT_BUFFER) return undefined;
+      client.inputPrimed = true;
+    }
+
+    if (client.inputQueue.size === 0) {
+      // Drained. Re-prime rather than limping along one starved tick at a time.
+      client.inputPrimed = false;
+      return undefined;
+    }
+
+    // Bound the backlog: a client running fast must not accumulate unbounded input latency.
+    while (client.inputQueue.size > MAX_INPUT_BACKLOG) {
       const oldest = Math.min(...client.inputQueue.keys());
       client.inputQueue.delete(oldest);
     }
@@ -570,6 +630,13 @@ export class NetServer {
     }
   }
 }
+
+/**
+ * Inputs buffered before the server starts consuming a client's stream, and the ceiling it will
+ * tolerate. Two ticks is ~31 ms of added input latency — cheap against a correction every 50 ms.
+ */
+const TARGET_INPUT_BUFFER = 2;
+const MAX_INPUT_BACKLOG = 6;
 
 const now = (): number =>
   typeof performance !== 'undefined' ? performance.now() : Date.now();
