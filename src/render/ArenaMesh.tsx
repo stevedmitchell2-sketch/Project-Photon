@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { BuiltArena } from '@/maps/MapBuilder';
-import type { SurfaceKind } from '@/maps/MapTypes';
+import { photonMaterial, SURFACE_SUBSTANCE } from './materials/PhotonMaterials';
 
 /**
  * The entire arena as one InstancedMesh per material batch.
@@ -17,19 +17,6 @@ interface Props {
   shadows: boolean;
 }
 
-/** Per-surface material response. Reflective floors and matte walls read very differently. */
-const SURFACE_MATERIAL: Record<SurfaceKind, { roughness: number; metalness: number }> = {
-  floor: { roughness: 0.22, metalness: 0.65 },
-  wall: { roughness: 0.72, metalness: 0.15 },
-  catwalk: { roughness: 0.42, metalness: 0.72 },
-  barrier: { roughness: 0.55, metalness: 0.35 },
-  pillar: { roughness: 0.48, metalness: 0.42 },
-  ramp: { roughness: 0.5, metalness: 0.4 },
-  glass: { roughness: 0.08, metalness: 0.1 },
-  led: { roughness: 0.9, metalness: 0 },
-  trim: { roughness: 0.9, metalness: 0 },
-};
-
 export function ArenaMesh({ arena, shadows }: Props) {
   return (
     <group>
@@ -42,10 +29,41 @@ export function ArenaMesh({ arena, shadows }: Props) {
 
 function Batch({ batch, shadows }: { batch: BuiltArena['batches'][number]; shadows: boolean }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const surface = SURFACE_MATERIAL[batch.kind];
   const isAnimated = batch.kind === 'led';
   const isTransparent = batch.kind === 'glass';
+
+  /**
+   * The substance this batch is made of, from the material library.
+   *
+   * The arena declares what a brush is *for* (`SurfaceKind`); the library decides what it is *made
+   * of*. That separation is what lets a future arena reuse these kinds with a different material
+   * language, and it is why surfaces now carry roughness texture rather than a single flat value —
+   * a solid-colour polygon reads as graybox however well it is lit.
+   *
+   * Animated LED batches ask for a unique instance, because they mutate `emissiveIntensity` every
+   * frame and a shared material would pulse every other object made of the same substance.
+   */
+  const material = useMemo(
+    () =>
+      photonMaterial(SURFACE_SUBSTANCE[batch.kind], {
+        color: batch.color,
+        emissive: batch.glow > 0 ? batch.color : undefined,
+        glow: batch.glow > 0 ? batch.glow : undefined,
+        unique: isAnimated,
+      }) as THREE.MeshStandardMaterial,
+    [batch.kind, batch.color, batch.glow, isAnimated],
+  );
+
+  // Emissive on a lit substance is set here rather than in the recipe, because only the arena knows
+  // which brushes glow — the same substance is used for lit and unlit surfaces.
+  useEffect(() => {
+    if (!('emissive' in material)) return;
+    if (batch.glow > 0) {
+      material.emissive = new THREE.Color(batch.color);
+      material.emissiveIntensity = batch.glow;
+    }
+    material.envMapIntensity = 0.8;
+  }, [material, batch.color, batch.glow]);
 
   const geometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
 
@@ -74,31 +92,18 @@ function Batch({ batch, shadows }: { batch: BuiltArena['batches'][number]; shado
 
   // LED walls pulse on a slow sine so the arena never feels static.
   useFrame(({ clock }) => {
-    if (!isAnimated || !materialRef.current) return;
+    if (!isAnimated) return;
     const t = clock.elapsedTime;
-    materialRef.current.emissiveIntensity = batch.glow * (0.62 + 0.38 * Math.sin(t * 1.6));
+    material.emissiveIntensity = batch.glow * (0.62 + 0.38 * Math.sin(t * 1.6));
   });
 
   return (
     <instancedMesh
       ref={meshRef}
-      args={[geometry, undefined, batch.instances.length]}
+      args={[geometry, material, batch.instances.length]}
       castShadow={shadows && !isTransparent && !batch.noShadow && batch.kind !== 'floor'}
       receiveShadow={shadows && !isTransparent}
       frustumCulled
-    >
-      <meshStandardMaterial
-        ref={materialRef}
-        color={batch.color}
-        emissive={batch.glow > 0 ? batch.color : 0x000000}
-        emissiveIntensity={batch.glow}
-        roughness={surface.roughness}
-        metalness={surface.metalness}
-        transparent={isTransparent}
-        opacity={isTransparent ? 0.24 : 1}
-        depthWrite={!isTransparent}
-        envMapIntensity={0.8}
-      />
-    </instancedMesh>
+    />
   );
 }

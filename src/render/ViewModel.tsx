@@ -5,6 +5,7 @@ import { teamColor, teamEmissive } from '@/config/teams';
 import { WEAPONS } from '@/config/weapons';
 import { clamp, damp } from '@/util/math';
 import { useGame } from './GameContext';
+import { photonMaterial } from './materials/PhotonMaterials';
 
 /**
  * First-person weapon view model.
@@ -39,52 +40,83 @@ export function ViewModel({ colorblind }: Props) {
   const cellRefs = useRef<Array<THREE.Mesh | null>>([]);
   const muzzle = useRef<THREE.PointLight>(null);
   const sway = useRef({ yaw: 0, pitch: 0, kick: 0, muzzleLife: 0 });
+  const railRefs = useRef<Array<THREE.Mesh | null>>([]);
+  const railPhase = useRef(0);
 
   const local = game.localActor!;
   const base = teamColor(local.team, colorblind);
   const glow = teamEmissive(local.team, colorblind);
 
-  const bodyMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: 0x232a36, roughness: 0.38, metalness: 0.72 }),
+  /**
+   * Weapon materials, from the shared library.
+   *
+   * Every substance here passes `worldScale: false`. The rifle sits ~0.4 m from the near plane and
+   * occupies a large solid angle, so emissive values tuned for world geometry read as a glowing slab
+   * once bloom is applied — the library scales them down rather than each call site guessing.
+   *
+   * `unique: true` on the animated parts: the charge rails, core and emitter mutate their emissive
+   * every frame, and a shared instance would drive every other object made of the same substance.
+   */
+  const shell = useMemo(
+    () => photonMaterial('carbonFibre', { color: 0x272f3d, worldScale: false }),
     [],
   );
-  const accentMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: base,
-        emissive: glow,
-        // Kept low: the view model sits ~0.4 m from the near plane, so it occupies a large solid
-        // angle. Emissive values tuned for world geometry read as a glowing slab at this distance
-        // once bloom is applied, which is exactly how it looked the first time it was seen.
-        emissiveIntensity: 0.55,
-        roughness: 0.35,
-        metalness: 0.2,
-      }),
+  const frame = useMemo(
+    () => photonMaterial('brushedAluminium', { color: 0x5b6679, worldScale: false }),
+    [],
+  );
+  const grip = useMemo(
+    () => photonMaterial('rubberGrip', { color: 0x14181f, worldScale: false }),
+    [],
+  );
+  const trim = useMemo(
+    () => photonMaterial('ledStrip', { color: base, emissive: glow }),
     [base, glow],
   );
-  const cellMaterial = useMemo(
+  const coreMaterial = useMemo(
     () =>
-      // Tone-mapped so the charge cells sit in the same exposure range as everything else. With
-      // toneMapped:false they stayed at full intensity regardless of scene exposure and bloomed
-      // into a solid bar across the lower screen.
-      new THREE.MeshBasicMaterial({ color: glow, transparent: true, opacity: 0.85 }),
+      photonMaterial('energyEmitter', {
+        color: glow,
+        emissive: glow,
+        worldScale: false,
+        unique: true,
+      }) as THREE.MeshStandardMaterial,
     [glow],
-  );
-  const cellEmptyMaterial = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: 0x1b222c, toneMapped: false }),
-    [],
   );
   const emitterMaterial = useMemo(
     () =>
-      new THREE.MeshStandardMaterial({
-        color: base,
+      photonMaterial('energyEmitter', {
+        color: glow,
         emissive: glow,
-        emissiveIntensity: 0.9,
-      }),
-    [base, glow],
+        worldScale: false,
+        unique: true,
+      }) as THREE.MeshStandardMaterial,
+    [glow],
+  );
+  const railMaterial = useMemo(
+    () =>
+      photonMaterial('energyEmitter', {
+        color: glow,
+        emissive: glow,
+        worldScale: false,
+        unique: true,
+      }) as THREE.MeshStandardMaterial,
+    [glow],
+  );
+  const cellMaterial = useMemo(
+    () => photonMaterial('ledStrip', { color: glow, emissive: glow }),
+    [glow],
+  );
+  const cellEmptyMaterial = useMemo(
+    () => photonMaterial('paintedAlloy', { color: 0x2a313d, worldScale: false }),
+    [],
+  );
+  const vent = useMemo(
+    () => photonMaterial('titanium', { color: 0x3a4352, worldScale: false }),
+    [],
   );
 
-  useFrame((_, delta) => {
+  useFrame(({ clock }, delta) => {
     const group = root.current;
     if (!group) return;
     const dt = Math.min(delta, 0.05);
@@ -143,11 +175,42 @@ export function ViewModel({ colorblind }: Props) {
     }
 
     // Emitter glows hotter as the cell drains, which reads as heat build-up.
-    if (emitter.current) {
-      const heat = 1 - actor.weapon.charge / config.cellCapacity;
-      const material = emitter.current.material as THREE.MeshStandardMaterial;
-      material.emissiveIntensity = 0.6 + heat * 1.6 + sway.current.kick * 1.8;
+    const heat = 1 - actor.weapon.charge / config.cellCapacity;
+    emitterMaterial.emissiveIntensity = 0.6 + heat * 1.6 + sway.current.kick * 1.8;
+
+    /**
+     * Charging rails and energy core.
+     *
+     * The rails travel: a bright band runs from the stock to the emitter while the cell recharges,
+     * and idles as a slow breath when the weapon is ready. This is the weapon telling the player
+     * what it is doing without them looking away from the fight — the same job the HUD charge ring
+     * does, done in the world, and it is the animation that most makes the rifle feel powered
+     * rather than held.
+     */
+    const t = clock.elapsedTime;
+    const charging = actor.weapon.recharging;
+    railPhase.current = charging
+      ? actor.weapon.rechargeProgress
+      : (railPhase.current + delta * 0.35) % 1;
+
+    for (let i = 0; i < railRefs.current.length; i++) {
+      const rail = railRefs.current[i];
+      if (!rail) continue;
+      // Each segment lights as the travelling band passes it.
+      const at = i / Math.max(1, railRefs.current.length - 1);
+      const distance = Math.abs(at - railPhase.current);
+      const near = Math.max(0, 1 - distance * 6);
+      const idle = charging ? 0 : 0.12;
+      rail.scale.setScalar(0.85 + near * 0.35);
+      (rail.material as THREE.MeshStandardMaterial).emissiveIntensity =
+        (idle + near * (charging ? 1.5 : 0.5)) * 1.2;
     }
+    railMaterial.emissiveIntensity = charging ? 1.2 : 0.35;
+
+    // Core pulses with remaining charge — full and steady when loaded, faint and fast when empty.
+    const chargeFraction = actor.weapon.charge / config.cellCapacity;
+    coreMaterial.emissiveIntensity =
+      0.35 + chargeFraction * 1.1 + Math.sin(t * (charging ? 9 : 2.4)) * 0.18;
 
     // Muzzle flash light.
     if (actor.fx.firedThisTick) sway.current.muzzleLife = 0.06;
@@ -159,54 +222,163 @@ export function ViewModel({ colorblind }: Props) {
 
   return (
     <group ref={root} scale={VIEW_MODEL_SCALE}>
-      {/* Receiver */}
-      <mesh material={bodyMaterial} position={[0, 0, 0]}>
-        <boxGeometry args={[0.075, 0.1, 0.42]} />
-      </mesh>
-      {/* Barrel shroud */}
-      <mesh material={bodyMaterial} position={[0, 0.012, -0.32]}>
-        <boxGeometry args={[0.055, 0.062, 0.28]} />
-      </mesh>
-      {/* Emitter tip */}
-      <mesh
-        ref={emitter}
-        position={[0, 0.012, -0.47]}
-        material={emitterMaterial}
-      >
-        <cylinderGeometry args={[0.028, 0.038, 0.07, 10]} />
-      </mesh>
-      {/* Grip */}
-      <mesh material={bodyMaterial} position={[0, -0.11, 0.08]} rotation={[0.28, 0, 0]}>
-        <boxGeometry args={[0.055, 0.16, 0.07]} />
-      </mesh>
-      {/* Stock */}
-      <mesh material={bodyMaterial} position={[0, -0.02, 0.24]}>
-        <boxGeometry args={[0.05, 0.09, 0.16]} />
-      </mesh>
-      {/* Top rail accent */}
-      <mesh material={accentMaterial} position={[0, 0.058, -0.05]}>
-        <boxGeometry args={[0.022, 0.012, 0.3]} />
-      </mesh>
-      {/* Iron sight ring, the ADS reference point */}
-      <mesh material={accentMaterial} position={[0, 0.075, -0.24]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.021, 0.005, 6, 12]} />
-      </mesh>
+      {/*
+        PH-6 Photon Rifle.
+        ------------------
+        Sports equipment, not a military weapon. The silhouette reads as a competition instrument:
+        a long low body, an exposed energy spine, and a visible core — the parts that do the work are
+        on show, the way a track bike or a racing shell shows its structure. Nothing on it is
+        armour, nothing is camouflaged, and there is no magazine, because it does not fire bullets.
 
-      {/* Charge cell indicator strip along the receiver */}
-      {Array.from({ length: 6 }, (_, i) => (
+        Built from ~30 primitives rather than an imported mesh. That is a deliberate ceiling and the
+        honest limit of this approach: the proportions, materials and animation are production-grade,
+        the surface detail is not, and a modelled asset would replace the geometry below without
+        touching a line of the animation above it.
+      */}
+
+      {/* --- Core body ------------------------------------------------- */}
+      {/* Lower receiver: the structural spine everything hangs off. */}
+      <mesh material={shell} position={[0, -0.012, 0]} castShadow={false}>
+        <boxGeometry args={[0.062, 0.072, 0.46]} />
+      </mesh>
+      {/* Upper shroud, narrower — the step between them is what gives the body a silhouette. */}
+      <mesh material={frame} position={[0, 0.042, -0.04]}>
+        <boxGeometry args={[0.05, 0.032, 0.4]} />
+      </mesh>
+      {/* Chamfer plates along the flanks, breaking the slab into panels. */}
+      {[-1, 1].map((side) => (
         <mesh
-          key={i}
-          ref={(node) => {
-            cellRefs.current[i] = node;
-          }}
-          position={[0.041, -0.028, -0.13 + i * 0.052]}
-          material={cellMaterial}
+          key={`flank${side}`}
+          material={frame}
+          position={[side * 0.034, 0.004, -0.02]}
+          rotation={[0, 0, side * 0.35]}
         >
-          <boxGeometry args={[0.008, 0.026, 0.03]} />
+          <boxGeometry args={[0.014, 0.05, 0.36]} />
         </mesh>
       ))}
 
-      <pointLight ref={muzzle} position={[0, 0.012, -0.52]} color={glow} intensity={0} distance={5} decay={2} />
+      {/* --- Energy spine: the defining feature ------------------------ */}
+      {/* Exposed rail channel running the length of the body. */}
+      <mesh material={vent} position={[0, 0.026, -0.02]}>
+        <boxGeometry args={[0.03, 0.016, 0.38]} />
+      </mesh>
+      {/* Charge rail segments — a travelling band runs these while recharging. */}
+      {Array.from({ length: 7 }, (_, i) => (
+        <mesh
+          key={`rail${i}`}
+          ref={(node) => {
+            railRefs.current[i] = node;
+          }}
+          material={railMaterial}
+          position={[0, 0.034, 0.14 - i * 0.048]}
+        >
+          <boxGeometry args={[0.02, 0.006, 0.026]} />
+        </mesh>
+      ))}
+
+      {/* Energy core: a visible chamber behind a transparent housing. */}
+      <mesh material={coreMaterial} position={[0, -0.004, 0.045]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.021, 0.021, 0.075, 12]} />
+      </mesh>
+      <mesh material={frame} position={[0, -0.004, 0.045]} rotation={[0, 0, Math.PI / 2]}>
+        <torusGeometry args={[0.024, 0.005, 6, 14]} />
+      </mesh>
+
+      {/* --- Heat management ------------------------------------------- */}
+      {/* Vent fins over the chamber. Angled so they catch the key light as the weapon sways. */}
+      {Array.from({ length: 5 }, (_, i) => (
+        <mesh key={`fin${i}`} material={vent} position={[0, 0.056, 0.02 + i * 0.026]} rotation={[0.22, 0, 0]}>
+          <boxGeometry args={[0.044, 0.004, 0.016]} />
+        </mesh>
+      ))}
+      {/* Side exhaust ports. */}
+      {[-1, 1].map((side) => (
+        <mesh key={`port${side}`} material={vent} position={[side * 0.033, -0.008, 0.1]}>
+          <boxGeometry args={[0.006, 0.03, 0.05]} />
+        </mesh>
+      ))}
+
+      {/* --- Barrel and emitter ---------------------------------------- */}
+      <mesh material={frame} position={[0, 0.016, -0.33]}>
+        <boxGeometry args={[0.042, 0.046, 0.3]} />
+      </mesh>
+      {/* Barrel shroud slots, which read as cooling and break up a long flat run. */}
+      {Array.from({ length: 4 }, (_, i) => (
+        <mesh key={`slot${i}`} material={vent} position={[0, 0.038, -0.26 - i * 0.05]}>
+          <boxGeometry args={[0.03, 0.004, 0.024]} />
+        </mesh>
+      ))}
+      {/* Emitter housing and the tip itself. */}
+      <mesh material={frame} position={[0, 0.016, -0.47]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.032, 0.032, 0.03, 12]} />
+      </mesh>
+      <mesh ref={emitter} material={emitterMaterial} position={[0, 0.016, -0.5]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.019, 0.027, 0.05, 12]} />
+      </mesh>
+      {/* Emitter prongs — the shape that makes the muzzle recognisable in a screenshot. */}
+      {[-1, 1].map((side) => (
+        <mesh key={`prong${side}`} material={frame} position={[side * 0.026, 0.016, -0.475]}>
+          <boxGeometry args={[0.008, 0.03, 0.055]} />
+        </mesh>
+      ))}
+
+      {/* --- Handling --------------------------------------------------- */}
+      <mesh material={grip} position={[0, -0.108, 0.075]} rotation={[0.3, 0, 0]}>
+        <boxGeometry args={[0.05, 0.15, 0.062]} />
+      </mesh>
+      {/* Trigger guard. */}
+      <mesh material={frame} position={[0, -0.062, 0.026]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.026, 0.005, 6, 12, Math.PI]} />
+      </mesh>
+      {/* Fore grip, angled — the second contact point that says "held with two hands". */}
+      <mesh material={grip} position={[0, -0.062, -0.24]} rotation={[-0.24, 0, 0]}>
+        <boxGeometry args={[0.036, 0.085, 0.05]} />
+      </mesh>
+      {/* Stock: a skeleton frame rather than a solid block, which is what keeps it sporting. */}
+      <mesh material={frame} position={[0, 0.006, 0.27]}>
+        <boxGeometry args={[0.04, 0.014, 0.13]} />
+      </mesh>
+      <mesh material={frame} position={[0, -0.058, 0.27]}>
+        <boxGeometry args={[0.04, 0.012, 0.13]} />
+      </mesh>
+      <mesh material={shell} position={[0, -0.026, 0.325]}>
+        <boxGeometry args={[0.046, 0.086, 0.03]} />
+      </mesh>
+
+      {/* --- Team identity and status ----------------------------------- */}
+      {/* Team trim along the upper flank, visible to other players as well as the holder. */}
+      {[-1, 1].map((side) => (
+        <mesh key={`trim${side}`} material={trim} position={[side * 0.027, 0.03, -0.12]}>
+          <boxGeometry args={[0.004, 0.008, 0.22]} />
+        </mesh>
+      ))}
+      {/* Sight ring, the ADS reference point. */}
+      <mesh material={frame} position={[0, 0.075, -0.26]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.019, 0.004, 6, 14]} />
+      </mesh>
+      <mesh material={trim} position={[0, 0.075, -0.26]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.013, 0.0016, 6, 14]} />
+      </mesh>
+
+      {/* Status display on the left flank: charge cells, readable at a glance while aiming. */}
+      <mesh material={vent} position={[-0.034, -0.022, -0.06]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[0.2, 0.036]} />
+      </mesh>
+      {Array.from({ length: 8 }, (_, i) => (
+        <mesh
+          key={`cell${i}`}
+          ref={(node) => {
+            cellRefs.current[i] = node;
+          }}
+          position={[-0.0355, -0.022, -0.14 + i * 0.023]}
+          rotation={[0, -Math.PI / 2, 0]}
+          material={cellMaterial}
+        >
+          <planeGeometry args={[0.016, 0.022]} />
+        </mesh>
+      ))}
+
+      <pointLight ref={muzzle} position={[0, 0.016, -0.55]} color={glow} intensity={0} distance={5} decay={2} />
     </group>
   );
 }
