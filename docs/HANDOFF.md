@@ -3,8 +3,8 @@
 For a person or agent picking up Project Photon cold. Read this, then
 [NEXT_TASK.md](./NEXT_TASK.md), then start.
 
-Companions: [VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md) is the authority on anything that gets
-drawn; [AI_HANDOFF.md](./AI_HANDOFF.md) covers conventions and the reasoning behind the
+Companions: [ART_DIRECTION.md](./ART_DIRECTION.md) is the artistic foundation and
+[VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md) the working rulebook for anything that gets drawn; [AI_HANDOFF.md](./AI_HANDOFF.md) covers conventions and the reasoning behind the
 architecture; [`.ai/CHATGPT_BOOTSTRAP.md`](../.ai/CHATGPT_BOOTSTRAP.md) is the compressed version for
 a fresh model context. This file is the current state of play.
 
@@ -131,6 +131,7 @@ src/
   render/       Three.js / R3F — may import from gameplay, never the reverse
   render/TeamIdentity.tsx  Territory, spawn beacons, reactive objective and match-phase lighting
   render/VenueBoards.ts    Content for the arena's LED boards, by binding name
+  render/materials/        Procedural textures and the named-substance material library
   ui/           React HUD and menus
   engine/       GameLoop, EventBus, ObjectPool, Telemetry
 server/         Dedicated server entry point
@@ -158,6 +159,8 @@ docs/           This directory
 - **Repeated in-tab reloads degrade the WebGL context.** After a dozen reloads the same scene read
   4 FPS with simulation time up 10× — which no graphics setting can affect. Restart the preview. If
   simulation time moves after a rendering change, suspect the browser, not the code.
+- **Roughness maps multiply.** A mid-grey map halves the material's roughness. Keep roughness
+  textures in the 0.7–1.0 band or the whole scene turns semi-polished.
 - **A cost with no draw calls behind it is upload or overdraw, not geometry.** Four scrolling signs
   redrawing a canvas per frame cost 3.19 ms while adding four draw calls. Rasterise once, scroll the
   texture offset.

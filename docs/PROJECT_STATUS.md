@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-01 · **Phase:** Sprint 10 - bots fight at their own ranges and the arena reports the match on its walls. Environment FX and per-pixel cost remain.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 11 - material library, surface detail and a hero weapon. Procedural art has reached its ceiling; an asset pipeline is next.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -46,6 +46,8 @@ ladder.
 | Team identity | Territory rings, spawn beacons, reactive objective lighting | **0.59 ms, 8 draw calls** measured interleaved; one real light |
 | Bot standoff | Profile-driven preferred range and tolerance | Engagement range **3.7 / 5.6 / 7.9 / 8.6 m** by difficulty, was flat 7.0 m; accuracy 21.6 / 33.8 / 47.6 / 52.3% |
 | Venue boards | Five live bindings driven from arena data | 18 boards; **-0.23 ms** interleaved after the marquee upload fix (was +3.19 ms) |
+| Material library | 14 named substances over 5 procedural textures | Shared and cached; **32 shader programs** total, flat with object count |
+| Hero weapon | PH-6 rifle with animated charge rails and energy core | ~30 draw calls (was 8); animation written against part refs, asset-swap ready |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |

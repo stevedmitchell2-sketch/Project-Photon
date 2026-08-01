@@ -45,6 +45,9 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
+| **Asset pipeline (glTF import)** | The identified ceiling of procedural art. Code does proportion, silhouette, material response and state-driven animation well; it does surface density badly — bevels, panel gaps, edge wear, cable runs, moulded detail. The architecture is already prepared: weapon animation is written against part references, avatars are instanced by (geometry, material), materials are keyed by substance. |
+| **Modular environment kit** | Wall, floor, ceiling and cover modules that snap on a grid. Should be authored, not generated, and is the largest single visual win available. |
+| **Character models and animation** | Avatars are primitive blockouts. The rig interface is fixed and instancing must be preserved on swap. |
 | **Free-floating holograms** | Wall-mounted boards are done. Floating logos, objective markers, directional indicators and team introduction sequences are not. |
 | **A long-sight-line arena** | Arena 01 stops offering sight lines beyond ~10 m, which caps the bot difficulty ladder and leaves the weapon's falloff bands, ADS and projectile lead unexercised. Arenas 02–04 need at least one long hall, and their bot profiles raised with `aimErrorDegrees` re-derived. |
 | **Environment FX** | Volumetric fog beyond `fogExp2`, dust, heat shimmer, steam vents, electrical arcs, conduit pulses. Budget these explicitly — transparent overdraw is the third-largest GPU cost and particles are exactly the wrong work for a fragment-bound frame. |

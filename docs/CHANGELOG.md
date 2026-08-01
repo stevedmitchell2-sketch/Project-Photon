@@ -4,6 +4,61 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.17.0] - 2026-08-01 - Sprint 11: Art Direction Alpha
+
+Materials, surface detail, and the hero weapon. Also the sprint where the ceiling of procedural art
+became measurable rather than theoretical.
+
+### A real material library
+
+Every surface in the game was a flat colour with one roughness value — the single biggest reason the
+arena read as graybox, because a solid-colour polygon looks like a solid-colour polygon however well
+it is lit.
+
+New `PhotonTextures` generates deterministic roughness and bump maps on canvas (brushed metal
+streaks, carbon twill, anti-slip grip, panel seams, hex motif). New `PhotonMaterials` turns those
+into **fourteen named physical substances** — the arena declares what a brush is *for*, the library
+decides what it is *made of*. Materials are shared and cached, so shader program count stays flat.
+
+**Two mistakes made and corrected, both worth keeping:**
+
+- **Roughness maps multiply, they do not replace.** Textures drawn around 40% grey halved every
+  material's roughness and turned the arena into semi-polished plastic. They now live in the
+  0.7-1.0 band and modulate downward.
+- **The arena was already lit for a specific material response.** A pass using physically nicer
+  numbers (aluminium at 0.82 metalness, composite at 0.05) cost the scene its contrast — walls went
+  from mid-dark to pale grey. Texture variation was the win; the response did not need changing.
+
+`temperedGlass` is deliberately **not** `MeshPhysicalMaterial` with transmission, which was tried and
+reverted: real transmission forces a separate full-scene pass, indefensible on a frame already 30%
+over budget, and it misbehaves on the instanced meshes all arena glass uses.
+
+### The PH-6 Photon Rifle
+
+The placeholder was eight boxes. The replacement is sports equipment rather than a military weapon:
+a long low body with a stepped shroud, an **exposed energy spine**, a visible core behind a housing,
+a slotted barrel, heat fins, emitter prongs, a skeleton stock, and team trim on the upper flank.
+
+**Charging rails carry a travelling band** while the cell recharges and idle as a slow breath when
+ready; the core pulses with remaining charge. The weapon reports its own state, so a player can read
+it without looking away from the fight.
+
+Costs ~30 draw calls against the placeholder's 8. Affordable on a fragment-bound frame, and the
+animation is written against part references rather than geometry — a modelled asset replaces the
+primitives without touching a line of it.
+
+### ART_DIRECTION.md
+
+The permanent artistic foundation: what Photon is and is not, colour as a reserved channel,
+architecture language, the material library and its three hard-won rules, lighting philosophy, weapon
+and character design language, environmental storytelling, and future-arena guidance.
+
+Including an honest section on **the limit of procedural art**: code does proportion, silhouette,
+material response and state-driven animation well, and surface density badly. The next leap is an
+asset pipeline, not more generated geometry.
+
+---
+
 ## [0.16.0] - 2026-08-01 - Sprint 10: The Living Arena
 
 The bot fix that seven sprints of measurement had been circling, and the venue the last two sprints
