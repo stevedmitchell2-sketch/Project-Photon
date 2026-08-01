@@ -5,6 +5,32 @@ they are paid or consciously accepted.
 
 ---
 
+## Paid in Sprint 10
+
+### Bots all fought at 7 m regardless of difficulty — **fixed**
+
+The oldest unexplained gameplay behaviour in the project. The standoff band lived as two literals in
+`combatMovement` whose equilibrium is exactly 7 m; `engageRange` only gated target acquisition.
+Engagement range is now monotonic in difficulty at 3.7 / 5.6 / 7.9 / 8.6 m.
+
+`aimErrorDegrees` had to move with it: aim error is an angle, so the old values were monotonic in
+degrees and — because every bot fought at the same distance — in metres too. Spread across differing
+ranges the ladder inverted, and `hard` measured *safer* than `medium`. Seven regression tests now
+guard the property, including monotonic miss radius in metres at each profile's own range.
+
+### The venue was a room — **mostly fixed**
+
+Live scoreboards, elimination feeds, a control bar, round status and league signage, all driven from
+arena data through five board bindings. Free-floating holograms remain.
+
+### A 3.19 ms rendering regression — **found and removed in the same sprint**
+
+Four scrolling signs were clearing a canvas, rasterising text and uploading 256 KB per frame each.
+Caught because the cost had almost no draw calls behind it. Marquees now rasterise once and scroll
+by texture offset; the whole venue re-measured at −0.23 ms.
+
+---
+
 ## Paid in Sprint 9
 
 ### The arena had no team identity — **fixed**
@@ -146,11 +172,12 @@ for some clients and not others.
 **Cost:** a correction every snapshot on affected clients. Visible as micro-stutter under latency;
 not visible in single-player. Next step is written out in NEXT_TASK item 3.
 
-### The venue is a room, not an arena
+### The arena is still static
 
-Team identity landed in Sprint 9, but the arena around it has no holographic displays, no LED
-scoreboards, no branding or advertising, and no introduction or victory sequences. It reads as a
-well-lit hall rather than a venue staging a match.
+Boards, branding and reactive lighting landed in Sprint 10. What is missing is *motion*: volumetric
+fog, dust, steam vents, animated fans, energy conduits, electrical arcs, moving light rigs. Nothing
+in the environment moves except the props authored in Phase 2, so the venue reads as photographed
+rather than running.
 
 ---
 
@@ -163,12 +190,14 @@ Now measured rather than unknown. Closing 12.2 ms to 8.33 ms needs a 32% cut, ro
 resolution. The real work is per-pixel: light count per fragment, material cost on non-metallic
 architecture, transparent overdraw.
 
-### Bots close to 7 m before shooting
+### Arena 01 cannot support a range-based difficulty ladder
 
-Median engagement range is identical at every difficulty and does not respond to `engageRange`.
-Sprint 9 tuned the weapon to suit it, so this is no longer a combat-feel problem — it is a wasted
-design surface. Falloff bands, ADS and projectile lead exist and are never used, and the arena's
-long sight lines do nothing.
+Beyond roughly 10 m the building stops offering sight lines, so bots preferring 15 m and 19 m
+converge on the same achieved range and spend the fight repositioning rather than shooting.
+Preferred ranges are capped at 6–13.5 m to suit, which leaves the weapon's falloff bands from 28 m,
+ADS and projectile lead unexercised, and collapses four difficulties into two tiers.
+
+**This is a map requirement, not a tuning one**, and it belongs to Arenas 02–04.
 
 ### Arena props still unbatched
 

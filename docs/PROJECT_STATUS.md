@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-01 · **Phase:** Sprint 9 - the arena has team identity and reports match state. Arena presentation and environment FX remain the critical path.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 10 - bots fight at their own ranges and the arena reports the match on its walls. Environment FX and per-pixel cost remain.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -20,8 +20,13 @@ Sprint 9 gave the arena a side: territory in team colour, spawn beacons readable
 and central-room lighting that follows whoever holds it. The weapon is tuned for the 7 m fight the
 game actually has.
 
-What remains is the rest of the venue — holographic displays, LED scoreboards, advertising panels,
-environment effects — and the bot behaviour that pins every fight to 7 m in the first place.
+Sprint 10 fixed the bot standoff — engagement range is now monotonic in difficulty (3.7 / 5.6 / 7.9
+/ 8.6 m) where it was pinned at 7.0 m — and built the venue: live scoreboards, elimination feeds, a
+control bar, round status and league signage, all driven from arena data.
+
+What remains is environment atmosphere (fog, dust, vents, arcs), the per-pixel cost that keeps
+120 FPS out of reach, and an arena with sight lines long enough to support a range-based difficulty
+ladder.
 
 ## What works, verified by measurement
 
@@ -39,6 +44,8 @@ environment effects — and the bot behaviour that pins every fight to 7 m in th
 | Difficulty ladder | Rebalanced against measurement | Median life 26.7 / ~14 / 10.5 / 8.5 s across easy / medium / hard / expert |
 | Combat feel | Tuned for the measured 7 m engagement | Lead required 45 cm -> **27 cm**; cell margin 1 miss -> **3**; time-to-kill preserved at 3.44 s |
 | Team identity | Territory rings, spawn beacons, reactive objective lighting | **0.59 ms, 8 draw calls** measured interleaved; one real light |
+| Bot standoff | Profile-driven preferred range and tolerance | Engagement range **3.7 / 5.6 / 7.9 / 8.6 m** by difficulty, was flat 7.0 m; accuracy 21.6 / 33.8 / 47.6 / 52.3% |
+| Venue boards | Five live bindings driven from arena data | 18 boards; **-0.23 ms** interleaved after the marquee upload fix (was +3.19 ms) |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |

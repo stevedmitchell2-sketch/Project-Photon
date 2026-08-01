@@ -23,7 +23,7 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **Bots close to 7 m before shooting** | Median engagement range is 7.0 m at *every* difficulty and does not respond to `engageRange` (26–62 m across profiles). Sprint 9 tuned the weapon around this rather than fighting it, which is not a permanent answer: falloff bands from 28 m, ADS and led projectiles are all unexercised, and the arena sight lines are wasted. Suspect the engage branch terminates on nav arrival rather than line of sight. |
+| **Difficulty is two tiers, not four** | Easy/medium sit at ~14 s median life, hard/expert at ~8.7 s — ordered between the pairs, flat within them. Seven measured iterations could not separate them further: range and accuracy trade against each other inside the 6–13.5 m span Arena 01 allows. Blocked on a long-sight-line arena. |
 | **Objective-aware bots** | Five of seven modes are unplayable offline. Add a `capture-objective` branch between `engage` and `search`; `investigate` is the template. |
 | **Overtime / sudden death verification** | `MatchFlow` implements the phase; it has never been observed firing in a real match. |
 | **Round transitions for Elimination** | Round restart logic exists in the mode but no round-boundary respawn wave. |
@@ -45,7 +45,8 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **The venue** | Team identity exists; the arena around it does not. Holographic displays, LED scoreboards showing live score, advertising panels, arena branding, animated wall panels, team introduction and victory sequences. Follow the Sprint 9 pattern: arena data declares intent, the renderer decides expression. |
+| **Free-floating holograms** | Wall-mounted boards are done. Floating logos, objective markers, directional indicators and team introduction sequences are not. |
+| **A long-sight-line arena** | Arena 01 stops offering sight lines beyond ~10 m, which caps the bot difficulty ladder and leaves the weapon's falloff bands, ADS and projectile lead unexercised. Arenas 02–04 need at least one long hall, and their bot profiles raised with `aimErrorDegrees` re-derived. |
 | **Environment FX** | Volumetric fog beyond `fogExp2`, dust, heat shimmer, steam vents, electrical arcs, conduit pulses. Budget these explicitly — transparent overdraw is the third-largest GPU cost and particles are exactly the wrong work for a fragment-bound frame. |
 | **Arenas 02–04** | Cyber Factory, Space Station, Neon Temple. The data format and builder support them; each needs authoring plus a lighting-probe pass. |
 | **Authored characters** | Avatars are primitive blockouts. The rig interface is designed so a Mixamo character swaps in without touching what drives it. |

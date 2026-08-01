@@ -8,6 +8,48 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 16 — 2026-08-01 — Sprint 10: The Living Arena
+
+**Brief:** fix the bot engage branch with a short measured loop, build the venue, add environment
+atmosphere, make the arena reactive, polish audio, measure everything, playtest, document.
+
+**Outcome:** Parts A, B, D, F, G and H delivered. Part C — environment atmosphere — not delivered.
+Part E untouched this sprint.
+
+### The bot fix took seven iterations and produced a map requirement
+
+Root cause was two literals: the standoff band lived inside `combatMovement` as "close above 22 m,
+retreat below 7 m", whose equilibrium is exactly 7 m. `engageRange` had only ever gated acquisition.
+
+The interesting part was the second-order effect. Moving preferred range into the profile inverted
+the difficulty ladder, because aim error is an *angle* — the old degrees were monotonic, and while
+every bot fought at the same 7 m they were monotonic in metres too. Spread across differing ranges
+they all landed near three body half-widths and `hard` bots became measurably safer to fight than
+`medium`. Deriving degrees from a target miss radius at each bot's own range fixed it.
+
+Then five more iterations failed to separate the four difficulties, and the reason turned out not to
+be tuning at all: **Arena 01 stops offering sight lines beyond about 10 m**, so bots preferring 15 m
+and 19 m converged on the same achieved range and spent the fight repositioning instead of shooting.
+Preferred ranges are now capped at what the building delivers, difficulty is two tiers rather than
+four, and the fix for that is a longer arena.
+
+That is the first *useful negative result* the project has produced — a finding that redirects
+design rather than repairing code.
+
+### The venue cost 3.19 ms and then cost nothing
+
+The LED boards measured at 3.19 ms of a 12.8 ms frame while adding only four draw calls. That
+mismatch is the whole diagnosis: cost with no draw calls behind it is upload cost. Four scrolling
+signs were clearing a canvas, rasterising text and uploading 256 KB every frame. Rasterising once
+and scrolling the texture offset took the entire venue to −0.23 ms, within noise.
+
+### The thing worth remembering
+
+Two of this sprint's three findings came from a *number that did not fit its neighbours* rather than
+from anything visibly wrong: a difficulty ladder that ordered backwards, and a GPU cost with no draw
+calls under it. Neither would have failed a test or looked wrong in a screenshot.
+
 ## Session 15 — 2026-08-01 — Sprint 9: The Identity Sprint
 
 **Brief:** combat feel at 7 m, team colour identity, arena presentation, environment FX, audio pass,

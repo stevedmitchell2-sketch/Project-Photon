@@ -95,13 +95,14 @@ problem.
 
 ### Not solid
 
-1. **Bots close to 7 m before shooting**, at every difficulty, unaffected by `engageRange`. Sprint 9
-   tuned the weapon to suit it; the cause is still open and wastes the whole ranged design surface.
+1. **The arena is static.** Boards and reactive lighting exist; fog, dust, steam, arcs and moving
+   fixtures do not, so the venue reads as photographed rather than running.
 2. **120 FPS is not achievable.** GPU 10–13 ms against an 8.33 ms budget, CPU idle at 1.4–1.9 ms.
    Fragment-bound. Measured rather than unknown.
-3. **The venue is a room.** Team identity exists; holographic displays, LED scoreboards, branding
-   and introduction sequences do not.
-4. **Environment FX unstarted** — fog beyond `fogExp2`, dust, shimmer, vents, arcs.
+3. **Difficulty is two tiers, not four**, and Arena 01's ~10 m sight-line limit is why. A
+   range-based ladder needs a longer arena; the weapon's falloff, ADS and lead stay unexercised
+   until then.
+4. **Free-floating holograms unstarted** — boards are wall-mounted panels only.
 5. **Residual prediction corrections** on some clients. Narrowed to a specific, testable
    observation; not a blocker.
 
@@ -128,7 +129,8 @@ src/
   physics/      PhysicsWorld (Rapier), collision layers
   maps/         Arena definitions, MapBuilder, spawn resolution
   render/       Three.js / R3F — may import from gameplay, never the reverse
-  render/TeamIdentity.tsx  Territory, spawn beacons, reactive objective lighting
+  render/TeamIdentity.tsx  Territory, spawn beacons, reactive objective and match-phase lighting
+  render/VenueBoards.ts    Content for the arena's LED boards, by binding name
   ui/           React HUD and menus
   engine/       GameLoop, EventBus, ObjectPool, Telemetry
 server/         Dedicated server entry point
@@ -156,6 +158,9 @@ docs/           This directory
 - **Repeated in-tab reloads degrade the WebGL context.** After a dozen reloads the same scene read
   4 FPS with simulation time up 10× — which no graphics setting can affect. Restart the preview. If
   simulation time moves after a rendering change, suspect the browser, not the code.
+- **A cost with no draw calls behind it is upload or overdraw, not geometry.** Four scrolling signs
+  redrawing a canvas per frame cost 3.19 ms while adding four draw calls. Rasterise once, scroll the
+  texture offset.
 - **Something must always render.** `RendererStats` runs a positive-priority `useFrame`, which takes
   R3F out of automatic rendering. If you make the `EffectComposer` conditional, provide a fallback
   that renders the scene, or the screen goes black.

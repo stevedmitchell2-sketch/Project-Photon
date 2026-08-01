@@ -209,3 +209,61 @@ or a light means updating the relevant section here first.
 Performance claims in this guide are measurable and should be re-measured rather than trusted: run
 the game, read CPU/GPU frame time from the HUD, and **interleave any A/B**, because GPU time is
 view-dependent — the same preset has measured 8.68 ms and 12.43 ms from different vantages.
+
+---
+
+## 12. The venue language (Sprint 10)
+
+The arena reports the match on its own walls. This is the second-strongest identity lever after
+reactive lighting, and the two work as a pair: lighting says *what is happening now*, boards say
+*what has happened*.
+
+### Board bindings
+
+An arena declares that a board belongs on a wall and what it reports. It never says how a board
+looks. Five bindings exist; `VenueBoards.ts` owns all of their drawing.
+
+| Binding | Reports | Placed |
+| --- | --- | --- |
+| `clock` | Match time, red in the final minute | Objective room faces |
+| `scoreboard` | Team scores, white numerals on team panels | The two team approaches |
+| `killfeed` | Last three eliminations, names in team colour | Where players regroup after dying |
+| `objective` | A single proportional control bar | Above the objective |
+| `roundstatus` | Match phase — live, final minute, final seconds, result | Over each spawn approach |
+
+**A board must be readable from the space it describes.** That is the whole placement rule.
+
+### Board rules
+
+- **Numerals are white; the panel carries the team colour.** A red digit on a red panel has almost
+  no luminance contrast however much it glows — the first scoreboard was unreadable across the room
+  for exactly this reason. It also keeps the value legible for a colourblind player, who reads
+  luminance rather than hue.
+- **Every board wears the same inset rule**, so a wall of them reads as one family of installed
+  hardware rather than as unrelated signs.
+- **Boards redraw only when their content signature changes.** A scoreboard showing 7-4 costs
+  nothing until someone scores. The signature must capture everything visible: one that misses a
+  field produces a board that silently stops updating.
+- **Never scroll by redrawing.** Rasterise once and move the texture offset. Four signs redrawing a
+  512x128 canvas per frame cost 3.19 ms of a 12.8 ms frame while adding four draw calls.
+
+### Branding
+
+Fictional league and sponsor signage is part of the fiction and should look designed, not generic.
+
+**Branding never uses a team colour.** Team colour is a reserved channel; a red sponsor board reads
+as red territory to a player scanning a room for an enemy. Branding uses house cyan and warm
+neutrals — amber for advisory and directional signage, cyan for league and arena identity.
+
+### Reactive lighting priority
+
+When several systems want the same fixture, **match phase outranks objective control**. A venue
+stops showing you who holds the middle once the match is over.
+
+Order, highest first: match ended → final ten seconds → objective contested → final minute →
+objective held → neutral.
+
+**Each state needs its own rhythm, not just its own hue.** A fast strobe for contested, a
+one-per-second beat for the countdown, a slow swell for the final minute, a steady flood for
+victory. That keeps the room legible with the sound off and to a player who cannot separate the
+colours — the same rule as section 7, applied to architecture instead of UI.

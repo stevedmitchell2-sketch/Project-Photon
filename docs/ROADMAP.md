@@ -15,7 +15,8 @@ scope rationale and [ARCHITECTURE.md](./ARCHITECTURE.md) for the invariants each
 | **Phase 7 — Alpha Stabilisation** | Disconnect bug, latency validation, process-per-client scaling, avatar instancing, telemetry | ✅ **Complete** — see CHANGELOG 0.13.0 |
 | **Phase 8 — Gameplay & Presentation** | Spawn audit, difficulty rebalance, frame-timing instrument, bloom, crosshair, charge ring | 🟨 **Gameplay and HUD done; arena presentation, environment FX and audio not started** |
 | **Phase 9 — Arena Identity** | Combat tuned for 7 m, team territory, reactive objective lighting, objective callouts, match-end sting, visual style guide | 🟨 **Team identity and combat done; arena presentation and environment FX not started** |
-| **Phase 10 — The Venue** | Holograms, LED scoreboards, advertising panels, animated wall panels, fog, dust, vents, arcs; bot engagement range; per-pixel cost | ⬜ **Next** |
+| **Phase 10 — The Living Arena** | Bot standoff fix, LED scoreboards, elimination feeds, control bar, round status, league signage, match-phase lighting | 🟨 **Bots and venue boards done; environment FX not started** |
+| **Phase 11 — Atmosphere & Budget** | Volumetric fog, dust, steam, arcs, maintenance robots; per-pixel cost to reach 120 FPS; a long-sight-line arena | ⬜ **Next** |
 | M6 — Tools & Ship | Map/spawn/lighting/bot-path editors, weapon tuning, replays, telemetry, CI perf budgets | ⬜ Not started |
 
 ---

@@ -4,6 +4,74 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.16.0] - 2026-08-01 - Sprint 10: The Living Arena
+
+The bot fix that seven sprints of measurement had been circling, and the venue the last two sprints
+kept deferring.
+
+### Bots no longer all fight at 7 metres
+
+**Root cause.** The distance a bot tries to hold while fighting lived as two literals inside
+`combatMovement` -- close above 22 m, retreat below 7 m -- whose equilibrium is exactly 7 m.
+`engageRange` only ever gated *target acquisition*, never *position*, which is why moving it between
+26 m and 62 m appeared to do nothing.
+
+`preferredRange` and `rangeTolerance` now live in the profile. Engagement range becomes monotonic in
+difficulty: **3.7 / 5.6 / 7.9 / 8.6 m**, where it was 7.0 / 7.0 / 7.1 / 7.0.
+
+**`aimErrorDegrees` had to move with it**, and that is the non-obvious half. Aim error is an angle,
+so its miss radius grows with distance. The old values were monotonic in degrees and -- because
+every bot fought at the same 7 m -- in metres too, which is the only reason the ladder worked.
+Spread across differing ranges they all landed near three body half-widths and the ladder inverted:
+`hard` bots stood at 19 m behind a 1.06 m cone and measured consistently *safer* to fight than
+`medium`. Degrees are now derived from a target miss radius at each bot's own preferred range.
+
+**Seven measured iterations**, and the last finding is a map problem rather than a tuning one:
+beyond roughly 10 m Arena 01 stops offering sight lines, so bots preferring 15 m and 19 m converged
+on the same achieved range and spent the fight repositioning instead of shooting. Preferred ranges
+are capped at what this building can deliver. A range-based difficulty ladder needs an arena with
+long sight lines, which is a requirement for Arenas 02-04.
+
+Final state is **two clean difficulty tiers rather than four** -- easy and medium at ~14 s median
+life, hard and expert at ~8.7 s -- with the default at the Sprint 8 target pace and accuracy
+monotonic at 21.6 / 33.8 / 47.6 / 52.3%. Seven regression tests, including the one that would have
+caught the inverted ladder: aim error must be monotonic **in metres at each profile's own range**.
+
+### The venue
+
+New `VenueBoards` module supplying content for five board bindings -- `clock`, `scoreboard`,
+`killfeed`, `objective`, `roundstatus` -- requested by name through the existing display prop. The
+arena declares that a scoreboard belongs on a wall; what a scoreboard *is* lives in one place, so
+every future arena inherits the same venue language.
+
+Authored into Arena 01: twin scoreboards on the team approaches, elimination feeds where players
+regroup after dying, a control bar above the objective, round status over each spawn approach, and
+fictional league and sponsor signage. **Branding never uses a team colour** -- that channel is
+reserved, and a red sponsor board reads as red territory.
+
+Scoreboard numerals are white on a team-tinted panel rather than team-coloured: the first pass drew
+both in the team colour and the score was barely readable across the room, because a red digit on a
+red panel has almost no luminance contrast however much it glows.
+
+### The arena reacts to the match
+
+Reactive lighting now answers to match phase as well as objective control, and **phase outranks
+control**: an amber swell in the final minute, a one-per-second red countdown beat in the last ten
+seconds, and a winner-coloured flood that rises and widens when the match ends. Each state has its
+own *rhythm* as well as its own hue, so the room stays legible with the sound off and to a
+colourblind player.
+
+### Performance: a 3.19 ms regression, found and removed
+
+The venue first measured at **3.19 ms of a 12.8 ms frame while adding only four draw calls**, and
+that mismatch is what gave it away -- cost with no draw calls behind it is upload cost. Four
+scrolling signs were each clearing a canvas, rasterising text and uploading 256 KB *every frame*.
+Marquees now rasterise once and scroll by moving the texture's UV offset.
+
+Re-measured interleaved: the entire venue plus team identity costs **-0.23 ms**, within noise.
+
+---
+
 ## [0.15.0] - 2026-08-01 - Sprint 9: the arena tells you what is happening
 
 The identity sprint. The arena now carries team colour and reports the state of the match, and the
