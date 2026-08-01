@@ -4,6 +4,70 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.18.0] - 2026-08-01 - Sprint 12: the asset pipeline
+
+Photon's limiting factor stopped being technology two sprints ago. This builds the factory.
+
+### A contract, not a format
+
+Photon deliberately defines no asset format of its own. A custom format needs a custom exporter,
+which locks content creation to whoever wrote it. The runtime instead reads **named nodes** inside
+standard glTF — `SOCKET_`, `PART_`, `MAT_`, `TEAM_`, `LOD`, `COL_` — which works out of any tool that
+can name an object and export glTF.
+
+**Nothing in the pipeline is Blender-specific.** Blender is the documented workflow because it is
+free and complete. FBX is accepted as a compatibility path. A generative tool that emits standard
+glTF is a first-class source, and ASSET_PIPELINE.md names the three things generated assets
+habitually get wrong (unnamed nodes, dense topology, unpacked textures).
+
+### What was built
+
+- **`contract.ts`** — the interface between content and code. Node prefixes, required sockets and
+  animated parts per kind, triangle/material/texture/LOD budgets, file and texture naming, accepted
+  formats, material zone mapping.
+- **`manifest.ts`** — the registry. Nine Phase 1 assets specified. **Entries exist before their
+  files do**: the manifest is the specification an artist works to, every asset is optional, and the
+  repository stays clone-and-run with no binaries.
+- **`validate.ts`** — pure validation, no Three.js, DOM or filesystem, so the same rules run in CI,
+  in the audit CLI, and in the browser as an asset loads.
+- **`AssetLoader.ts`** — the importer. Extracts sockets, animated parts, LOD groups and collision by
+  name, and substitutes library materials by zone so an imported mesh inherits the project's lighting
+  response and team colour rather than shipping its own.
+- **`assetAudit.ts`** — reports what exists, what is still to author, budget violations and unclaimed
+  files. It caught a real specification error on its first run: the manifest declared six material
+  zones against a budget of five, and **the budget was what was wrong** — two of a weapon's zones
+  animate and cannot share a cached material.
+
+### The weapon proves it
+
+The clearest demonstration is that **the procedural rifle now follows the asset contract too**. Its
+primitive meshes are named `PART_core`, `PART_rail_00`, `SOCKET_muzzle`, and it scans its own subtree
+with the same function the importer uses.
+
+The animation — charge rails, core pulse, emitter heat, muzzle light — addresses parts by name and
+has no idea whether it is driving primitives or an imported mesh. Dropping
+`HeroLaserRifle_v01.glb` into `public/assets/weapons/` swaps one branch of a ternary; the muzzle
+light even relocates to the asset's own `SOCKET_muzzle`.
+
+Rails and cells are **discovered, not counted**, so an asset may ship any number.
+
+### Documentation
+
+Seven new documents: ASSET_PIPELINE, ASSET_STANDARDS, MATERIAL_LIBRARY, MODULAR_KIT,
+HERO_WEAPON_SPEC, CHARACTER_PIPELINE, CONTENT_ROADMAP.
+
+CHARACTER_PIPELINE is explicit about being the **least-proven path**: it separates what is
+implemented and tested from what is specified but untested (bone matching, clip playback,
+socket-to-socket mounting) and recommends building skeletal playback *alongside* the first character
+rather than before it.
+
+### Tests
+
+17 new tests covering naming, budgets, socket and LOD validation, ORM packing, manifest
+self-consistency, and prefix unambiguity. 70 total.
+
+---
+
 ## [0.17.0] - 2026-08-01 - Sprint 11: Art Direction Alpha
 
 Materials, surface detail, and the hero weapon. Also the sprint where the ceiling of procedural art

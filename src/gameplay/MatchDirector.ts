@@ -165,6 +165,7 @@ export class MatchDirector {
       actors: new Map(),
       localActorId: -1,
       killFeed: [],
+      killFeedSequence: 0,
       winner: null,
     };
   }

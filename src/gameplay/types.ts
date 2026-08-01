@@ -118,6 +118,15 @@ export interface MatchState {
   actors: Map<number, Actor>;
   localActorId: number;
   killFeed: KillFeedEntry[];
+  /**
+   * Monotonic id source for kill feed entries.
+   *
+   * Not the tick. Two eliminations resolving on the same tick — a bolt that kills two players, or
+   * simply a busy fight — produced duplicate ids, and the HUD renders the feed as a keyed list, so
+   * React silently duplicated or dropped rows. Deterministic because it advances only in the
+   * simulation, so server and client agree and a replay reproduces the same feed.
+   */
+  killFeedSequence: number;
   winner: TeamId | null;
 }
 

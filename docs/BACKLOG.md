@@ -45,7 +45,10 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **Asset pipeline (glTF import)** | The identified ceiling of procedural art. Code does proportion, silhouette, material response and state-driven animation well; it does surface density badly — bevels, panel gaps, edge wear, cable runs, moulded detail. The architecture is already prepared: weapon animation is written against part references, avatars are instanced by (geometry, material), materials are keyed by substance. |
+| **Skeletal animation playback** | The one engineering dependency content is still blocked on. The importer loads and exposes clips; nothing drives them, because no rigged asset exists to test against. Build it alongside the first character, not before — see CHARACTER_PIPELINE section 9. |
+| **Build-time asset processing** | No automatic LOD generation, no KTX2 transcoding, no mesh optimisation. Assets ship as authored. |
+| **Collision from `COL_` meshes** | Extracted by the importer and handed back, but not yet fed into Rapier — the arena still builds collision from brushes. |
+| **Trim sheet materials** | One texture serving a whole module kit. The largest remaining efficiency win once real assets exist. |
 | **Modular environment kit** | Wall, floor, ceiling and cover modules that snap on a grid. Should be authored, not generated, and is the largest single visual win available. |
 | **Character models and animation** | Avatars are primitive blockouts. The rig interface is fixed and instancing must be preserved on swap. |
 | **Free-floating holograms** | Wall-mounted boards are done. Floating logos, objective markers, directional indicators and team introduction sequences are not. |

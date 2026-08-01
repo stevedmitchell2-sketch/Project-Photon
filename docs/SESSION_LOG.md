@@ -9,6 +9,42 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 18 - 2026-08-01 - Sprint 12: the asset pipeline
+
+**Brief:** build a production asset pipeline. Registry, validation, importer, modular kit spec, hero
+weapon spec, character pipeline, material system, decals, VFX, tooling, art bible expansion, external
+toolchain, content roadmap, documentation.
+
+**Outcome:** Parts A, B, C, D, E, H, J, K and L delivered. Parts F (decals) and G (VFX) are specified
+in the contract but have no implementation. Part I (art bible expansion) partially - the new
+documents cover most of its scope but ART_DIRECTION itself was not restructured.
+
+### The design decision that mattered
+
+Photon defines a **contract, not a format**. The runtime reads named nodes inside standard glTF
+rather than a bespoke file type, because a custom format needs a custom exporter and that locks
+content creation to whoever wrote the exporter. Node naming works out of any tool that can name an
+object - including generative ones, which the brief explicitly asked to prepare for.
+
+### The proof
+
+The clearest demonstration that the pipeline works is that **the procedural rifle now follows the
+asset contract too**. Its primitive meshes are named `PART_core`, `SOCKET_muzzle` and so on, and it
+scans its own subtree with the same function the importer uses. The animation addresses parts by name
+and cannot tell which source it is driving.
+
+That is the standard every other system should be brought to, and it is what makes "drop in a .glb"
+literally true rather than aspirational.
+
+### The thing worth recording
+
+The audit tool found a real specification error **on its first run, before a single asset existed** -
+the manifest declared six material zones against a budget of five. The budget was what was wrong: two
+of a weapon's zones animate and cannot share a cached material.
+
+Building the checker before the content is the cheapest possible time to find that a rule is wrong.
+
 ## Session 17 — 2026-08-01 — Sprint 11: Art Direction Alpha
 
 **Brief:** replace graybox presentation with production-quality visual identity — modular environment

@@ -1,81 +1,72 @@
 # NEXT TASK
 
-**Read first:** [PROJECT_STATUS.md](./PROJECT_STATUS.md), [VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md),
-[RENDERING_GUIDE.md](./RENDERING_GUIDE.md).
+**Read first:** [CONTENT_ROADMAP.md](./CONTENT_ROADMAP.md), [ASSET_STANDARDS.md](./ASSET_STANDARDS.md),
+[ASSET_PIPELINE.md](./ASSET_PIPELINE.md).
 
-Working philosophy: **Observe → Measure → Fix → Play Again.**
+Working philosophy: **Observe -> Measure -> Fix -> Play Again.**
 
-Sprint 10 fixed the bot standoff and built the venue's LED infrastructure. What is left is
-atmosphere, the per-pixel budget, and an arena the difficulty ladder can actually breathe in.
+The pipeline exists and is proven end to end. **The next sprint makes content, not systems.**
 
 ---
 
-## 1. Environment atmosphere
+## 1. Author Phase 1, in the roadmap's order
 
-The last untouched block of the last three briefs, and now the largest gap between this build and a
-venue: volumetric fog beyond the current `fogExp2`, dust motes, steam vents, animated ventilation
-fans, energy conduits, electrical arcs, moving light rigs, maintenance robots.
+Not the manifest's order. CONTENT_ROADMAP explains why:
 
-**Read the budget constraint before starting.** The frame is fragment-bound and transparent
-overdraw is the third-largest cost after resolution and light count. Particles and volumetric fog
-are precisely the wrong kind of work for this frame, and the Sprint 10 marquee incident is the
-cautionary tale: a feature can cost 3 ms while adding four draw calls.
+1. **Wall panel + corner** — two modules replace most of the arena's visible surface. Highest impact
+   per hour of anything available.
+2. **Competition floor tile** — in almost every frame.
+3. **Hero rifle** — the pipeline is already validated against it, so it is the lowest-risk hero
+   asset. Full brief in [HERO_WEAPON_SPEC.md](./HERO_WEAPON_SPEC.md).
+4. Ceiling light rig, cover barrier, charging station, equipment locker.
+5. **Hero athlete last**, because it needs the one remaining piece of engineering.
 
-**Measure every addition interleaved, and watch for cost with no draw calls behind it** — that
-signature means upload or overdraw, not geometry.
+`npm run asset-audit` is the progress report. When it shows nine of nine present, Phase 1 is done.
 
-## 2. Per-pixel cost, and 120 FPS
+## 2. Skeletal animation playback
 
-GPU sits at 10–13 ms against an 8.33 ms budget with the CPU idle at 1.4–2.6 ms. Levers in measured
-order:
+The only thing content is still blocked on. The importer loads and exposes clips; nothing drives
+them, because no rigged asset exists to test against.
 
-1. **Lights per fragment** — `maxDynamicLights` 8 → 0 is worth 2.3 ms. A budget that culls by
-   distance and screen influence, including impact flashes, prop beacons and the muzzle light which
-   currently sit outside the cap.
-2. **Material cost** — everything is `MeshStandardMaterial`. Non-metallic architecture does not need
-   a full PBR evaluation per fragment.
-3. **Transparent overdraw** — shafts, beacons, fog and emissive stack per pixel.
+**Build it alongside the first character, not before.** A playback system built with nothing to play
+is how you get a system that fits no real asset. Requirements are in
+[CHARACTER_PIPELINE.md](./CHARACTER_PIPELINE.md), which is explicit about what is implemented and
+what is merely specified.
 
-`renderScale` closes the gap arithmetically and remains the last resort.
+## 3. Migrate the arena to modules, incrementally
 
-## 3. An arena with long sight lines
+`MapBuilder` builds brushes from primitives. The module path adds a second source — a brush kind may
+resolve to a kit module instead of a box — and the two coexist, so Arena 01 can be migrated a wall
+at a time rather than in one rewrite. See [MODULAR_KIT.md](./MODULAR_KIT.md).
 
-Sprint 10's most useful negative result: **Arena 01 cannot support a range-based difficulty ladder.**
-Bots preferring 15 m and 19 m converged on the same achieved range (9.9 m and 9.8 m) because beyond
-roughly 10 m the building stops offering sight lines, and both spent so much of each fight
-repositioning that neither was more lethal than `medium`.
+## 4. Known pipeline gaps
 
-Preferred ranges are currently capped at 6–13.5 m to suit. Arenas 02–04 should be authored with at
-least one long hall or gallery, and their bot profiles raised — with `aimErrorDegrees` re-derived
-from the miss-radius rule, or the ladder will silently invert again. `tests/unit/botStandoff.test.ts`
-guards that property.
+Named in ASSET_PIPELINE section "What this pipeline does not do yet". None blocks Phase 1:
 
-## 4. Difficulty is two tiers, not four
+- no build-time LOD generation, KTX2 transcoding or mesh optimisation
+- `COL_` meshes are extracted but not yet fed into Rapier
+- no asset dependency graph
 
-Easy and medium sit at ~14 s median life, hard and expert at ~8.7 s. Ordered correctly between the
-pairs but flat within them. Seven measured iterations did not separate them further, because range
-and accuracy trade against each other inside the span this arena allows. Item 3 is the prerequisite.
+## 5. Still open from earlier sprints
 
-## 5. Audio
-
-Partly addressed across Sprints 9–10 (objective callouts, match-end sting). Still open: PA voice,
-crowd simulation, round transitions, environmental loops, recharge layering.
-
-## 6. Holograms
-
-Boards are flat wall-mounted panels. Free-floating holograms — logos, objective markers, directional
-indicators — are unstarted and are the other half of Part B.
+- **120 FPS unmet.** GPU 10-13 ms against 8.33. Fragment-bound; levers are lights per fragment,
+  material cost and transparent overdraw.
+- **Difficulty is two tiers, not four**, blocked on an arena with sight lines beyond ~10 m. That is
+  a *content* requirement now, and belongs to whoever authors Arena 02.
+- **Environment atmosphere** — fog, dust, steam, arcs. Budget them; transparent overdraw is the
+  third-largest GPU cost.
 
 ## Standing note
 
-Seven sprints running, the highest-value change has been to an *instrument* or to *plumbing* rather
-than to a game system. Sprint 8 added the gameplay corollary. Sprint 10 added a third:
+Eight sprints running, the highest-value change has been to an instrument or to plumbing rather than
+to a game system. The rules that came out of it:
 
 - **when a system looks broken, check the instrument first;**
 - **when a playtest names a culprit, measure before you fix it;**
 - **when a graphics change looks like a win, interleave the A/B before believing it;**
 - **when a cost has no draw calls behind it, it is upload or overdraw, not geometry.**
 
-Every one of those was learned by getting it wrong first. Sprint 10 also produced the first *useful
-negative result* — the arena cannot support the ladder — which is a different and better kind of
-finding than a bug, because it redirects design rather than repairing code.
+Sprint 12 adds a fifth, and it is about tooling rather than measurement:
+
+- **build the thing that checks the work before doing much of the work.** The audit tool found a
+  real specification error on its first run, before a single asset existed to violate it.

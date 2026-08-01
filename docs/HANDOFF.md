@@ -3,8 +3,9 @@
 For a person or agent picking up Project Photon cold. Read this, then
 [NEXT_TASK.md](./NEXT_TASK.md), then start.
 
-Companions: [ART_DIRECTION.md](./ART_DIRECTION.md) is the artistic foundation and
-[VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md) the working rulebook for anything that gets drawn; [AI_HANDOFF.md](./AI_HANDOFF.md) covers conventions and the reasoning behind the
+Companions: [ART_DIRECTION.md](./ART_DIRECTION.md) is the artistic foundation,
+[VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md) the working rulebook for anything that gets drawn,
+and [ASSET_PIPELINE.md](./ASSET_PIPELINE.md) how content gets into the game; [AI_HANDOFF.md](./AI_HANDOFF.md) covers conventions and the reasoning behind the
 architecture; [`.ai/CHATGPT_BOOTSTRAP.md`](../.ai/CHATGPT_BOOTSTRAP.md) is the compressed version for
 a fresh model context. This file is the current state of play.
 
@@ -61,6 +62,7 @@ npm run validate                 # typecheck + lint + 46 tests + build
 | `npm run scale -- --clients 16` | Client count, CPU, memory, bandwidth, process-per-client. |
 | `npm run predict-ab` | Is the replay path bit-identical to the live path? |
 | `npm run spawn-audit -- --seconds 180 --bots 6` | How long does a life last, and what ends it? Separates spawn placement from bot skill from time-to-kill. |
+| `npm run asset-audit` | What content exists, what is still to author, and what breaks the asset contract. |
 
 **Read this before trusting any measurement in this repository.** Five sprints running, the
 highest-value change has been to an instrument rather than to a game system:
@@ -108,7 +110,11 @@ problem.
 
 ### Not started
 
-Arenas 02-04, authored characters, multiplayer UI, spectator, replay, voice, editor tools.
+Arenas 02-04, authored art assets (the pipeline exists; nothing has been made yet), multiplayer UI,
+spectator, replay, voice, editor tools.
+
+**Content is no longer blocked on engineering**, with one exception: skeletal animation playback,
+which should be built alongside the first rigged character rather than before it.
 
 ## What to do next
 
@@ -132,6 +138,7 @@ src/
   render/TeamIdentity.tsx  Territory, spawn beacons, reactive objective and match-phase lighting
   render/VenueBoards.ts    Content for the arena's LED boards, by binding name
   render/materials/        Procedural textures and the named-substance material library
+  assets/                  Asset contract, registry, importer and validation
   ui/           React HUD and menus
   engine/       GameLoop, EventBus, ObjectPool, Telemetry
 server/         Dedicated server entry point

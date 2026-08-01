@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-01 · **Phase:** Sprint 11 - material library, surface detail and a hero weapon. Procedural art has reached its ceiling; an asset pipeline is next.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 12 - the asset pipeline exists and is proven against the weapon. The limiting factor is now content, and content is unblocked.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -47,7 +47,8 @@ ladder.
 | Bot standoff | Profile-driven preferred range and tolerance | Engagement range **3.7 / 5.6 / 7.9 / 8.6 m** by difficulty, was flat 7.0 m; accuracy 21.6 / 33.8 / 47.6 / 52.3% |
 | Venue boards | Five live bindings driven from arena data | 18 boards; **-0.23 ms** interleaved after the marquee upload fix (was +3.19 ms) |
 | Material library | 14 named substances over 5 procedural textures | Shared and cached; **32 shader programs** total, flat with object count |
-| Hero weapon | PH-6 rifle with animated charge rails and energy core | ~30 draw calls (was 8); animation written against part refs, asset-swap ready |
+| Hero weapon | PH-6 rifle with animated charge rails and energy core | ~30 draw calls (was 8); **drives imported or procedural geometry through one name-addressed path** |
+| Asset pipeline | Name-based contract over standard glTF | 9 assets specified, 0 authored; `npm run asset-audit` passes; importer, validation and 17 tests in place |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |

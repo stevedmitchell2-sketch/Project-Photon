@@ -102,7 +102,7 @@ export function killActor(
   victim.damageContributions.clear();
 
   state.killFeed.unshift({
-    id: state.tick,
+    id: state.killFeedSequence++,
     killer: selfInflicted ? victim.name : (killer?.name ?? 'Arena'),
     killerTeam: selfInflicted ? victim.team : (killer?.team ?? victim.team),
     victim: victim.name,
