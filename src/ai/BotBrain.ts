@@ -254,6 +254,23 @@ function aimAtTarget(bb: BotBlackboard, target: Actor): void {
   bb.aimPitch = Math.atan2(dy, horizontal) + bb.aimErrorPitch;
 }
 
+/**
+ * How hard a bot drives toward or away from its target, given where it wants to stand.
+ *
+ * Returns a signed multiplier on the direction to the target: positive closes, negative retreats,
+ * and a small positive value inside the comfortable band keeps a circling bot drifting gently
+ * inward rather than orbiting at a fixed radius forever.
+ *
+ * Exported and pure because this one expression decides where every fight in the game happens, and
+ * it was wrong — as two hardcoded constants — for the entire life of the project until Sprint 10.
+ * A behaviour that important should be testable without standing up a match.
+ */
+export function standoffApproach(distance: number, preferred: number, tolerance: number): number {
+  if (distance > preferred + tolerance) return 1;
+  if (distance < preferred - tolerance) return -0.8;
+  return 0.15;
+}
+
 function combatMovement(bb: BotBlackboard, target: Actor, dt: number): void {
   const { actor, profile, rng } = bb;
   const distance = dist3(actor.position, target.position);
@@ -274,7 +291,7 @@ function combatMovement(bb: BotBlackboard, target: Actor, dt: number): void {
   const sz = fx * bb.strafeDirection;
 
   // Close the gap when far, back off when uncomfortably close, circle in the sweet spot.
-  const approach = distance > 22 ? 1 : distance < 7 ? -0.8 : 0.15;
+  const approach = standoffApproach(distance, profile.preferredRange, profile.rangeTolerance);
 
   const strafeWeight = rng.next() < profile.strafeChance ? 1 : 0.35;
   bb.desiredMove.x = fx * approach + sx * strafeWeight;
@@ -285,10 +302,12 @@ function combatMovement(bb: BotBlackboard, target: Actor, dt: number): void {
     bb.desiredMove.z /= len;
   }
 
-  bb.wantsSprint = distance > 20;
+  bb.wantsSprint = distance > profile.preferredRange + profile.rangeTolerance * 2;
   // Occasional jumps and slides so bots are not flat targets, scaled by difficulty.
   if (rng.next() < 0.012 * profile.movementFlair) bb.wantsJump = true;
-  if (distance < 14 && rng.next() < 0.008 * profile.movementFlair) bb.wantsCrouch = true;
+  if (distance < profile.preferredRange && rng.next() < 0.008 * profile.movementFlair) {
+    bb.wantsCrouch = true;
+  }
 }
 
 function buildTree(freeForAll: boolean): BtNode<BotBlackboard> {
