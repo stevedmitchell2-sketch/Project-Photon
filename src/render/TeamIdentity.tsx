@@ -204,30 +204,63 @@ function ReactiveObjective({
   );
 
   useFrame((_, delta) => {
+    const state = game.match?.state;
     const trigger = game.match?.triggers.get(zone.objectiveId);
     const holder = trigger?.controllingTeam ?? null;
     const contested = trigger?.contested ?? false;
 
-    target.current.set(holder ? teamEmissive(holder, colorblind) : zone.neutralColor);
+    // Match phase outranks objective control.
+    //
+    // The objective ring is the largest lit element in the room, which makes it the arena's loudest
+    // channel — so the loudest things the match has to say borrow it. A venue does not keep showing
+    // you who holds the middle once the match is over.
+    const remaining = state?.timeRemaining ?? Infinity;
+    const ended = state?.phase === 'ended';
+    const winner = state?.winner ?? null;
+    const finalMinute = !ended && remaining <= 60;
+    const finalSeconds = !ended && remaining <= 10;
+
+    if (ended) {
+      target.current.set(winner ? teamEmissive(winner, colorblind) : zone.neutralColor);
+    } else if (finalSeconds) {
+      target.current.set(0xff2d55);
+    } else if (finalMinute) {
+      target.current.set(0xffd84d);
+    } else {
+      target.current.set(holder ? teamEmissive(holder, colorblind) : zone.neutralColor);
+    }
 
     // Ease rather than snap. A hard cut on every occupancy change would flicker constantly as
     // players cross the boundary; easing means only a sustained change reads as a change.
     current.current.lerp(target.current, Math.min(1, delta * 3.5));
 
     strobe.current += delta;
-    const contestPulse = contested ? 0.55 + 0.45 * Math.sin(strobe.current * 11) : 1;
+
+    // Each state has its own rhythm, so the room is distinguishable with the sound off and by a
+    // player who cannot separate the hues: a fast strobe for a contested objective, a one-per-second
+    // countdown beat in the last ten seconds, a slow swell in the final minute, and a steady flood
+    // once the match is decided.
+    let pulse = 1;
+    if (ended) pulse = 1;
+    else if (finalSeconds) pulse = 0.35 + 0.65 * Math.abs(Math.sin(strobe.current * Math.PI));
+    else if (contested) pulse = 0.55 + 0.45 * Math.sin(strobe.current * 11);
+    else if (finalMinute) pulse = 0.7 + 0.3 * Math.sin(strobe.current * 2.2);
 
     ringMaterial.color.copy(current.current);
-    ringMaterial.opacity = (holder ? 0.85 : 0.55) * contestPulse;
+    ringMaterial.opacity = (ended ? 0.95 : holder ? 0.85 : 0.55) * pulse;
 
     if (ringRef.current) {
       // Ride slightly above the floor and breathe with the hold, so a held objective looks alive.
       ringRef.current.position.y = zone.p[1] + 0.06 + (holder ? 0.02 * Math.sin(strobe.current * 2) : 0);
+      // The winner's ring rises and widens — a curtain call rather than a status light.
+      const celebrate = ended ? 1 + 0.06 * (1 + Math.sin(strobe.current * 1.6)) : 1;
+      ringRef.current.scale.setScalar(celebrate);
     }
 
     if (light.current) {
       light.current.color.copy(current.current);
-      light.current.intensity = (holder ? 190 : 90) * contestPulse;
+      // Victory floods the room; everything else is a fixture.
+      light.current.intensity = (ended ? 320 : holder ? 190 : 90) * pulse;
     }
   });
 

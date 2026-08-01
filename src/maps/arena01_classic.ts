@@ -504,14 +504,103 @@ function buildProps(): PropSpec[] {
       text: 'clock',
     });
   }
-  props.push({
-    id: 'sign_north',
-    kind: 'display',
-    p: [0, 3.2, -29.2],
-    s: [9, 1.4, 0.12],
-    color: 0xff6d88,
-    text: 'PHOTON ARENA 01 — CLASSIC',
-  });
+  // --- Venue infrastructure ------------------------------------------------
+  //
+  // The arena declares *what* each board reports; `VenueBoards` decides how it looks. Placement
+  // follows one rule: a board must be readable from the space it describes. The scoreboards face
+  // the two team approaches to the centre, the elimination feed sits where players regroup after
+  // dying, and the round status hangs above the objective everyone is already looking at.
+
+  // Twin scoreboards on the north and south perimeter, angled into the room.
+  const scoreboards: Array<{ id: string; p: [number, number, number]; rot: number }> = [
+    { id: 'scoreboard_north', p: [0, 5.4, -29.2], rot: 0 },
+    { id: 'scoreboard_south', p: [0, 5.4, 29.2], rot: 180 },
+  ];
+  for (const board of scoreboards) {
+    props.push({
+      id: board.id,
+      kind: 'display',
+      p: board.p,
+      s: [10, 2.6, 0.12],
+      rot: board.rot,
+      color: 0x8fefff,
+      text: 'scoreboard',
+    });
+  }
+
+  // Elimination feed on the east and west walls, at the height a player scans while moving.
+  const feeds: Array<{ id: string; p: [number, number, number]; rot: number }> = [
+    { id: 'feed_west', p: [-29.2, 4.2, 0], rot: 90 },
+    { id: 'feed_east', p: [29.2, 4.2, 0], rot: -90 },
+  ];
+  for (const feed of feeds) {
+    props.push({
+      id: feed.id,
+      kind: 'display',
+      p: feed.p,
+      s: [7, 1.9, 0.12],
+      rot: feed.rot,
+      color: 0x8fefff,
+      text: 'killfeed',
+    });
+  }
+
+  // Control bar above the objective room, on all four faces — the one board that answers
+  // "who is winning" without arithmetic.
+  for (let i = 0; i < 4; i++) {
+    const rot = i * 90;
+    const rad = (rot * Math.PI) / 180;
+    props.push({
+      id: `control_${i}`,
+      kind: 'display',
+      p: [Math.sin(rad) * -(roomHalf + 0.5), 5.6, Math.cos(rad) * -(roomHalf + 0.5)],
+      s: [3.4, 1.1, 0.12],
+      rot,
+      color: 0x2de0ff,
+      text: 'objective',
+    });
+  }
+
+  // Round status over each spawn approach, so a respawning player learns the match state before
+  // they reach the fight.
+  const statusBoards: Array<{ id: string; p: [number, number, number]; rot: number }> = [
+    { id: 'status_red', p: [-29.2, 3.0, -18], rot: 90 },
+    { id: 'status_blue', p: [29.2, 3.0, 18], rot: -90 },
+  ];
+  for (const board of statusBoards) {
+    props.push({
+      id: board.id,
+      kind: 'display',
+      p: board.p,
+      s: [6, 1.5, 0.12],
+      rot: board.rot,
+      color: 0x8fefff,
+      text: 'roundstatus',
+    });
+  }
+
+  // --- Branding ------------------------------------------------------------
+  //
+  // Fictional league and sponsor signage. Deliberately restrained in colour: branding uses the
+  // house cyan and warm neutrals, never a team colour, because team colour is a reserved channel
+  // and a red sponsor board would read as red territory. See VISUAL_STYLE_GUIDE.md.
+  const signage: Array<{ id: string; p: [number, number, number]; rot: number; text: string; color: number }> = [
+    { id: 'sign_north', p: [0, 3.2, -29.2], rot: 0, text: 'PHOTON ARENA 01 — CLASSIC', color: 0x8fefff },
+    { id: 'sign_south', p: [0, 3.2, 29.2], rot: 180, text: 'PHOTON LEAGUE — DIVISION ONE', color: 0x8fefff },
+    { id: 'sign_west', p: [-29.2, 6.0, 14], rot: 90, text: 'HALCYON OPTICS · VECTOR DYNAMICS · MERIDIAN CELL', color: 0xffc93d },
+    { id: 'sign_east', p: [29.2, 6.0, -14], rot: -90, text: 'SECTOR 01 · UPPER DECK · KEEP CLEAR OF EMITTERS', color: 0xffc93d },
+  ];
+  for (const sign of signage) {
+    props.push({
+      id: sign.id,
+      kind: 'display',
+      p: sign.p,
+      s: [9, 1.4, 0.12],
+      rot: sign.rot,
+      color: sign.color,
+      text: sign.text,
+    });
+  }
 
   // Ambient machinery humming in the corners.
   const machines: Array<[number, number, number]> = [
