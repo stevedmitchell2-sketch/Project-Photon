@@ -197,3 +197,84 @@ optimisation targets that no amount of reasoning had identified — because the 
 see them was itself broken.
 
 The pattern worth keeping: **fix the measurement before optimising the thing being measured.**
+
+---
+
+# Playtest Session 3 — 2026-08-01 (Sprint 7)
+
+Bot Practice / Team Deathmatch, Classic arena, 3 and 6 players per team, browser preview at
+913x988, WebGL2, 60 Hz display.
+
+Three deployments observed end to end. Console clean throughout — no errors, no warnings.
+
+## Severity 1 — Gameplay
+
+### 3.1 You die roughly ten seconds after every spawn
+
+Reproduced on **every one of three deployments**: spawn, orient, and be tagged before finding an
+opponent. The kill feed shows the tagging bot is usually one that was already in a fight elsewhere.
+
+This is the single biggest thing standing between the current build and a game worth playing. It is
+some combination of three things, and they need separating before any of them is tuned:
+
+- **Spawn placement relative to live combat.** `SpawnSystem` scores candidates, but nothing observed
+  suggests it is weighting enemy proximity heavily enough at 6-per-team density.
+- **Bot accuracy at medium difficulty.** Medium bots appear to acquire and land shots faster than a
+  player orienting from a fresh spawn can react.
+- **Time to kill.** 34 damage per bolt against 100 health + 60 shield is five bolts, and at a
+  0.17 s fire interval that is 0.68 s of sustained fire. Short.
+
+Scores bear this out: 7–15 after 50 seconds at 6 per team. A ten-minute match at that rate would end
+on the score limit in under three minutes.
+
+### 3.2 Bloom is blowing out the centre of the frame
+
+The dominant visual artefact is not the volumetric shafts — it is bloom bleeding off the emissive
+light fixtures. From most positions on the deck, two large white-cyan teardrops sit in the middle of
+the screen and wash out everything behind them, including anything in the crosshair.
+
+Note this corrects a diagnosis made earlier in the same session: the shafts were assumed to be the
+offender, fixed, and found *not* to have been the main problem. The shaft fix is still correct (see
+below) but bloom is the bigger contributor and is untouched.
+
+## Severity 2 — Presentation
+
+- **Crosshair is too small and too low-contrast.** A thin grey cross on a pale wall is nearly
+  invisible. Needs an outline or a contrasting core.
+- **Mid-tone flatness persists** from session 2. Surfaces away from a fixture are uniform grey.
+- **No team colour in the environment.** Every strip and fixture is cyan regardless of which team
+  holds the room, so the objective banner is the only team-state signal on screen.
+- **Weapon idle orientation still reads angled** — carried from session 2, still present.
+
+## What was fixed this session
+
+- **Light shafts now fade by view angle** (`Scene.tsx`). A real shaft is scattered light: strong
+  across the view, weak along it. A fixed-opacity cone did the opposite and read as solid geometry.
+  Opacity is now weighted by how perpendicular the shaft is to the view direction and faded within
+  6 m. Costs one dot product per shaft.
+- **Avatars are drawn instanced** (`PlayerAvatars.tsx`). See PROJECT_STATUS for the numbers.
+
+## Performance observed
+
+| Condition | Draw calls | Sim time | FPS |
+| --- | --- | --- | --- |
+| 5 bots, before instancing | 146 | 0.70 ms | 60 |
+| 11 bots, after instancing | 146 | 2.30 ms | 60 |
+| 5 bots, after instancing, no enemies in view | 133 | 0.40 ms | 60 |
+
+**Draw calls are now independent of player count** — more than doubling the roster left them
+unchanged. Simulation time is dominated by bot AI, not rendering: 0.70 ms at 5 bots to 2.30 ms at
+11, roughly linear in bot count.
+
+FPS remains pinned at exactly 60 by vsync, so the 120 FPS target is still unverifiable. This has
+been an open item since Sprint 4 and no optimisation claim can be validated against it.
+
+## Loop assessment
+
+Third session. This one produced its findings by playing rather than by looking at a still frame,
+and the highest-value finding — dying ten seconds after every spawn — is one that no screenshot,
+probe or benchmark would ever have surfaced. It is also the finding least addressed by this sprint,
+which spent its budget on infrastructure.
+
+The pattern from session 2 held again in a new form: **the light-shaft fix was made against a
+misdiagnosis** that a screenshot supported and actually playing refuted.

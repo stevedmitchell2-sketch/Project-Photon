@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-07-31 · **Phase:** Sprint 6 - 8-client scaling proven, geometry hypothesis disproven. Latency and rendering work outstanding.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 7 - infrastructure closed. Four production bugs fixed, latency validated 0-250 ms, 16 clients proven. Gameplay and presentation now the critical path.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -8,14 +8,22 @@
 ## One-line status
 
 The game is playable end to end — spawn, move, shoot, tag, respawn, score, win — against bots on a
-two-floor arena, with the arena now correctly lit and visible. Interactive props (powered doors,
-energy gates, fans, beacons, live match-clock displays, ambient machinery) are in.
+two-floor arena, and the multiplayer stack behind it is now validated rather than assumed: 16
+concurrent clients, latency measured from 0 to 250 ms, and lag compensation demonstrated to work.
+
+**The infrastructure phase is over. The game itself is the constraint now** — it is technically
+sound and not yet enjoyable, because you die roughly ten seconds after every spawn.
 
 ## What works, verified by measurement
 
 | Area | State | Evidence |
 | --- | --- | --- |
-| Fixed-step sim | 64 Hz, deterministic, headless | **0.423 ms/tick** with 6 actors, props and triggers (budget 1.2 ms) |
+| Fixed-step sim | 64 Hz, deterministic, headless | **0.423 ms/tick** with 6 actors; holds 64.0 Hz at every latency to 250 ms |
+| Multiplayer scaling | 16 concurrent clients, process-per-client | 16/16 complete, all peers visible, 0 dropped snapshots, server at **22.2% of one core / 137 MB** |
+| Latency behaviour | Validated 0-250 ms RTT | Tick rate flat; responsiveness 46 → 331 ms; downstream flat at 1.1 KB/s; upstream 2.7 → 13.3 KB/s |
+| Lag compensation | Rewind by rtt/2 + interpolation delay | Hit rate on a strafing target at 250 ms: **2.8% off vs 8.5-11% on** |
+| Prediction | Reconciliation verified aligned | Error minimised at reconciliation offset 0; **28 mm** for a sprinting client at 150 ms RTT |
+| Avatar rendering | Instanced by (geometry, material) | **146 draw calls at 5 bots, 146 at 11** — decoupled from player count |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |

@@ -1,4 +1,4 @@
-import type { MatchSettings } from '@/config/gameModes';
+import { GAME_MODES, type MatchSettings } from '@/config/gameModes';
 import type { TeamId } from '@/config/teams';
 import { TICK_DT } from '@/engine/GameLoop';
 import { EventBus } from '@/engine/EventBus';
@@ -58,7 +58,8 @@ export interface ServerClient {
   rating: number;
   /** Smoothed round-trip time in ms, used to size this client's lag-compensation rewind. */
   rttMs: number;
-  pingSentAt: Map<number, number>;
+  /** Departure time of each snapshot, keyed by tick, for the server-side RTT measurement. */
+  snapshotSentAt: Map<number, number>;
   validator: ClientValidator;
   /** Buffered inputs not yet consumed, keyed by tick. */
   inputQueue: Map<number, InputFrame>;
@@ -74,6 +75,15 @@ export interface ServerClient {
    */
   starvedTicks: number;
   consumedTicks: number;
+  /**
+   * Inputs discarded because the queue exceeded `MAX_INPUT_BACKLOG`.
+   *
+   * Every one of these is a movement step the client predicted and the server never simulated, so
+   * it is a permanent position disagreement until the next correction. Counted because "the server
+   * quietly dropped some of your inputs" and "your prediction is inaccurate" look identical from
+   * the client and have completely different fixes.
+   */
+  droppedInputs: number;
   /**
    * True once enough inputs have accumulated to start consuming.
    *
@@ -171,13 +181,20 @@ export class NetServer {
   }
 
   /** Per-client input starvation, for prediction diagnostics. */
-  inputHealth(): Array<{ id: number; starved: number; consumed: number; starvedPercent: number }> {
+  inputHealth(): Array<{
+    id: number;
+    starved: number;
+    consumed: number;
+    dropped: number;
+    starvedPercent: number;
+  }> {
     return [...this.clients.values()].map((c) => {
       const total = c.starvedTicks + c.consumedTicks;
       return {
         id: c.id,
         starved: c.starvedTicks,
         consumed: c.consumedTicks,
+        dropped: c.droppedInputs,
         starvedPercent: total > 0 ? Math.round((c.starvedTicks / total) * 1000) / 10 : 0,
       };
     });
@@ -205,7 +222,7 @@ export class NetServer {
       connectedAtTick: this.director?.state.tick ?? 0,
       rating: 1000,
       rttMs: 0,
-      pingSentAt: new Map(),
+      snapshotSentAt: new Map(),
       validator: new ClientValidator(),
       inputQueue: new Map(),
       history: new SnapshotHistory(),
@@ -213,6 +230,7 @@ export class NetServer {
       bytesReceived: 0,
       starvedTicks: 0,
       consumedTicks: 0,
+      droppedInputs: 0,
       inputPrimed: false,
     };
     this.clients.set(client.id, client);
@@ -233,13 +251,21 @@ export class NetServer {
     this.rebalanceTeams();
   }
 
+  /**
+   * Ejects a client and reclaims everything it owned.
+   *
+   * This must dispose of the actor exactly as a voluntary disconnect does. It previously only
+   * removed the client record, so every timeout, rate-limit and invalid-input kick left an
+   * abandoned actor standing in the arena — still replicated to everyone, still occupying a spawn,
+   * still costing a capsule in the physics world, for the lifetime of the server.
+   */
   private kick(client: ServerClient, reason: KickReason): void {
     const writer = new ByteWriter(8);
     writer.u8(ServerMessage.Kick);
     writer.u8(reason);
     this.send(client, writer.finish());
     client.transport.close(`kicked: ${reason}`);
-    this.clients.delete(client.id);
+    this.disconnect(client.id, `kicked: ${reason}`);
   }
 
   // --- Message handling -----------------------------------------------------
@@ -276,16 +302,12 @@ export class NetServer {
           break;
         case ClientMessage.Ping: {
           const stamp = reader.u32();
-          // The pong round trip is what tells us how far to rewind this client's shots.
-          const sentAt = client.pingSentAt.get(stamp);
-          if (sentAt !== undefined) {
-            client.pingSentAt.delete(stamp);
-            client.rttMs = client.rttMs === 0 ? now() - sentAt : client.rttMs * 0.8 + (now() - sentAt) * 0.2;
-            if (client.actorId >= 0) this.director.setActorLatency(client.actorId, client.rttMs);
-          } else {
-            // First observation of this sequence: record it so the next one measures a round trip.
-            client.pingSentAt.set(stamp, now());
-          }
+          // Pure echo. This exchange is the *client's* latency measurement — it stamps, we reflect,
+          // it times the round trip. The server cannot learn its own RTT from it: a client sends
+          // each sequence exactly once, so the server only ever sees a given stamp a single time.
+          // It used to try anyway, storing the stamp on first sight and measuring on the second
+          // sight that never came, which left `rttMs` at zero for the life of every session.
+          // Server-side RTT is measured in `handleInput` instead.
           const writer = new ByteWriter(16);
           writer.u8(ServerMessage.Pong);
           writer.u32(stamp);
@@ -326,11 +348,7 @@ export class NetServer {
 
     client.name = name.slice(0, 16).toUpperCase() || 'OPERATOR';
     client.authenticated = true;
-    client.team = pickTeamForJoin(
-      this.balanceMembers(),
-      defaultBalanceConfig(this.options.settings.teams, this.options.settings.botsPerTeam),
-      (preferred as TeamId) || null,
-    );
+    client.team = pickTeamForJoin(this.balanceMembers(), this.balanceConfig(), (preferred as TeamId) || null);
 
     const actor = this.director.createNetworkPlayer(client.name, client.team ?? this.options.settings.teams[0]);
     client.actorId = actor.id;
@@ -358,6 +376,7 @@ export class NetServer {
    */
   private handleInput(client: ServerClient, reader: ByteReader): void {
     client.acknowledgedSnapshot = reader.varint();
+    this.noteRoundTrip(client, client.acknowledgedSnapshot);
     const count = Math.min(reader.u8(), MAX_INPUTS_PER_PACKET);
     const currentTick = this.director.state.tick;
 
@@ -387,6 +406,33 @@ export class NetServer {
     if (client.validator.shouldKick) this.kick(client, KickReason.InvalidInput);
   }
 
+  /**
+   * Measures this client's round-trip time, server-side, with no extra traffic.
+   *
+   * Every input packet echoes the newest snapshot tick the client has applied. The server knows
+   * when it put that snapshot on the wire, so the gap between the two is a genuine round trip:
+   * server → client → server. It overstates by up to one client tick (~16 ms) of processing, which
+   * is small next to the latencies it exists to measure and errs in the safe direction — a slightly
+   * generous rewind favours the shooter, which is the trade this system already makes.
+   *
+   * This number is the whole input to lag compensation. While it sat at zero, `rewindForOwner`
+   * rewound by the interpolation delay alone and hit registration collapsed with latency: measured
+   * at 21.9% hit rate on a strafing target at 0 ms and 3.1% at 250 ms.
+   *
+   * The measurement is taken once per snapshot. Inputs arrive at 64 Hz and snapshots at 20 Hz, so
+   * roughly three input packets echo the same tick; only the first of them saw a real round trip,
+   * and the rest would inflate the estimate with the time they spent waiting to be sent.
+   */
+  private noteRoundTrip(client: ServerClient, snapshotTick: number): void {
+    const sentAt = client.snapshotSentAt.get(snapshotTick);
+    if (sentAt === undefined) return;
+    client.snapshotSentAt.delete(snapshotTick);
+
+    const sample = now() - sentAt;
+    client.rttMs = client.rttMs === 0 ? sample : client.rttMs * 0.8 + sample * 0.2;
+    if (client.actorId >= 0) this.director.setActorLatency(client.actorId, client.rttMs);
+  }
+
   private handleTeamSwitch(client: ServerClient, reader: ByteReader): void {
     const team = reader.string() as TeamId;
     // Manual switching is lobby-only by design: mid-match switching is a griefing vector and
@@ -395,7 +441,7 @@ export class NetServer {
     if (!this.options.settings.teams.includes(team)) return;
 
     const members = this.balanceMembers();
-    const config = defaultBalanceConfig(this.options.settings.teams, this.options.settings.botsPerTeam);
+    const config = this.balanceConfig();
     const counts = members.filter((m) => m.team === team).length;
     if (counts >= config.maxPerTeam) return;
 
@@ -555,6 +601,7 @@ export class NetServer {
     while (client.inputQueue.size > MAX_INPUT_BACKLOG) {
       const oldest = Math.min(...client.inputQueue.keys());
       client.inputQueue.delete(oldest);
+      client.droppedInputs++;
     }
 
     const nextTick = Math.min(...client.inputQueue.keys());
@@ -576,6 +623,14 @@ export class NetServer {
     const payload = encodeSnapshot(current, baseline, writer);
     this.send(client, payload);
     this.bandwidth.snapshotBytes = payload.byteLength;
+
+    // Departure time for the round-trip measurement in `noteRoundTrip`. Bounded: at 20 Hz this
+    // holds a few seconds of history, far more than any playable latency needs.
+    client.snapshotSentAt.set(current.tick, now());
+    if (client.snapshotSentAt.size > 128) {
+      const oldest = Math.min(...client.snapshotSentAt.keys());
+      client.snapshotSentAt.delete(oldest);
+    }
   }
 
   private send(client: ServerClient, data: Uint8Array): void {
@@ -604,6 +659,20 @@ export class NetServer {
 
   // --- Team balance ---------------------------------------------------------
 
+  /**
+   * Roster limits for this match.
+   *
+   * The cap is the *mode's* team size. It was previously `settings.botsPerTeam`, which is a
+   * different quantity entirely and reads as an argument-order slip against
+   * `defaultBalanceConfig(teams, maxPerTeam)`. On a server started with `--bots 0` it made the cap
+   * zero, so `pickTeamForJoin` found no team with room, returned null, and every client fell
+   * through to the `teams[0]` default — putting the entire server on red, where friendly fire is
+   * off and therefore nobody can damage anybody. Team modes were unplayable on any botless server.
+   */
+  private balanceConfig() {
+    return defaultBalanceConfig(this.options.settings.teams, GAME_MODES[this.options.settings.mode].maxPlayersPerTeam);
+  }
+
   private balanceMembers(): BalanceMember[] {
     return [...this.clients.values()].map((c) => ({
       id: c.id,
@@ -616,10 +685,7 @@ export class NetServer {
 
   private rebalanceTeams(): void {
     if (this.flow.phase === 'active' || this.flow.phase === 'sudden_death') return;
-    const config = defaultBalanceConfig(
-      this.options.settings.teams,
-      this.options.settings.botsPerTeam,
-    );
+    const config = this.balanceConfig();
     const { assignments } = rebalance(this.balanceMembers(), config);
     for (const [clientId, team] of assignments) {
       const client = this.clients.get(clientId);

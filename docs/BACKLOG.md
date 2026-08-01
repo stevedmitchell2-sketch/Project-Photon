@@ -12,17 +12,18 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **Residual prediction corrections** | Two of three clients correct at 22/s (= every snapshot) while one sits at 2/s. Bimodal, so structural rather than gradual. Current hypothesis: contact with level geometry — collide-and-slide amplifies a sub-millimetre position difference into a divergent slide. See NEXT_TASK. |
-| **8-client failure** | 4 clients pass, 8 fail with the server transmitting and clients receiving nothing. Test process-per-client before suspecting the server. |
-| **Lag compensation under real latency** | Wired and running but only exercised at ~1 ms RTT, where rewind is a no-op. Needs a 20–250 ms sweep via `LocalTransport.simulatedLatencyMs`. |
+| **Residual prediction corrections** | Narrowed, not closed. Server says all clients move identically; the quiet client reconciles correctly at offset 0 (28 mm), the noisy ones at offset ~10 — the signature of a stale acknowledged tick. Co-location and dropped inputs both **disproven** this sprint. Next step in NEXT_TASK item 3. |
+| **Upstream bandwidth scales with RTT** | 2.7 KB/s at 0 ms to 13.3 KB/s at 250 ms, because each packet resends the unacknowledged window. Working as designed, but uncapped. Cap the resend window before public play. |
+| **Adaptive interpolation buffer untested** | Held at its 75 ms floor at every latency in the sweep, because injected latency is jitter-free. The widening logic has never actually run. |
 | **Client clock sync** | The jitter buffer absorbs drift server-side. A client that measured its own buffer depth and nudged its send rate would remove starvation entirely rather than cushioning it. |
 | **Listen server** | Route offline play through `NetServer` + `LocalTransport` so the netcode is exercised on every playthrough — currently claimed in ARCHITECTURE.md but not true. |
-| **Snapshot interest management** | Every client receives every actor. Fine at 16; a visibility/distance filter is the lever if player counts rise. |
+| **Snapshot interest management** | Every client receives every actor. Measured fine at 16 (86 KB/s aggregate, server at 22% of one core); a visibility/distance filter is the lever only if player counts rise above that. |
 
 ## Gameplay
 
 | Item | Notes |
 | --- | --- |
+| **Ten-second time-to-death from spawn** | Highest-value item in the project. Reproduced on every Sprint 7 deployment. Three candidate causes — spawn placement, bot accuracy, time-to-kill — which must be isolated separately before any is tuned. See NEXT_TASK item 1. |
 | **Objective-aware bots** | Five of seven modes are unplayable offline. Add a `capture-objective` branch between `engage` and `search`; `investigate` is the template. |
 | **Overtime / sudden death verification** | `MatchFlow` implements the phase; it has never been observed firing in a real match. |
 | **Round transitions for Elimination** | Round restart logic exists in the mode but no round-boundary respawn wave. |
@@ -32,10 +33,12 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **Batch props and avatars** | 137 individual meshes vs 21 instanced. Each bot is ~12 meshes, each prop 2–8. Arena geometry is already batched; this is the remaining draw-call win. Not geometry-bound — 12.6k triangles. |
+| **Batch props** | Avatars are done — instanced in Sprint 7, draw calls no longer scale with player count. Arena props (2–8 meshes each) are the remaining unbatched geometry. Not geometry-bound — 12.6k triangles. |
+| **Bloom blows out the frame centre** | The dominant visual artefact. Two large white-cyan teardrops from emissive fixtures wash out anything behind them. Bigger contributor than the light shafts, which were misdiagnosed as the offender in Sprint 7. |
+| **Crosshair legibility** | Thin grey cross, nearly invisible against a pale wall. Needs an outline or contrasting core. |
+| **No team colour in the environment** | Every strip and fixture is cyan regardless of which team holds a room. The objective banner is the only team-state signal on screen. |
 | **Vsync-independent frame timing** | 120 FPS target is unmeasurable while frame time is pinned at exactly 1/60 s. Until this exists, no optimisation claim can be verified. |
 | **Global dynamic-light budget** | `graphics.maxDynamicLights` caps arena fixtures only. Impact flashes, prop beacons and the muzzle light are outside it. Should be one budget. |
-| **Light shafts read as objects** | Most visually intrusive element on screen. Fade by view angle — subtle head-on, visible obliquely. |
 | **Weapon idle orientation** | Barrel reads angled at rest; likely residual yaw in the idle sway. |
 | **Mid-tone flatness** | Surfaces away from a fixture fall to uniform grey. More contrast between lit and unlit regions. |
 

@@ -33,6 +33,15 @@ import type { Actor, GameEvents, MatchState } from './types';
  */
 const INTERPOLATION_DELAY_MS = 75;
 
+/**
+ * Ticks between movement telemetry samples — 16 ticks is four samples a second at 64 Hz.
+ *
+ * Movement is smooth, so consecutive ticks carry nearly identical information. Sampling every tick
+ * would fill the event ring with redundant positions and evict the discrete events (tags, deaths,
+ * objective flips) that only happen a handful of times a match.
+ */
+const MOVEMENT_SAMPLE_TICKS = 16;
+
 /** Keeps the physics capsule aligned with a rewound actor position. */
 const syncActor =
   (physics: PhysicsWorld) =>
@@ -107,6 +116,9 @@ export class MatchDirector {
     this.gameMode = createGameMode(settings);
     this.telemetry.createHeatmap('deaths', arena.bounds);
     this.telemetry.createHeatmap('shots', arena.bounds);
+    // Where players actually go, as opposed to where they die. The two together are what makes a
+    // map readable in review: deaths show the fights, occupancy shows the routes nobody uses.
+    this.telemetry.createHeatmap('occupancy', arena.bounds);
     this.wireTelemetry();
 
     // Route noises to bots that can hear them. Subscribing once here keeps the emitters
@@ -193,6 +205,38 @@ export class MatchDirector {
       t.record({ tick: this.state.tick, time: this.state.time, category: 'match', type: 'ended', team: e.winner ?? undefined });
       t.flush();
     });
+  }
+
+  /**
+   * Samples where everyone is, for the occupancy heatmap and movement-path analysis.
+   *
+   * Rate-limited to four samples a second rather than sixty-four. Position is heavily correlated
+   * between adjacent ticks, so the extra sixty samples add almost no information and would dominate
+   * the event ring, evicting the discrete events that are actually scarce. Costs one modulo per
+   * tick when telemetry is off.
+   */
+  private sampleMovementTelemetry(): void {
+    if (!this.telemetry.enabled) return;
+    if (this.state.tick % MOVEMENT_SAMPLE_TICKS !== 0) return;
+
+    const occupancy = this.telemetry.heatmaps.get('occupancy');
+    for (const actor of this.orderedActors()) {
+      if (!actor.alive) continue;
+      occupancy?.add(actor.position.x, actor.position.z);
+      this.telemetry.record({
+        tick: this.state.tick,
+        time: this.state.time,
+        category: 'movement',
+        type: 'sample',
+        actorId: actor.id,
+        team: actor.team,
+        x: actor.position.x,
+        y: actor.position.y,
+        z: actor.position.z,
+        // Horizontal speed, which is what distinguishes a route from a camping spot.
+        value: Math.hypot(actor.velocity.x, actor.velocity.z),
+      });
+    }
   }
 
   /** Turns on rewind-based hit validation. Called by NetServer; never by a client. */
@@ -351,6 +395,8 @@ export class MatchDirector {
       for (const bot of this.bots) bot.step(dt, this.mode.freeForAll);
     }
 
+    this.sampleMovementTelemetry();
+
     // 2. Movement and weapons for every actor, in stable id order for determinism.
     for (const actor of this.orderedActors()) {
       // A starved actor holds position rather than replaying stale input. Weapons, regeneration
@@ -502,6 +548,58 @@ export class MatchDirector {
     // Keep future locally-created ids clear of server-assigned ones.
     this.nextActorId = Math.max(this.nextActorId, id + 1);
     return actor;
+  }
+
+  /**
+   * Re-keys the local player onto the actor id the server assigned it.
+   *
+   * A networked client builds its world in two stages: it creates a local player so the match is
+   * playable while connecting, then the server hands back the id that player will actually have.
+   * Until those two identities are merged the client is holding *two* notions of "me" — the local
+   * one that the camera, HUD and input all follow, and the server one that snapshots are addressed
+   * to — and nothing reconciles them.
+   *
+   * Left unmerged that is not a cosmetic problem, it is fatal, in two different ways depending on
+   * what the server's id counter happens to be:
+   *
+   *   - if no actor exists at the local id, the snapshot reaper deletes the local player as a
+   *     departed peer, and the client is left driving an actor that is no longer in the world;
+   *   - if an actor *does* exist at that id — a bot, on any server with bots — every snapshot
+   *     overwrites the local player with that bot's state, and the camera rides the bot.
+   *
+   * Both were live. Neither had been seen, because the only multi-client testing was a harness whose
+   * locally-allocated ids coincidentally matched the server's on a freshly started server, and
+   * stopped matching the moment the server's counter advanced past them. That coincidence is what
+   * three sprints of "the server degrades after a disconnect" and "the client limit is four" were
+   * actually measuring.
+   *
+   * Re-keying rather than recreating keeps the physics body, weapon state and score the local
+   * simulation has already accumulated.
+   */
+  adoptLocalActorId(serverId: number): void {
+    const currentId = this.state.localActorId;
+    if (serverId < 0 || serverId === currentId) return;
+
+    const actor = this.state.actors.get(currentId);
+    if (!actor) {
+      // Nothing to re-key; just point at the id the server gave us so the snapshot path can
+      // materialise it normally.
+      this.state.localActorId = serverId;
+      this.nextActorId = Math.max(this.nextActorId, serverId + 1);
+      return;
+    }
+
+    // An id collision means a replicated actor already occupies our new identity. It is a stale
+    // mirror of ourselves — the server only ever assigns this id to one actor — so it goes.
+    const occupant = this.state.actors.get(serverId);
+    if (occupant && occupant !== actor) this.removeActor(serverId);
+
+    this.state.actors.delete(currentId);
+    actor.id = serverId;
+    this.physics.setCharacterActorId(actor.bodyHandle, serverId);
+    this.state.actors.set(serverId, actor);
+    this.state.localActorId = serverId;
+    this.nextActorId = Math.max(this.nextActorId, serverId + 1);
   }
 
   /** Removes an actor and releases its physics body. Used when a client disconnects. */

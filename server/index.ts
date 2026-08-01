@@ -149,8 +149,17 @@ async function main(): Promise<void> {
   });
 
   // Periodic health line, so an operator can see the server is alive and what it costs.
+  let lastCpu = process.cpuUsage();
+  let lastCpuAt = Date.now();
   setInterval(() => {
     const memory = process.memoryUsage();
+    // CPU as a share of one core over the interval, which is the number that decides how many
+    // matches a host can run. Sampled as a delta rather than cumulatively, so it reflects load now.
+    const cpu = process.cpuUsage(lastCpu);
+    const elapsedMs = Date.now() - lastCpuAt;
+    lastCpu = process.cpuUsage();
+    lastCpuAt = Date.now();
+    const cpuPercent = Math.round(((cpu.user + cpu.system) / 1000 / elapsedMs) * 1000) / 10;
     console.log(
       `[photon] clients=${server.clientCount} ` +
         `phase=${server.matchFlow.phase} ` +
@@ -158,6 +167,7 @@ async function main(): Promise<void> {
         `rx=${(server.bandwidth.receivedBytesPerSecond / 1024).toFixed(1)}KB/s ` +
         `snapshot=${server.bandwidth.snapshotBytes}B ` +
         `heap=${(memory.heapUsed / 1024 / 1024).toFixed(0)}MB ` +
+        `cpu=${cpuPercent}% ` +
         // Input starvation is the diagnostic for prediction drift: a starved tick means the server
         // ran ahead of a client's input stream and held that actor rather than guessing.
         `starved=${server

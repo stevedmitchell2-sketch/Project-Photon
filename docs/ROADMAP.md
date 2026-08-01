@@ -8,10 +8,12 @@ scope rationale and [ARCHITECTURE.md](./ARCHITECTURE.md) for the invariants each
 | **M1 — Playable Core** | Engine tick, physics, movement, weapon, combat, Arena 01, bots, HUD, audio, post-processing, settings | ✅ **Complete, verified against the running build** |
 | **Phase 2 — Vertical Slice** | Arena visibility fix, interactive props, trigger volumes, staircases, dark room, per-surface audio, ricochets, bot hearing, objective HUD, notifications | ✅ **Complete, verified against the running build** |
 | M2 — Modes & Feel | All 7 competitive modes, round flow | ✅ **Modes and lifecycle complete** (killcam outstanding) |
-| **Phase 3 — Multiplayer Foundation** | Protocol, delta snapshots, prediction, reconciliation, interpolation, lag comp, dedicated server, validation, team balance, stats/XP | 🟨 **Server half complete and running; `NetClient` outstanding** |
+| **Phase 3 — Multiplayer Foundation** | Protocol, delta snapshots, prediction, reconciliation, interpolation, lag comp, dedicated server, validation, team balance, stats/XP | ✅ **Complete and validated** — 16 clients, 0–250 ms sweep, lag compensation measured working |
 | M3 — Arenas 02–04 | Cyber Factory, Space Station, Neon Temple; moving geometry; low-gravity volumes | ⬜ Not started |
 | M4 — Art & Audio | Mixamo rigs, motion matching, weapon animation set, VO announcer, soundtrack, texture streaming | ⬜ Not started |
-| M5 — Netcode | Client half, multiplayer UI, spectator, replay, voice | 🟨 In progress — see Phase 3 |
+| M5 — Netcode | Client half, multiplayer UI, spectator, replay, voice | 🟨 Client half done and validated; UI, spectator, replay and voice outstanding |
+| **Phase 7 — Alpha Stabilisation** | Disconnect bug, latency validation, process-per-client scaling, avatar instancing, telemetry | ✅ **Complete** — see CHANGELOG 0.13.0 |
+| **Phase 8 — Vertical Slice Production** | Time-to-death tuning, bloom, crosshair, arena presentation, environment FX, audio, arena content | ⬜ **Next** — the transition out of infrastructure |
 | M6 — Tools & Ship | Map/spawn/lighting/bot-path editors, weapon tuning, replays, telemetry, CI perf budgets | ⬜ Not started |
 
 ---

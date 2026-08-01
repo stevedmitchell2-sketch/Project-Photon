@@ -61,6 +61,20 @@ export interface NetClientStats {
   lookupMisses: number;
   /** Snapshots where prediction was actually compared against the server. */
   comparisons: number;
+  /** Mean prediction error across every comparison, in metres. */
+  meanErrorMetres: number;
+  /** Largest single prediction error seen this session, in metres. */
+  maxErrorMetres: number;
+  /** Cumulative corrections, as opposed to the per-second rate. */
+  totalCorrections: number;
+  /**
+   * Ticks between the input the client is simulating and the newest one the server has consumed.
+   *
+   * This is the honest measure of responsiveness under latency: it is how far into the past the
+   * server's idea of this player is, and therefore how much work reconciliation has to redo when
+   * prediction misses.
+   */
+  acknowledgedLagTicks: number;
 }
 
 export class NetClient {
@@ -111,6 +125,10 @@ export class NetClient {
     snapshotDelayMs: 0,
     lookupMisses: 0,
     comparisons: 0,
+    meanErrorMetres: 0,
+    maxErrorMetres: 0,
+    totalCorrections: 0,
+    acknowledgedLagTicks: 0,
   };
 
   onKicked: ((reason: string) => void) | null = null;
@@ -354,6 +372,12 @@ export class NetClient {
     this.serverTick = reader.varint();
     reader.string(); // arena id — already loaded locally
     reader.string(); // mode id
+
+    // The server's id for this player is the only one that means anything from here on. Adopt it
+    // before any snapshot arrives, or the local player and the replicated player are two different
+    // actors for the rest of the session — see MatchDirector.adoptLocalActorId.
+    this.director.adoptLocalActorId(this.localActorId);
+
     this.clientTick = this.serverTick;
     this.stats.connected = true;
     this.onConnected?.(this.localActorId);
@@ -407,6 +431,7 @@ export class NetClient {
         this.director.ensureReplicatedActor(id, actorSnapshot.team);
 
       if (id === this.localActorId) {
+        const before = this.reconciler.stats.totalCorrections;
         this.reconciler.reconcile(
           actor,
           actorSnapshot,
@@ -415,6 +440,24 @@ export class NetClient {
           this.physics,
           this.events,
         );
+        if (this.reconciler.stats.totalCorrections > before) {
+          // Recorded where it happened, not just how often. A correction clustered against one
+          // piece of geometry is a different problem from corrections spread over open floor, and
+          // the count alone cannot tell those apart.
+          this.director.telemetry.record({
+            tick: this.director.state.tick,
+            time: this.director.state.time,
+            category: 'network',
+            type: 'correction',
+            actorId: id,
+            team: actor.team,
+            x: actor.position.x,
+            y: actor.position.y,
+            z: actor.position.z,
+            value: this.reconciler.stats.lastErrorMetres,
+            target: this.reconciler.stats.lastReplayTicks,
+          });
+        }
       } else {
         // Remote actors take the server's word entirely, including look angles.
         applyActorSnapshot(actor, actorSnapshot, true);
@@ -428,8 +471,12 @@ export class NetClient {
 
     // Anyone the server no longer reports has left. Removing them here is what stops a
     // disconnected player from being left standing in the arena forever.
+    //
+    // Both spellings of "me" are exempt. `adoptLocalActorId` normally makes them the same number,
+    // but the guard is cheap and the failure it prevents — the client reaping its own player and
+    // then simulating an actor that is no longer in the world — is silent and total.
     for (const id of [...this.director.state.actors.keys()]) {
-      if (id === this.localActorId) continue;
+      if (id === this.localActorId || id === this.director.state.localActorId) continue;
       if (!snapshot.actors.has(id)) this.director.removeActor(id);
     }
   }
@@ -472,6 +519,14 @@ export class NetClient {
     this.stats.lastCorrectionMetres = this.reconciler.stats.lastErrorMetres;
     this.stats.lookupMisses = this.reconciler.stats.lookupMisses;
     this.stats.comparisons = this.reconciler.stats.comparisons;
+    this.stats.meanErrorMetres =
+      this.reconciler.stats.comparisons > 0
+        ? this.reconciler.stats.errorSumMetres / this.reconciler.stats.comparisons
+        : 0;
+    this.stats.maxErrorMetres = this.reconciler.stats.maxErrorMetres;
+    this.stats.totalCorrections = this.reconciler.stats.totalCorrections;
+    this.stats.acknowledgedLagTicks =
+      this.lastAcknowledgedInput >= 0 ? Math.max(0, this.clientTick - this.lastAcknowledgedInput) : 0;
     this.stats.interpolationDelayMs = Math.round(this.interpolator.delayMs);
     this.stats.snapshotDelayMs = Math.round(now() - this.lastSnapshotAtMs);
     this.stats.quality = {
@@ -482,7 +537,6 @@ export class NetClient {
       predictedTicksAhead: Math.max(0, this.clientTick - this.serverTick),
       rating: this.stats.connected ? rateConnection(rtt, jitter, loss) : 'disconnected',
     };
-    void this.lastAcknowledgedInput;
     void TICK_DT;
   }
 

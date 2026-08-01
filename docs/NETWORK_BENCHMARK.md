@@ -1,182 +1,212 @@
 # Network Benchmark
 
-All figures measured against a live dedicated server. Where a number is a projection rather than an
-observation it says so explicitly.
+Measurements, not estimates. Every table here was produced by a script in `scripts/`, and the
+command that produced it is named above it so it can be re-run.
 
-**Method:** `npm run server -- --port 8110 --bots 0`, then
-`npm run nettest -- --port 8110 --clients N --seconds 6`.
-
----
-
-## Client-count scaling
-
-| Clients | Server tx | Server rx | Snapshot size | Client down | Client up | Corrections/s | Peer divergence | Result |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2 | 1.6 KB/s | 7.0 KB/s | 39 B | 0.8 KB/s | 3.2 KB/s | 3–22 | 0.118 m | **PASS** |
-| 3 | — | — | — | 1.1 KB/s | 2.6 KB/s | 3–4 | 0.001–0.025 m | **PASS** |
-| 4 | 12.3 KB/s | **0.0 KB/s** | 151 B | 0 | 0 | — | — | **FAIL** |
-| 8 | 48.4 KB/s | **0.0 KB/s** | 283 B | 0 | 0 | — | — | **FAIL** |
-| 16 | not run | | | | | | | |
-
-### The 4+ client failure
-
-The server is **healthy** in these runs. It accepts every connection, reports the correct client
-count, and transmits at a rate that scales sensibly with load (12.3 KB/s at four clients, 48.4 KB/s
-at eight, with snapshots growing 39 B → 151 B → 283 B exactly as delta compression predicts).
-
-What fails is the client side: `rx = 0.0 KB/s` means **no client sent a single packet**, and each
-reported zero snapshots received *and* zero dropped — so no message reached their decoder at all.
-
-**Leading hypothesis: this is a harness limitation, not a server defect.** `scripts/netTest.ts`
-co-locates every client in one Node process, and each client is a *complete* game client — its own
-`PhysicsWorld`, its own 2271-node navigation bake, and its own `MatchDirector` stepping at 64 Hz.
-Eight of those in one event loop plausibly starves socket I/O, which would produce exactly this
-signature: the server sending happily into sockets nobody is draining.
-
-This is unresolved and must not be reported as a passing 8v8 result.
-
-**To settle it:** run each client in its own process (`--clients 1` × N, spawned separately) and
-re-measure. If clients then receive normally, the harness is at fault and needs restructuring. If
-they still do not, the server's per-client send path has a real bug above three connections.
-
-### Snapshot size scaling — the one solid server-side result
-
-| Clients | Snapshot | Bytes/client/s @ 20 Hz | Projected per-client kbit/s |
-| --- | --- | --- | --- |
-| 2 | 39 B | 780 | 6.2 |
-| 4 | 151 B | 3020 | 24 |
-| 8 | 283 B | 5660 | 45 |
-
-Growth is close to linear in actor count, which is what delta compression should produce. A 16-player
-server extrapolates to roughly 550 B per snapshot and ~88 kbit/s per client — comfortably inside any
-broadband connection, but **extrapolated, not measured**.
-
-## Prediction accuracy
-
-Measured at 2 and 3 clients (see [NETWORK_ARCHITECTURE.md](./NETWORK_ARCHITECTURE.md) for the full
-investigation).
-
-| Scenario | Corrections/s | Typical error |
-| --- | --- | --- |
-| Before Phase 5 fixes | 20–22 | 0.05–0.37 m |
-| Solo client, no peers | 4 | 0.098 m |
-| Multi-client, open space | 3 | 0.054 m |
-| Multi-client, players in contact (before Phase 7) | 22 | 0.23 m |
-
-Phase 7 removed actor-vs-actor collision, which was the last known source of contact-case
-divergence. The 2-client run above still shows one client at 22/s, so **this is not yet confirmed
-resolved** — it needs a clean re-measurement once the harness issue is settled.
-
-## Render profile
-
-Measured in-game, standing in the centre lane of Arena 01 with bots fighting.
-
-| Metric | Before Phase 7 | After Phase 7 |
-| --- | --- | --- |
-| Draw calls | 167 | **110** |
-| Triangles | 14,081 | 12,603 |
-| Active point lights | 20 | **17** |
-| Shader programs | 28 | 35 |
-| Frame time (median) | 16.8 ms | 16.7 ms |
-| Frame time (p95) | — | 17.3 ms |
-| Simulation | 0.6 ms/tick | 0.7 ms/tick |
-| JS heap | 37 MB | 43 MB |
-
-### The 120 FPS target is currently unmeasurable
-
-Frame time sits at 16.7 ms — **exactly 1/60 s**. The display is vsync-capped at 60 Hz, so the
-project's 120 FPS target cannot be observed in this environment at all, and "60 FPS" here means
-"hitting the cap", not "at the limit".
-
-Headroom must be measured another way before any optimisation claim can be made: disable vsync, or
-render to an offscreen target in a loop and time it. Until then, the honest statement is that the
-frame is comfortably inside a 16.7 ms budget and its true cost is unknown.
-
-### Bottlenecks identified
-
-1. **Dynamic light count.** 20 live point lights against a configured cap of 8 — impact flashes,
-   prop beacons and the muzzle light were all outside the budget. Every lit surface shader evaluates
-   every light, so this is charged against the whole frame. Reduced to 17; the arena's own 12
-   fixtures are now the floor and should be the next target.
-2. **Draw calls from individual prop and avatar meshes.** 137 plain meshes versus 21 instanced. Each
-   bot is ~12 separate meshes and each prop 2–8. Batching avatars and props the way the arena
-   geometry is already batched is the obvious win.
-3. **Not geometry-bound.** 12.6k triangles is trivial. Any optimisation effort spent on mesh
-   complexity would be wasted.
-
-## Outstanding
-
-- Resolve the 4+ client harness/server question — **blocks every figure above 3 clients**.
-- Re-measure prediction corrections after the actor-collision change.
-- Establish a vsync-independent frame-time measurement.
-- 16-client run has never been attempted.
+Working philosophy: **Observe → Measure → Fix → Play Again.**
 
 ---
 
-# Sprint 6 — Validation results (2026-07-31)
+## Harnesses
 
-Two long-standing hypotheses were tested and **both disproven**. Method: `npm run nettest` with the
-new `--scenario` flag against a dedicated server.
-
-## Client scaling — the limit was never real
-
-| Clients | Server state | Snapshots each | Dropped | Peers visible | Result |
-| --- | --- | --- | --- | --- | --- |
-| 3 | fresh | 128–133 | 0 | all | PASS |
-| 4 | fresh | 129–135 | 0 | all | PASS |
-| **8** | **fresh** | **179–192** | **0** | **all 7/7** | **PASS** |
-| 4 | reused | 0 | — | — | FAIL |
-| 8 | reused | 0 | — | — | FAIL |
-
-**Conclusion: maximum stable client count is at least 8, and the failure was never about client
-count.** Every failing run in three sprints was a *second* run against a server that had already
-served and lost a previous batch of clients. Every first run passes.
-
-The real defect is **stale server state after a client generation disconnects**, now recorded in
-TECH_DEBT.md as the highest-priority correctness item. 16 clients remain untested.
-
-## Geometry hypothesis — disproven
-
-Sprint 5 hypothesised that level-geometry contact drove the residual correction rate, since the
-harness gave each client a different movement pattern from a different spawn.
-
-Tested with `--scenario open`: **identical inputs** for every client, driving straight out of spawn
-across open floor.
-
-| Client | Travelled | Comparisons | Lookup misses | Corrections/s | Error |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 7.9 m | 176 | 1 | **0** | 0.000 m |
-| 2 | 8.2 m | 177 | 1 | 22 | 0.724 m |
-| 3 | 8.2 m | 177 | 1 | 22 | 0.724 m |
-
-Identical inputs, identical environment, near-identical distance travelled, identical comparison
-counts — and still bimodal. **Geometry is not the cause.**
-
-The lookup-miss instrumentation added this sprint also rules out a second candidate: the perfect
-client is genuinely comparing (176 comparisons, 1 miss), not silently skipping evaluation.
-
-**What remains:** the *first-connecting* client corrects zero times; every other client corrects
-~22/s. The harness steps all clients back-to-back within one event-loop turn, so only the first
-sends in a favourable phase relative to the server tick. That is the next hypothesis, and it is
-about the harness rather than the engine.
-
-## Input starvation — fixed and measured
-
-Sprint 5's fix, re-measured:
-
-| Metric | Before | After |
+| Script | Command | What it answers |
 | --- | --- | --- |
-| Starved ticks (3 clients) | 19.7 / 12.3 / 3.4% | 6.6 / 4.1 / 1.4% |
-| Best-case corrections/s | 22 | 0–2 |
-| Best-case error | 0.37 m | 0.000–0.054 m |
+| `netTest.ts` | `npm run nettest -- --port 8090 --clients 3` | End-to-end smoke test over real WebSockets against a separately launched server. |
+| `latencySweep.ts` | `npm run latency-sweep -- --seconds 20` | Prediction, hit registration, responsiveness and bandwidth across a latency range, over `LocalTransport` with injected delay. |
+| `predictionAlign.ts` | `npm run predict-align -- --latency 150 --peers 2 --index 1` | Whether reconciliation compares a prediction against the server state for the *same* tick. |
+| `processScale.ts` | `npm run scale -- --clients 16 --seconds 15` | Client count, CPU, memory and bandwidth with every client in its own process. |
+| `predictionAB.ts` | `npm run predict-ab` | Whether the replay path is bit-identical to the live path. |
 
-## Not measured this sprint
+`LocalTransport` is used for the sweep deliberately: it implements the same `Transport` interface as
+the WebSocket path with `simulatedLatencyMs` built in, so the identical session code runs over a
+controlled link. Everything above the wire is real — real `NetServer`, real `MatchDirector`, real
+serialization, delta compression, prediction and reconciliation.
 
-Stated plainly rather than estimated:
+---
 
-- **Latency sweep (20–250 ms).** Not run. Lag compensation remains validated only at ~1 ms RTT,
-  where rewind is a no-op.
-- **16-client run.** Not attempted.
-- **CPU / GPU utilisation under multi-client load.** Not instrumented.
-- **Rendering optimisation.** No batching work was done this sprint, so the 110 draw calls / 17
-  lights figures from Sprint 4 stand unchanged.
+## Latency sweep
+
+`npm run latency-sweep -- --seconds 20`
+
+**Scenario.** A duel, because it is the only arrangement in which lag compensation is observable.
+The TARGET strafes continuously; the SHOOTER aims at the position it *renders* — the interpolated
+sample a player would actually see — and fires. Prediction figures are read from the target, because
+the target is the one that moves: a stationary actor predicts itself perfectly at any latency, and
+reporting its error would show a flat 1 mm and say nothing.
+
+### Lag compensation ON
+
+| RTT set | RTT seen | Mean err | Max err | Corr/s | Shots | Hits | Hit % | Ack lag | Down | Up | Srv Hz |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 ms | 1 ms | 174 mm | 283 mm | 18.8 | 47 | 12 | 25.5% | 46 ms | 1.1 KB/s | 2.7 KB/s | 64.0 |
+| 20 ms | 35 ms | 356 mm | 579 mm | 20.1 | 47 | 11 | 23.4% | 88 ms | 1.1 KB/s | 4.9 KB/s | 64.0 |
+| 40 ms | 56 ms | 387 mm | 886 mm | 20.3 | 47 | 10 | 21.3% | 108 ms | 1.1 KB/s | 6.2 KB/s | 64.0 |
+| 60 ms | 75 ms | 556 mm | 897 mm | 20.3 | 47 | 8 | 17.0% | 135 ms | 1.1 KB/s | 7.2 KB/s | 64.0 |
+| 80 ms | 93 ms | 586 mm | 1212 mm | 20.3 | 47 | 8 | 17.0% | 155 ms | 1.1 KB/s | 8.5 KB/s | 64.0 |
+| 100 ms | 113 ms | 745 mm | 1222 mm | 20.7 | 47 | 9 | 19.1% | 174 ms | 1.1 KB/s | 9.4 KB/s | 64.0 |
+| 150 ms | 166 ms | 941 mm | 1555 mm | 21.1 | 47 | 5 | 10.6% | 217 ms | 1.1 KB/s | 11.8 KB/s | 64.0 |
+| 200 ms | 211 ms | 1128 mm | 1885 mm | 21.1 | 47 | 6 | 12.8% | 279 ms | 1.2 KB/s | 13.2 KB/s | 64.0 |
+| 250 ms | 264 ms | 1371 mm | 2211 mm | 21.0 | 47 | 4 | 8.5% | 331 ms | 1.1 KB/s | 13.3 KB/s | 64.0 |
+
+Snapshot drops: **0 at every latency.** Input drops: **0.** Starvation: **0.8–2.1%.**
+"RTT seen" is the client's own ping measurement; it reads ~13 ms high because it includes a server
+tick of scheduling on top of the injected link delay.
+
+### Lag compensation OFF — the control
+
+`npm run latency-sweep -- --latencies 0,100,250 --seconds 15 --lagcomp off`
+
+| RTT | Hit % (comp ON) | Hit % (comp OFF) |
+| --- | --- | --- |
+| 0 ms | 22.2% | 19.4% |
+| 100 ms | 19.1% | 8.3% |
+| 250 ms | 8.5–11.1% | **2.8%** |
+
+**Lag compensation works, and is worth roughly 2–4× hit rate at latency.** At 250 ms it is the
+difference between a weapon that connects sometimes and one that does not connect at all.
+
+This is the first sprint in which that claim is backed by a number, and the reason is that it was
+not actually working until this sprint — see *Server-side RTT was never measured* below.
+
+### Conclusions
+
+1. **Tick stability is unaffected by latency.** The server holds 64.0 Hz from 0 to 250 ms.
+2. **Downstream bandwidth is flat** at ~1.1 KB/s per client. Snapshot cost does not depend on the link.
+3. **Upstream grows ~5×** across the range, 2.7 → 13.3 KB/s. Each input packet carries the window of
+   unacknowledged frames, and that window is proportional to RTT. The protocol working as designed —
+   loss tolerance bought with upstream — but it is the one cost that scales with latency, and it
+   should be capped before public play.
+4. **Responsiveness degrades linearly**, 46 ms of acknowledgement lag at 0 RTT to 331 ms at 250 ms.
+   The ~46 ms floor is the jitter buffer (2 ticks) plus the 20 Hz snapshot interval.
+5. **Hit registration degrades gracefully to ~100 ms, then falls off.** Playable to 150 ms;
+   noticeably compromised at 200–250 ms.
+6. **The interpolation buffer never widened** from its 75 ms floor at any latency. The adaptive
+   widening logic exists, but injected latency is jitter-free so nothing triggered it. Still untested.
+
+### Server-side RTT was never measured
+
+The rewind amount is `rtt/2 + interpolationDelay`, and `rtt` came from `ServerClient.rttMs`, which
+was computed in the `Ping` handler like this: on first sight of a sequence number, store the time;
+on second sight, measure. **A client sends each sequence exactly once**, so the second sight never
+arrived and `rttMs` stayed at 0 for the lifetime of every session. Lag compensation rewound by the
+fixed 75 ms interpolation delay and nothing else.
+
+Replaced with a measurement that needs no protocol change: every input packet already echoes the
+newest snapshot tick the client has applied, and the server knows when it sent that snapshot. The
+gap is a genuine server → client → server round trip. It is taken once per snapshot, because inputs
+arrive at 64 Hz and snapshots at 20 Hz — the second and third echoes of the same tick would inflate
+the estimate with the time they spent waiting to be sent.
+
+---
+
+## Prediction: what the residual corrections actually are
+
+Four sprints have carried a "residual ~22/s corrections" item. This sprint measured it properly and
+**eliminated three hypotheses**, two of which were recorded as leading candidates.
+
+### They are real, and they are not the harness
+
+`npm run scale -- --clients 4 --seconds 12` — every client in its own OS process, own event loop:
+
+| Client | Corrections/s | Mean error |
+| --- | --- | --- |
+| PROC1 | 2.2 | 24 mm |
+| PROC2 | 19.9 | 480 mm |
+| PROC3 | 7.3 | 81 mm |
+| PROC4 | 19.9 | 581 mm |
+
+Still bimodal with no co-location whatsoever. **The "clients share one event loop" hypothesis is
+disproven.** Confirmed independently: adding 0, 1 or 3 idle peers to a single-process session left
+the measured client's error flat at 28–29 mm.
+
+### They are not dropped inputs
+
+`MAX_INPUT_BACKLOG` discards the oldest queued input when a client runs ahead, and every discard is
+a movement step the server never simulates — a permanent disagreement until the next correction. A
+counter was added (`inputHealth().dropped`). Measured across the whole latency sweep: **0 dropped
+inputs at every latency.** Disproven.
+
+### Reconciliation is aligned — for the quiet client
+
+`predictionAlign.ts` measures prediction error against the stored prediction at
+`acknowledgedTick + n` across a range of `n`. A correct implementation bottoms out at `n = 0`.
+
+Single client, 150 ms RTT, 47 m travelled:
+
+```
+  offset  mean error
+      -1       60 mm
+       0       28 mm   <-- minimum
+       1       63 mm
+       5      265 mm
+      10      521 mm
+```
+
+A clean V centred on zero. **Reconciliation compares like with like, and the true prediction error
+of a sprinting client at 150 ms RTT is 28 mm** — inside the 50 mm correction tolerance.
+
+### The open question, stated precisely
+
+Three clients, identical input patterns, 150 ms RTT, one session:
+
+| Client | Corrections | Client-measured path | **Server-measured path** | Error at offset 0 | Best offset |
+| --- | --- | --- | --- | --- | --- |
+| CLIENT1 | 45 | 46.9 m | **46.2 m** | 24 mm | 0 |
+| CLIENT2 | 294 | 130.2 m | **46.2 m** | 1612 mm | 10 |
+| CLIENT3 | 216 | 53.4 m | **46.2 m** | — | — |
+
+The server says all three actors moved **identically**. The 84 m of extra client-side path on
+CLIENT2 is entirely correction snapping: a client that corrects constantly accumulates per-tick
+position deltas that were teleports, not travel. Any past measurement using client-side travelled
+distance as a proxy for movement was measuring corrections.
+
+The discriminating column is the last one. For the quiet client, error is minimised at offset 0. For
+the noisy ones it is minimised at **offset ~10**, close to their acknowledgement lag of 13 ticks.
+That is the signature of the server's reported `lastInputTick` lagging the state it actually
+simulated, for some clients and not others.
+
+**Now a specific, testable lead rather than a mystery.** First item in `NEXT_TASK.md`. Not a
+regression — present and unexplained since Sprint 4.
+
+---
+
+## Client scaling
+
+`npm run scale -- --clients N --seconds 15`, each client a separate OS process.
+
+| Clients | Completed | All peers visible | Snapshots dropped | Server RSS | Server CPU | Aggregate down | Aggregate up |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 | 4/4 | yes | 0 | 94 MB | — | 6.8 KB/s | 16.8 KB/s |
+| 8 | 8/8 | yes | 0 | 117 MB | — | 23.4 KB/s | 32.5 KB/s |
+| **16** | **16/16** | **yes** | **0** | **137 MB** | **22.2%** | **86.4 KB/s** | **64.7 KB/s** |
+
+Server input starvation at 16 clients: **0.2–0.4% per client.**
+Per-client cost, measured inside each client process: **~20% of one core, ~122 MB RSS.**
+
+### Conclusions
+
+1. **Maximum stable client count is at least 16** — the server's configured `maxClients` and the
+   design target.
+2. **The server is not the constraint.** At full roster it uses 22% of one core and 137 MB. The
+   harness costs 16× more CPU than the thing it is testing.
+3. **Bandwidth scales as expected.** Downstream per client rises 1.7 → 5.4 KB/s as actor count
+   grows, because every client currently receives every actor. Interest management is the lever if
+   player counts rise above 16; it is not needed at 16.
+4. **Thread utilisation:** the server is single-threaded and stays there. Nothing here argues for a
+   worker split.
+
+---
+
+## Three retracted scaling limits
+
+This document has now claimed three different maximum client counts. The history is the useful part:
+
+| Sprint | Claimed limit | Actual cause |
+| --- | --- | --- |
+| 4 | "does not scale past 4" | `NetClient.connect()` resolved on socket-open instead of on handshake acknowledgement. Clients were "connected" and transmitting nothing. |
+| 6 | "at least 8; failures beyond" | Every failing run was a *second* run against a reused server. Fresh servers always passed. |
+| 7 | **at least 16** | The Sprint 6 residue was the actor-identity bug: clients never adopted their server-assigned actor id, so any server whose id counter had advanced past 1 broke them. |
+
+Three consecutive sprints, three "the server has a limit" findings, three client-side or harness
+causes. The standing note in `NEXT_TASK.md` — *when a system looks broken, first check that the
+thing measuring it is honest* — has now been paid for three times.

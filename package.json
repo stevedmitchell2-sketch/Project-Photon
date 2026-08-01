@@ -20,7 +20,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"server/**/*.ts\" \"scripts/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"server/**/*.ts\" \"tests/**/*.ts\"",
     "test:coverage": "vitest run --coverage",
-    "validate": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "validate": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "latency-sweep": "tsx scripts/latencySweep.ts",
+    "predict-align": "tsx scripts/predictionAlign.ts",
+    "scale": "tsx scripts/processScale.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",

@@ -183,6 +183,20 @@ export class PhysicsWorld {
     this.queryDirty = true;
   }
 
+  /**
+   * Re-labels an existing body with a different actor id.
+   *
+   * The id lives in the body's user data and is what `actorIdForCollider` reports, so every raycast
+   * hit, damage attribution and lag-compensation rewind resolves through it. A client that adopts a
+   * server-assigned id must relabel here too, or its own capsule keeps answering to the id it had
+   * before the server ever spoke to it.
+   */
+  setCharacterActorId(bodyHandle: number, id: number): void {
+    const body = this.world.getRigidBody(bodyHandle);
+    if (!body) return;
+    body.userData = id;
+  }
+
   /** Resizes an actor's capsule in place — used by crouch and slide stance changes. */
   setCharacterHeight(bodyHandle: number, height: number, radius: number): void {
     const body = this.world.getRigidBody(bodyHandle);

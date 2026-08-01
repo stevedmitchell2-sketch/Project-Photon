@@ -5,6 +5,52 @@ attempted, what was learned, and what a future session should not repeat.
 
 ---
 
+
+## Session 13 — 2026-08-01 — Sprint 7: Closed Alpha Stabilisation
+
+**Brief:** resolve the disconnect/stale-state bug, complete latency validation 20-250 ms, finish the
+process-per-client harness, play the game, and begin the visual foundation. 60-70% engineering,
+30-40% presentation.
+
+**Outcome:** Part A complete in full. Part C complete. Part D complete. Part B substantially
+incomplete — two items of roughly forty. Part E complete.
+
+### What actually happened
+
+The sprint was supposed to close one known bug and then move to visuals. Reproducing the bug took
+twenty minutes and the root cause turned out to have nothing to do with the server; chasing its
+consequences surfaced three more production defects, each of which had been sitting behind a
+misdiagnosis. That consumed the engineering budget and most of the presentation budget with it.
+
+Four production bugs found and fixed:
+
+1. **Actor identity never adopted** — the disconnect/stale-state bug, and also the "4-client limit"
+   and the "8-client limit". Clients kept two notions of themselves and merged neither.
+2. **Server-side RTT never measured** — a ping handler waiting for a second sight of a sequence
+   number that clients only ever send once. Lag compensation had never worked.
+3. **Team balance passed `botsPerTeam` as `maxPerTeam`** — every player forced onto red on any
+   botless server, where friendly fire is off, so nobody could damage anybody.
+4. **`kick()` leaked actors** — every timeout left an abandoned player in the arena permanently.
+
+Three hypotheses about the residual prediction corrections were eliminated with measurements, two of
+them previously recorded as leading candidates.
+
+### The thing worth remembering
+
+The light-shaft work was done against a misdiagnosis. A screenshot showed large bright shapes
+dominating the frame centre; they were assumed to be the volumetric cones, which were fixed. Playing
+the game afterwards showed the dominant artefact is bloom off the emissive fixtures, and the cones
+were the faint grey wedges. The fix is correct and worth keeping — it addresses a real backlog item —
+but it was aimed by inference rather than by observation, which is exactly the failure mode the
+project's own working philosophy exists to prevent.
+
+**When something looks wrong on screen, play it before fixing it.**
+
+### The other thing worth remembering
+
+Client scaling has now been reported as 4, then 8, then 16. Every earlier number was a measurement
+fault. Three sprints, three "the server has a limit" findings, three client-side causes.
+
 ## Session 1 — 2026-07-31 — M1 Playable Core
 
 **Entered with:** an empty directory and a full production brief.

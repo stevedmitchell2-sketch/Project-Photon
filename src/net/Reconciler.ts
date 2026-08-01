@@ -63,6 +63,20 @@ export interface ReconcileStats {
   lookupMisses: number;
   /** Snapshots where a stored prediction was found and compared. */
   comparisons: number;
+  /**
+   * Prediction error summed over *every* comparison, not only the ones that crossed the tolerance.
+   *
+   * Correction frequency alone cannot distinguish a client that is predicting well from one whose
+   * errors all happen to sit just under the threshold. Accumulating the raw error gives the mean
+   * that the latency sweep actually reports.
+   */
+  errorSumMetres: number;
+  /** Largest single prediction error observed, in metres. */
+  maxErrorMetres: number;
+  /** Cumulative corrections applied, as opposed to the per-second rate. */
+  totalCorrections: number;
+  /** Replayed ticks summed over every correction, for the replay-cost read. */
+  totalReplayTicks: number;
 }
 
 export class Reconciler {
@@ -89,6 +103,24 @@ export class Reconciler {
    */
   readonly smoothing = { x: 0, y: 0, z: 0 };
 
+  /**
+   * Diagnostic: histogram of prediction error against *neighbouring* ticks.
+   *
+   * Reconciliation is only correct if the stored prediction for the acknowledged tick is the right
+   * thing to compare the server's snapshot against. If it is not — if the two are systematically
+   * offset by some number of ticks — then the residual error is a measurement artefact rather than
+   * a prediction failure, and no amount of tuning the simulation will remove it.
+   *
+   * This answers that directly: for each snapshot, it measures the error against the prediction at
+   * `ack + n` for a range of `n`, and reports which offset minimises it. A correct implementation
+   * bottoms out at n = 0. Off by default; enabled by `scripts/predictionAlign.ts`.
+   */
+  alignmentProbe: { sums: number[]; counts: number[]; span: number } | null = null;
+
+  enableAlignmentProbe(span = 24): void {
+    this.alignmentProbe = { sums: new Array(span * 2 + 1).fill(0), counts: new Array(span * 2 + 1).fill(0), span };
+  }
+
   readonly stats: ReconcileStats = {
     pendingInputs: 0,
     lastErrorMetres: 0,
@@ -97,6 +129,10 @@ export class Reconciler {
     smoothingOffset: { x: 0, y: 0, z: 0 },
     lookupMisses: 0,
     comparisons: 0,
+    errorSumMetres: 0,
+    maxErrorMetres: 0,
+    totalCorrections: 0,
+    totalReplayTicks: 0,
   };
 
   /** Records an input the client has applied locally and sent to the server. */
@@ -152,6 +188,18 @@ export class Reconciler {
     // prediction we cannot judge, so we trust our own simulation rather than correcting blindly.
     const predictedAtAck = this.predicted.get(acknowledgedTick);
 
+    if (this.alignmentProbe) {
+      const probe = this.alignmentProbe;
+      const authoritativeNow = { x: serverState.px, y: serverState.py, z: serverState.pz };
+      for (let n = -probe.span; n <= probe.span; n++) {
+        const candidate = this.predicted.get(acknowledgedTick + n);
+        if (!candidate) continue;
+        const i = n + probe.span;
+        probe.sums[i] += Math.sqrt(distSq3(candidate, authoritativeNow));
+        probe.counts[i]++;
+      }
+    }
+
     for (const tick of [...this.pending.keys()]) {
       if (tick <= acknowledgedTick) this.pending.delete(tick);
     }
@@ -170,6 +218,12 @@ export class Reconciler {
     const current = { x: actor.position.x, y: actor.position.y, z: actor.position.z };
     const authoritative = { x: serverState.px, y: serverState.py, z: serverState.pz };
     const errorSq = distSq3(predictedAtAck, authoritative);
+
+    // Sampled on every comparison, before the tolerance test, so the mean reflects how well
+    // prediction is actually tracking rather than only how often it failed loudly.
+    const sampledError = Math.sqrt(errorSq);
+    this.stats.errorSumMetres += sampledError;
+    if (sampledError > this.stats.maxErrorMetres) this.stats.maxErrorMetres = sampledError;
 
     if (errorSq <= POSITION_TOLERANCE * POSITION_TOLERANCE) {
       // Prediction agreed. Still adopt server-authored fields the client does not simulate.
@@ -211,9 +265,11 @@ export class Reconciler {
     }
     copyInputFrame(actor.input, savedInput);
 
-    const error = Math.sqrt(errorSq);
+    const error = sampledError;
     this.stats.lastErrorMetres = error;
     this.stats.lastReplayTicks = replayTicks.length;
+    this.stats.totalCorrections++;
+    this.stats.totalReplayTicks += replayTicks.length;
 
     const now = performance.now();
     this.correctionTimestamps.push(now);

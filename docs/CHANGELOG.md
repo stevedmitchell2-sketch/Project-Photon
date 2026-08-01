@@ -4,6 +4,105 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.13.0] - 2026-08-01 - Sprint 7: four production bugs, latency validated, 16 clients
+
+The sprint set out to close the last infrastructure blockers. It found four genuine production
+defects instead, three of which had been misdiagnosed as something else for multiple sprints.
+
+### The disconnect / stale-state bug was never in the server
+
+A networked client creates a local player before connecting, and the server then assigns the id that
+player will really have. Nothing merged those two identities. Depending on the server's id counter
+the client either had its own player reaped as a departed peer, or — on any server with bots — had
+it overwritten by a bot's state every snapshot, camera included.
+
+Invisible for three sprints because the only multi-client testing used a freshly started, botless
+server, where local ids coincidentally matched server ids.
+
+Fixed by `MatchDirector.adoptLocalActorId`; snapshot reaper hardened as defence in depth. Five
+regression tests, all against a server whose counter has already advanced.
+
+**Consequence:** three consecutive runs against one long-lived server now pass, where the second
+previously failed outright. Maximum stable client count is **at least 16** — the design target —
+where it was recorded as 4 and then 8.
+
+### Lag compensation was not working
+
+`ServerClient.rttMs` was measured by storing a ping sequence on first sight and measuring on the
+second. Clients send each sequence once, so the value stayed at 0 forever and rewind used only the
+fixed 75 ms interpolation delay.
+
+Measured cost: hit rate on a strafing target at 250 ms RTT was **2.8%**; with RTT working it is
+**8.5-11%**. Replaced with a server-side measurement that needs no protocol change.
+
+### Every player was forced onto red on any botless server
+
+`defaultBalanceConfig(teams, maxPerTeam)` was being passed `botsPerTeam`. With `--bots 0` the cap
+was zero and every client fell through to the default team. Friendly fire is off in team modes, so
+**nobody on the server could damage anybody** — on exactly the configuration used for every
+automated test.
+
+### Kicked clients leaked their actor
+
+`kick()` removed the client record but not its actor, so every timeout and rate-limit kick left an
+abandoned actor in the arena for the life of the server.
+
+### Latency validation, 0-250 ms
+
+Full sweep with a new duel harness: the target strafes, the shooter aims at what it *renders* and
+fires. Tick rate holds at 64.0 Hz throughout; 0 snapshot drops, 0 input drops. Responsiveness
+degrades linearly, 46 ms to 331 ms of acknowledgement lag. Upstream grows 5x with RTT; downstream is
+flat. Full tables in NETWORK_BENCHMARK.md.
+
+### Process-per-client scaling
+
+16 clients, each in its own OS process: 16/16 complete, all peers visible, 0 dropped snapshots,
+server at **22.2% of one core and 137 MB**. The harness costs 16x more CPU than the server it tests.
+
+### Residual corrections: three more hypotheses eliminated
+
+Co-location in one event loop — **disproven**. Server discarding queued inputs — **disproven**
+(0 drops at every latency). Reconciliation comparing across time — **disproven for the quiet
+client**, which minimises at offset 0 with 28 mm error.
+
+Narrowed to one precise observation: the server reports every client moving identically (46.2 m),
+but noisy clients minimise at reconciliation offset ~10, close to their acknowledgement lag. Also
+established that client-side travelled distance is not a movement measure — 84 m of one client's
+130 m "path" was correction snapping.
+
+### Avatars are instanced
+
+The rig is fifteen meshes per player: 75 draw calls at five bots, 240 at sixteen. Now drawn as
+`InstancedMesh` batches keyed by (geometry, material) — a constant ~18 regardless of roster, and 0
+when no enemies are visible. Measured 146 draw calls at 5 bots and **146 at 11**. Posing is
+unchanged; the rig interface an authored character will implement is untouched.
+
+### Light shafts fade by view angle
+
+A real shaft is scattered light — strong across the view, weak along it. A fixed-opacity cone did
+the opposite and read as solid geometry. Now weighted by view angle and faded within 6 m.
+
+Worth recording that this was **aimed at the wrong target**: playing the game afterwards showed the
+dominant artefact is bloom off the emissive fixtures, not the shafts. The fix is correct; the
+diagnosis it was made against was not.
+
+### Telemetry
+
+Movement sampling at 4 Hz into a new `occupancy` heatmap, network corrections recorded with position
+and error, frame timing sampled once a second with individual hitches over 50 ms recorded separately.
+
+### New tooling
+
+`npm run latency-sweep`, `npm run predict-align`, `npm run scale`, plus
+`scripts/lib/loopbackSession.ts` shared by the scripts and the integration tests.
+
+### Playtest
+
+Third session, first to be played rather than observed. Headline finding: **you die roughly ten
+seconds after every spawn**, reproduced on all three deployments. Not addressed this sprint.
+
+---
+
 ## [0.12.0] - 2026-07-31 - Sprint 6: two hypotheses disproven
 
 No new gameplay. This sprint replaced two long-standing assumptions with measurements, and both

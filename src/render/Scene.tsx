@@ -162,6 +162,12 @@ function CameraRig({ graphics, reduceShake }: { graphics: GraphicsSettings; redu
  * this light count it is visually equivalent from player eye height and costs a handful of
  * triangles instead of a full-screen march.
  */
+/** Scratch vectors for the shaft fade, hoisted so the per-frame path allocates nothing. */
+const cameraPosition = new THREE.Vector3();
+const shaftPosition = new THREE.Vector3();
+const toShaft = new THREE.Vector3();
+const viewDirection = new THREE.Vector3();
+
 function LightShafts() {
   const game = useGame();
   const shafts = useMemo(
@@ -170,15 +176,40 @@ function LightShafts() {
   );
   const groupRef = useRef<THREE.Group>(null);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
     const group = groupRef.current;
     if (!group) return;
-    // Subtle breathing keeps the shafts from reading as static geometry.
     const t = clock.elapsedTime;
+
+    // Fade by view angle.
+    //
+    // A real shaft is scattered light: you see it strongly when looking across it and barely at all
+    // when looking along it. A fixed-opacity cone does the opposite of what the eye expects, and at
+    // eye height it reads as a solid object sitting in the room — the single most intrusive element
+    // on screen in the Sprint 7 playtest, dominating the centre of the frame from most positions.
+    //
+    // Weighting opacity by how perpendicular the shaft is to the view direction costs one dot
+    // product per shaft and removes the artefact: shafts stay visible obliquely, where they read as
+    // atmosphere, and drop away when stared at, where they read as geometry.
     group.children.forEach((child, i) => {
       const mesh = child as THREE.Mesh;
       const material = mesh.material as THREE.MeshBasicMaterial;
-      material.opacity = 0.022 + 0.008 * Math.sin(t * 0.7 + i);
+
+      camera.getWorldPosition(cameraPosition);
+      mesh.getWorldPosition(shaftPosition);
+      toShaft.subVectors(shaftPosition, cameraPosition);
+      const distance = toShaft.length() || 1;
+      toShaft.divideScalar(distance);
+      camera.getWorldDirection(viewDirection);
+
+      // 0 when looking straight at the shaft, 1 when it is across the view.
+      const across = 1 - Math.abs(toShaft.dot(viewDirection));
+      // Also fade the nearest shafts, which are the ones that fill the frame.
+      const proximity = Math.min(1, distance / 6);
+
+      const breathing = 0.022 + 0.008 * Math.sin(t * 0.7 + i);
+      material.opacity = breathing * (0.25 + 0.75 * across) * proximity;
+      mesh.visible = material.opacity > 0.001;
     });
   });
 
