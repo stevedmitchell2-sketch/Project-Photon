@@ -23,7 +23,7 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
-| **Every fight is point-blank** | Median engagement range is 7.0 m at *every* difficulty and does not respond to `engageRange` (26–62 m across profiles). Bots close to contact before shooting, so the weapon design — falloff bands, spread, ADS, travel time — is never exercised. Highest-value gameplay item. |
+| **Bots close to 7 m before shooting** | Median engagement range is 7.0 m at *every* difficulty and does not respond to `engageRange` (26–62 m across profiles). Sprint 9 tuned the weapon around this rather than fighting it, which is not a permanent answer: falloff bands from 28 m, ADS and led projectiles are all unexercised, and the arena sight lines are wasted. Suspect the engage branch terminates on nav arrival rather than line of sight. |
 | **Objective-aware bots** | Five of seven modes are unplayable offline. Add a `capture-objective` branch between `engage` and `search`; `investigate` is the template. |
 | **Overtime / sudden death verification** | `MatchFlow` implements the phase; it has never been observed firing in a real match. |
 | **Round transitions for Elimination** | Round restart logic exists in the mode but no round-boundary respawn wave. |
@@ -36,7 +36,6 @@ start — vague aspirations belong in `ROADMAP.md`.
 | **Batch props** | Avatars are done — instanced in Sprint 7, draw calls no longer scale with player count. Arena props (2–8 meshes each) are the remaining unbatched geometry. Not geometry-bound — 12.6k triangles. |
 | **Per-pixel cost blocks 120 FPS** | GPU 12.0–12.5 ms against an 8.33 ms budget, CPU idle at 1.4–1.9 ms. Fragment-bound: lights per fragment (2.3 ms), full PBR on non-metallic architecture, transparent overdraw. Draw calls are not the constraint. |
 | **Dynamic-light budget is a flat cap** | `maxDynamicLights` caps arena fixtures only; impact flashes, prop beacons and the muzzle light sit outside it. Should be one budget culled by distance and screen influence. |
-| **No team colour in the environment** | Every strip and fixture is cyan regardless of which team holds a room. The objective banner is the only team-state signal on screen. |
 | **Vsync-independent frame timing** | 120 FPS target is unmeasurable while frame time is pinned at exactly 1/60 s. Until this exists, no optimisation claim can be verified. |
 | **Global dynamic-light budget** | `graphics.maxDynamicLights` caps arena fixtures only. Impact flashes, prop beacons and the muzzle light are outside it. Should be one budget. |
 | **Weapon idle orientation** | Barrel reads angled at rest; likely residual yaw in the idle sway. |
@@ -46,6 +45,8 @@ start — vague aspirations belong in `ROADMAP.md`.
 
 | Item | Notes |
 | --- | --- |
+| **The venue** | Team identity exists; the arena around it does not. Holographic displays, LED scoreboards showing live score, advertising panels, arena branding, animated wall panels, team introduction and victory sequences. Follow the Sprint 9 pattern: arena data declares intent, the renderer decides expression. |
+| **Environment FX** | Volumetric fog beyond `fogExp2`, dust, heat shimmer, steam vents, electrical arcs, conduit pulses. Budget these explicitly — transparent overdraw is the third-largest GPU cost and particles are exactly the wrong work for a fragment-bound frame. |
 | **Arenas 02–04** | Cyber Factory, Space Station, Neon Temple. The data format and builder support them; each needs authoring plus a lighting-probe pass. |
 | **Authored characters** | Avatars are primitive blockouts. The rig interface is designed so a Mixamo character swaps in without touching what drives it. |
 | **Voice-over** | Announcer is a synthesised stinger plus a subtitle. Real VO is the M4 audio pass. |

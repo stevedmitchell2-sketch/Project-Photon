@@ -594,4 +594,17 @@ export const ARENA_01_CLASSIC: ArenaDefinition = {
     { p: [0, 2.5, 0], s: [17, 5, 17], wetness: 0.62, decaySeconds: 1.9 },
     { p: [0, 2.5, 0], s: [60, 10, 60], wetness: 0.3, decaySeconds: 1.2 },
   ],
+  // Territory. Centred on each team's spawn cluster and sized so the colour reaches roughly to the
+  // first corner a player turns after leaving the spawn room — far enough to orient by, not so far
+  // that the two halves meet and the middle of the arena becomes muddy. The neutral band between
+  // them is deliberate: the centre of the map belongs to nobody until someone takes it.
+  teamZones: [
+    { team: 'red', p: [-25, 0, -25], radius: 15, label: 'RED SECTOR' },
+    { team: 'blue', p: [25, 0, 25], radius: 15, label: 'BLUE SECTOR' },
+  ],
+  // The central room reports who holds it. This is the one place in the arena where the lighting is
+  // a live readout of the match rather than set dressing.
+  reactiveZones: [
+    { objectiveId: 'central_hill', p: [0, 0, 0], radius: 11, neutralColor: 0x2de0ff },
+  ],
 };

@@ -3,7 +3,8 @@
 For a person or agent picking up Project Photon cold. Read this, then
 [NEXT_TASK.md](./NEXT_TASK.md), then start.
 
-Companions: [AI_HANDOFF.md](./AI_HANDOFF.md) covers conventions and the reasoning behind the
+Companions: [VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md) is the authority on anything that gets
+drawn; [AI_HANDOFF.md](./AI_HANDOFF.md) covers conventions and the reasoning behind the
 architecture; [`.ai/CHATGPT_BOOTSTRAP.md`](../.ai/CHATGPT_BOOTSTRAP.md) is the compressed version for
 a fresh model context. This file is the current state of play.
 
@@ -94,15 +95,15 @@ problem.
 
 ### Not solid
 
-1. **Every fight is point-blank.** Median engagement range is 7.0 m at every difficulty and does not
-   respond to `engageRange`. The weapon's falloff, spread, ADS and travel time are never exercised.
-2. **120 FPS is not achievable.** GPU 12.0–12.5 ms against an 8.33 ms budget, CPU idle at 1.4–1.9 ms.
-   Fragment-bound. Now measured rather than unknown.
-3. **The arena has no team identity.** The HUD carries the team accent; the environment does not.
-4. **Residual prediction corrections** on some clients. Narrowed to a specific, testable
+1. **Bots close to 7 m before shooting**, at every difficulty, unaffected by `engageRange`. Sprint 9
+   tuned the weapon to suit it; the cause is still open and wastes the whole ranged design surface.
+2. **120 FPS is not achievable.** GPU 10–13 ms against an 8.33 ms budget, CPU idle at 1.4–1.9 ms.
+   Fragment-bound. Measured rather than unknown.
+3. **The venue is a room.** Team identity exists; holographic displays, LED scoreboards, branding
+   and introduction sequences do not.
+4. **Environment FX unstarted** — fog beyond `fogExp2`, dust, shimmer, vents, arcs.
+5. **Residual prediction corrections** on some clients. Narrowed to a specific, testable
    observation; not a blocker.
-5. **Most of the visual identity is unstarted**: arena presentation (holograms, LED walls,
-   scoreboards), environment FX (fog, dust, vents, steam), and the whole audio pass.
 
 ### Not started
 
@@ -110,10 +111,12 @@ Arenas 02-04, authored characters, multiplayer UI, spectator, replay, voice, edi
 
 ## What to do next
 
-[NEXT_TASK.md](./NEXT_TASK.md) is ordered. The short version: **the arena needs to become a place.**
-Infrastructure is validated, spawning is fair, and the frame is now measurable. What is missing is
-identity — team colour in the world, arena presentation, environment effects, audio — plus one
-gameplay fix (fights happen at 7 m) and one rendering direction (per-pixel cost).
+[NEXT_TASK.md](./NEXT_TASK.md) is ordered. The short version: **the arena has a side; now it needs
+to be a venue.** Infrastructure is validated, spawning is fair, combat is tuned, team territory
+reads, and the frame is measurable. What is missing is the building around it — displays,
+scoreboards, branding, environment effects — plus the bot behaviour that pins every fight to 7 m.
+
+Read [VISUAL_STYLE_GUIDE.md](./VISUAL_STYLE_GUIDE.md) before drawing anything.
 
 ## Map of the codebase
 
@@ -125,6 +128,7 @@ src/
   physics/      PhysicsWorld (Rapier), collision layers
   maps/         Arena definitions, MapBuilder, spawn resolution
   render/       Three.js / R3F — may import from gameplay, never the reverse
+  render/TeamIdentity.tsx  Territory, spawn beacons, reactive objective lighting
   ui/           React HUD and menus
   engine/       GameLoop, EventBus, ObjectPool, Telemetry
 server/         Dedicated server entry point

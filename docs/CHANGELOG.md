@@ -4,6 +4,61 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.15.0] - 2026-08-01 - Sprint 9: the arena tells you what is happening
+
+The identity sprint. The arena now carries team colour and reports the state of the match, and the
+weapon is tuned for the fight the game actually has rather than the one it was designed for.
+
+### Combat tuned around 7 metres
+
+`spawn-audit` reports a median engagement range of 7.0 m at every difficulty and it does not respond
+to `engageRange` -- bots close to contact before shooting. Rather than fight that, the weapon is now
+tuned for it. The geometry that matters, against a 0.36 m capsule radius:
+
+- **Bolts were too slow.** At 132 m/s a bolt took 53 ms to cross 7 m, so hitting a strafing player
+  meant leading by **45 cm** -- more than a body half-width, at the range where a laser should feel
+  instant. Now 215 m/s: 33 ms, 27 cm of lead. Still a visible streak across the 60 m arena.
+- **The cell had no margin.** 160 effective health was five bolts out of a six-shot cell, so a
+  single miss forced a recharge mid-fight at a measured ~35% accuracy. Capacity is now eight.
+- `spreadPerShot` 0.42 -> 0.34 so a full eight-shot burst still ends inside a body width at 7 m.
+- **Damage 34 -> 28 pays for all of it.** The buffs helped the bots too, and measurement caught it
+  immediately: median life fell 14 s -> 10.6 s, undoing the Sprint 8 rebalance. With damage lowered,
+  time-to-kill is back to 3.44 s (Sprint 8: 3.48 s) and median life sits at ~12 s.
+
+### The arena has a side now
+
+New `teamZones` and `reactiveZones` arena data, and a `TeamIdentity` renderer:
+
+- **Territory rings** -- emissive floor strips in team colour around each spawn, clipped to the play
+  space. A first pass put a third of the red ring inside the perimeter wall, because a 15 m radius
+  from a corner spawn at (-25, -25) reaches x = -40 in a map that stops at -30.
+- **Spawn beacons** -- vertical light columns readable over cover from across the arena.
+- **Reactive objective lighting** -- the central room takes the colour of whoever holds it, eased
+  over ~300 ms so it does not flicker as players cross the boundary, and strobes while contested.
+  Contested strobes rather than blending two team colours into a meaningless purple.
+
+**Built from emissive geometry, not lights.** Sprint 8 measured the frame as fragment-bound, where
+`maxDynamicLights` 8 -> 0 was worth 2.3 ms. Expressing territory with eight coloured point lights
+would have cost more than the entire post-processing chain. Measured cost of the whole system,
+interleaved: **0.59 ms and 8 draw calls**, with exactly one real light on the objective.
+
+### The arena speaks
+
+- **Objective callouts** from the simulation, so they are deterministic, replicated and present in a
+  replay. Debounce is asymmetric: taking a room is decisive and called in 1.5 s, losing one is
+  usually a contested moment and waits 4 s. A first pass with a single 1.5 s window produced 17
+  callouts in 120 s, half of them "lost" immediately followed by "held".
+- **Match-end sting** -- rising major arpeggio for a win, falling minor for a loss. Pitch direction
+  carries the meaning so it survives a bad speaker and a muted music bus.
+
+### VISUAL_STYLE_GUIDE.md
+
+New. The rules that make new content look like Photon: palettes, material language, lighting
+philosophy, readability rules, laser standards, silhouette rules, and what Photon is not. Every rule
+is a conclusion from something measured or got wrong, with the measurement named.
+
+---
+
 ## [0.14.0] - 2026-08-01 - Sprint 8: the ten-second death, and what the frame actually costs
 
 Two long-standing beliefs measured and found wrong, and the instrument that had been missing since

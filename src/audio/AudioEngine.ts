@@ -492,6 +492,51 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Match result sting.
+   *
+   * A rising major arpeggio for a win, a falling minor one for a loss. Pitch direction carries the
+   * meaning rather than timbre, because it survives a bad speaker, a quiet mix and a player who has
+   * muted the music bus — and because rising-equals-good is close to universal.
+   *
+   * Longer and slower than any in-match cue on purpose: the match is over, nothing is competing for
+   * the player's attention, and every other sound in this game is under 200 ms.
+   */
+  playMatchEnd(won: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    const root = won ? 392 : 294; // G4 winning, D4 losing
+    const steps = won ? [0, 4, 7, 12] : [0, -3, -7, -12];
+
+    steps.forEach((semitones, i) => {
+      const t = ctx.currentTime + i * 0.16;
+      const frequency = root * Math.pow(2, semitones / 12);
+
+      const osc = ctx.createOscillator();
+      const sub = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      sub.type = 'sine';
+      osc.frequency.setValueAtTime(frequency, t);
+      sub.frequency.setValueAtTime(frequency / 2, t);
+
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + (i === steps.length - 1 ? 1.1 : 0.34));
+
+      osc.connect(gain);
+      sub.connect(gain);
+      gain.connect(this.voiceBus);
+      osc.start(t);
+      sub.start(t);
+      const stop = t + (i === steps.length - 1 ? 1.2 : 0.4);
+      osc.stop(stop);
+      sub.stop(stop);
+    });
+  }
+
   // --- Dynamic music --------------------------------------------------------
 
   /**

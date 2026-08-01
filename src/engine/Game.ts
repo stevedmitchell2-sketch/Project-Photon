@@ -592,6 +592,9 @@ export class Game {
     });
 
     this.events.on('match_ended', ({ winner }) => {
+      // Won if the local player's team took it; a draw reads as a loss, deliberately — a neutral
+      // third sting would be a third thing to learn for an outcome that is already disappointing.
+      this.audio.playMatchEnd(winner !== null && winner === this.localActor?.team);
       ui.setMatchResult({
         winner,
         scores: this.match.settings.teams.map((team) => ({

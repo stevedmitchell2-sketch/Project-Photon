@@ -7,6 +7,45 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 15 — 2026-08-01 — Sprint 9: The Identity Sprint
+
+**Brief:** combat feel at 7 m, team colour identity, arena presentation, environment FX, audio pass,
+rendering optimisation, player experience review, a visual style guide, documentation.
+
+**Outcome:** Parts A, B, F, H and I delivered. Part E delivered in part (objective callouts,
+match-end sting; the engine already had weapon, impact, footstep, ricochet and music coverage from
+earlier sprints). Parts C and D — arena presentation and environment FX — not delivered.
+
+### What happened
+
+The first sprint in four where the brief's premise survived contact with measurement. The brief said
+tune combat around 7 m; 7 m was real, and the tuning worked. That is what it looks like when the
+measurement infrastructure has caught up with the ambition.
+
+Combat: the geometry at 7 m said the bolt needed a 45 cm lead against a strafing player — larger
+than a body half-width — and that five bolts to kill from a six-shot cell left no margin at a
+measured 35% accuracy. Raised bolt speed, raised capacity, tightened sustained spread. The audit
+immediately caught that this had helped the bots too and undone the Sprint 8 rebalance, so damage
+came down to pay for it, and time-to-kill landed within 1% of where Sprint 8 had put it.
+
+Identity: the arena now carries team colour and reports who holds the middle. Built deliberately
+from emissive geometry rather than lights, because Sprint 8 measured the frame fragment-bound —
+eight coloured point lights would have cost more than the whole post-processing chain. Measured
+interleaved at 0.59 ms.
+
+### The thing worth remembering
+
+Two first passes were wrong in ways only looking caught:
+
+1. The territory ring put a third of itself inside the perimeter wall — a 15 m radius from a corner
+   spawn at (-25, -25) reaches x = -40 in a map that stops at -30. Clipped to bounds.
+2. The objective callout fired 17 times in 120 s, half of them "lost" immediately followed by
+   "held", because control flickers every time a player crosses the volume. Fixed with an asymmetric
+   debounce: taking a room is decisive, losing one usually is not.
+
+Neither would have shown up in a typecheck, a test, or a screenshot taken from the wrong place.
+
 ## Session 14 — 2026-08-01 — Sprint 8: Gameplay & Presentation
 
 **Brief:** spawn system 2.0 as priority one, then visual identity, laser presentation, HUD 2.0, team

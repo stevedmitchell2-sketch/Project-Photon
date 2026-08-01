@@ -13,6 +13,7 @@ import { ImpactFX } from './ImpactFX';
 import { PlayerAvatars } from './PlayerAvatars';
 import { ProjectileRenderer } from './ProjectileRenderer';
 import { RendererStats } from './RendererStats';
+import { TeamIdentity } from './TeamIdentity';
 import { ViewModel } from './ViewModel';
 
 interface Props {
@@ -90,6 +91,10 @@ export function Scene({ graphics, accessibility }: Props) {
       ))}
 
       <ArenaMesh arena={arena} shadows={graphics.shadows} />
+      <TeamIdentity
+        colorblind={accessibility.colorblindPalette}
+        maxLights={graphics.maxDynamicLights}
+      />
       <ArenaProps
         colorblind={accessibility.colorblindPalette}
         maxBeaconLights={graphics.preset === 'performance' ? 0 : 2}

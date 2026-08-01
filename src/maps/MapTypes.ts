@@ -132,6 +132,44 @@ export interface PropSpec {
   text?: string;
 }
 
+/**
+ * A region of the arena that belongs to a team.
+ *
+ * Territory is communicated by the building, not by the HUD. A player who has just spawned, or who
+ * has been chased through three rooms, should be able to tell whose half they are standing in
+ * without looking at anything but the walls — that is the whole purpose of these.
+ *
+ * Deliberately data rather than geometry: a zone declares *where a team's colour applies*, and the
+ * renderer decides how to express it (floor strips, trim, banners). That keeps the arena file
+ * describing intent rather than decoration, and lets the expression change without re-authoring
+ * every map.
+ */
+export interface TeamZone {
+  team: TeamId;
+  /** Centre of the territory, at floor level. */
+  p: [number, number, number];
+  /** Horizontal radius over which the team's colour applies. */
+  radius: number;
+  /** Shown on spawn-room banners. Defaults to the team name. */
+  label?: string;
+}
+
+/**
+ * A region whose lighting follows whoever controls an objective.
+ *
+ * The link between a trigger volume and the light that reacts to it. When a team holds the
+ * objective the zone takes their colour; when it is contested it pulses; when nobody holds it the
+ * zone sits at its neutral colour. This is the arena reporting the state of the match.
+ */
+export interface ReactiveZone {
+  /** Objective id in `objectives` whose control drives the colour. */
+  objectiveId: string;
+  p: [number, number, number];
+  radius: number;
+  /** Colour when no team holds the objective. */
+  neutralColor: number;
+}
+
 export interface ArenaDefinition {
   id: string;
   name: string;
@@ -148,6 +186,10 @@ export interface ArenaDefinition {
   spawns: SpawnPoint[];
   objectives: ObjectiveVolume[];
   reverbZones: ReverbZone[];
+  /** Team territory, for environmental colour identity. Optional: older arenas have none. */
+  teamZones?: TeamZone[];
+  /** Regions whose lighting follows objective control. */
+  reactiveZones?: ReactiveZone[];
   /** Vertical levels for the minimap floor selector. */
   floorHeights: number[];
 }

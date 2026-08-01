@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-01 · **Phase:** Sprint 8 - ten-second death fixed, frame timing measurable at last. Arena presentation and per-pixel cost are the critical path.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 9 - the arena has team identity and reports match state. Arena presentation and environment FX remain the critical path.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -16,8 +16,12 @@ lifetime went from 10.0 s to about 14 s, and lives ending inside ten seconds fel
 after measurement showed the cause was the default bot difficulty rather than spawn placement, which
 was innocent all along.
 
-What remains is presentation. The arena has no team identity, no holographic displays, no
-environment effects and no audio pass, and every fight happens at 7 m regardless of difficulty.
+Sprint 9 gave the arena a side: territory in team colour, spawn beacons readable across the room,
+and central-room lighting that follows whoever holds it. The weapon is tuned for the 7 m fight the
+game actually has.
+
+What remains is the rest of the venue — holographic displays, LED scoreboards, advertising panels,
+environment effects — and the bot behaviour that pins every fight to 7 m in the first place.
 
 ## What works, verified by measurement
 
@@ -33,6 +37,8 @@ environment effects and no audio pass, and every fight happens at 7 m regardless
 | Frame bottleneck | Fragment-bound, not draw-call-bound | renderScale 1.0 -> 0.5 takes GPU 12.3 -> 4.8 ms; all post-processing off saves 0.1 ms |
 | Spawn placement | Threat, sight-line and recency scored; occupancy added | Median nearest enemy at spawn **30-33 m**, 0% within 15 m, 2-5% with line of sight |
 | Difficulty ladder | Rebalanced against measurement | Median life 26.7 / ~14 / 10.5 / 8.5 s across easy / medium / hard / expert |
+| Combat feel | Tuned for the measured 7 m engagement | Lead required 45 cm -> **27 cm**; cell margin 1 miss -> **3**; time-to-kill preserved at 3.44 s |
+| Team identity | Territory rings, spawn beacons, reactive objective lighting | **0.59 ms, 8 draw calls** measured interleaved; one real light |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |

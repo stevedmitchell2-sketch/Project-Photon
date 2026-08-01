@@ -5,6 +5,27 @@ they are paid or consciously accepted.
 
 ---
 
+## Paid in Sprint 9
+
+### The arena had no team identity — **fixed**
+
+Every strip and fixture was cyan whoever held the room, so the objective banner was the only
+team-state signal on screen. Territory rings, spawn beacons and reactive objective lighting now
+carry it, built from emissive geometry rather than lights on the strength of the Sprint 8
+fragment-bound finding. Measured interleaved at **0.59 ms and 8 draw calls**.
+
+### Combat was tuned for a fight that never happens — **fixed**
+
+The weapon assumed ranged engagements: falloff from 28 m, a 132 m/s projectile, a six-shot cell.
+The measured engagement range is 7.0 m, where that projectile needed a 45 cm lead against a strafing
+player and a single miss forced a mid-fight recharge. Retuned for the real distance, with damage
+lowered to keep time-to-kill where the Sprint 8 rebalance put it.
+
+Note this pays down a *symptom*. The cause — bots closing to contact regardless of `engageRange` —
+is still open and is the first item in NEXT_TASK.
+
+---
+
 ## Paid in Sprint 8
 
 ### 120 FPS was unmeasurable — **fixed**
@@ -125,10 +146,11 @@ for some clients and not others.
 **Cost:** a correction every snapshot on affected clients. Visible as micro-stutter under latency;
 not visible in single-player. Next step is written out in NEXT_TASK item 3.
 
-### Arena has no team identity
+### The venue is a room, not an arena
 
-Every strip and fixture is cyan whoever holds the room. The HUD now carries the team accent; the
-environment does not, so the objective banner is still the only team-state signal on screen.
+Team identity landed in Sprint 9, but the arena around it has no holographic displays, no LED
+scoreboards, no branding or advertising, and no introduction or victory sequences. It reads as a
+well-lit hall rather than a venue staging a match.
 
 ---
 
@@ -141,10 +163,12 @@ Now measured rather than unknown. Closing 12.2 ms to 8.33 ms needs a 32% cut, ro
 resolution. The real work is per-pixel: light count per fragment, material cost on non-metallic
 architecture, transparent overdraw.
 
-### Every fight happens at 7 m
+### Bots close to 7 m before shooting
 
-Median engagement range is identical at every difficulty and does not respond to `engageRange`. The
-weapon is designed around ranged combat that never happens.
+Median engagement range is identical at every difficulty and does not respond to `engageRange`.
+Sprint 9 tuned the weapon to suit it, so this is no longer a combat-feel problem — it is a wasted
+design surface. Falloff bands, ADS and projectile lead exist and are never used, and the arena's
+long sight lines do nothing.
 
 ### Arena props still unbatched
 

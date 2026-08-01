@@ -4,7 +4,7 @@ import type { NavGraph } from '@/ai/NavGraph';
 import { COMBAT } from '@/config/combat';
 import { GAME_MODES, type MatchSettings } from '@/config/gameModes';
 import { MOVEMENT } from '@/config/movement';
-import type { TeamId } from '@/config/teams';
+import { TEAMS, type TeamId } from '@/config/teams';
 import { DEFAULT_WEAPON } from '@/config/weapons';
 import type { EventBus } from '@/engine/EventBus';
 import { Telemetry } from '@/engine/Telemetry';
@@ -41,6 +41,22 @@ const INTERPOLATION_DELAY_MS = 75;
  * objective flips) that only happen a handful of times a match.
  */
 const MOVEMENT_SAMPLE_TICKS = 16;
+
+/**
+ * Debounce windows for objective callouts, in seconds.
+ *
+ * `controllingTeam` drops to null the instant any enemy steps inside, so the raw signal flickers
+ * several times during a single fight over the room. Announcing every flicker is unusable — a first
+ * pass with a single 1.5 s window produced 17 callouts in 120 s, one every seven seconds, and half
+ * of them were "lost" immediately followed by "held".
+ *
+ * The two directions are not symmetric, because they do not mean the same thing. **Taking** a room
+ * is decisive and should be called quickly. **Losing** one is usually just a contested moment
+ * mid-fight, and only matters if it lasts — so it waits more than twice as long, and a room that
+ * changes hands cleanly never announces the neutral state in between at all.
+ */
+const OBJECTIVE_TAKEN_DELAY = 1.5;
+const OBJECTIVE_LOST_DELAY = 4;
 
 /** Keeps the physics capsule aligned with a rewound actor position. */
 const syncActor =
@@ -98,6 +114,10 @@ export class MatchDirector {
   private readonly rng: Rng;
   private nextActorId = 1;
   private nextCountdown = 0;
+  /** Last announced holder per objective, so a callout fires once per genuine change. */
+  private readonly objectiveHolders = new Map<string, TeamId | null>();
+  /** Candidate holder awaiting the debounce window. */
+  private readonly objectivePending = new Map<string, { team: TeamId | null; since: number }>();
 
   constructor(
     readonly settings: MatchSettings,
@@ -205,6 +225,45 @@ export class MatchDirector {
       t.record({ tick: this.state.tick, time: this.state.time, category: 'match', type: 'ended', team: e.winner ?? undefined });
       t.flush();
     });
+  }
+
+  /**
+   * Calls out changes of objective control.
+   *
+   * The reactive lighting in the central room already shows who holds it, but only to a player
+   * looking at it. A venue tells you. This is the audio half of the same signal, and it is emitted
+   * from the simulation rather than the renderer so it is deterministic, replicated to every client
+   * and present in a replay — the announcement is part of what happened, not part of the drawing.
+   *
+   * Only sustained changes are announced. `controllingTeam` flickers to null every time an enemy
+   * steps into the volume, and a callout on each of those would be constant noise, so a team must
+   * hold uncontested for `OBJECTIVE_CALLOUT_DELAY` before it counts as having taken the room.
+   */
+  private announceObjectiveControl(): void {
+    for (const volume of this.triggers.volumes) {
+      if (volume.kind !== 'hill') continue;
+
+      const holder: TeamId | null = volume.contested ? null : volume.controllingTeam;
+      const previous = this.objectiveHolders.get(volume.id) ?? null;
+      if (holder === previous) continue;
+
+      // Debounce: require the new state to persist rather than firing on the transition itself.
+      const pending = this.objectivePending.get(volume.id);
+      if (!pending || pending.team !== holder) {
+        this.objectivePending.set(volume.id, { team: holder, since: this.state.time });
+        continue;
+      }
+      const delay = holder ? OBJECTIVE_TAKEN_DELAY : OBJECTIVE_LOST_DELAY;
+      if (this.state.time - pending.since < delay) continue;
+
+      this.objectiveHolders.set(volume.id, holder);
+      this.objectivePending.delete(volume.id);
+
+      this.events.emit('announcement', {
+        text: holder ? `${TEAMS[holder].name.toUpperCase()} HOLDS CENTRAL` : 'CENTRAL ROOM LOST',
+        priority: holder ? 'high' : 'low',
+      });
+    }
   }
 
   /**
@@ -428,6 +487,7 @@ export class MatchDirector {
 
     // 3b. Trigger volumes, so objective occupancy is current before the mode reads it.
     this.triggers.step(state, dt, this.events);
+    this.announceObjectiveControl();
 
     // 3c. Mode rules. Runs after triggers and before props so objective scoring sees this tick's
     // occupancy rather than last tick's.
