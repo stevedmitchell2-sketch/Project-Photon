@@ -4,6 +4,50 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.12.0] - 2026-07-31 - Sprint 6: two hypotheses disproven
+
+No new gameplay. This sprint replaced two long-standing assumptions with measurements, and both
+assumptions were wrong.
+
+### The 8-client "scaling limit" does not exist
+
+**8 clients pass on a fresh server** - 179-192 snapshots each, 0 dropped, every client seeing all 7
+peers.
+
+Every failing multi-client run across three sprints was a *second* run against a server that had
+already served and lost a previous batch. Every first run passes. The defect is **stale server state
+after a client generation disconnects**, not a client-count limit.
+
+Maximum stable client count is therefore **at least 8**, where it was previously recorded as 4.
+
+### The geometry hypothesis is disproven
+
+Sprint 5 proposed that level-geometry contact drove the residual correction rate. Added
+`--scenario open|cover|identical` to the harness and ran identical inputs across open floor:
+
+| Client | Travelled | Comparisons | Misses | Corrections/s |
+| --- | --- | --- | --- | --- |
+| 1 | 7.9 m | 176 | 1 | **0** |
+| 2 | 8.2 m | 177 | 1 | 22 |
+| 3 | 8.2 m | 177 | 1 | 22 |
+
+Identical inputs, identical environment, identical comparison counts - still bimodal. Geometry is
+not the cause, and neither is prediction-lookup failure (1 miss per ~177 comparisons).
+
+### Added
+
+- `--scenario` flag on the network harness, plus distance-travelled and position reporting.
+- `Reconciler` lookup-miss and comparison counters, surfaced through `NetClient.stats`. Zero
+  corrections previously meant either "perfectly accurate" or "never evaluated"; these separate them.
+- **`docs/TECH_DEBT.md`** - debt with costs attached, and a "consciously accepted" section.
+
+### Scope
+
+Steps 3-5 of the brief - latency sweep, playability review, rendering optimisation - were **not**
+reached. Sprint 6's exit criteria are partially met; the unanswered ones are listed in NEXT_TASK.
+
+---
+
 ## [0.11.0] - 2026-07-31 - Sprint 5: prediction drift root cause
 
 ### Found - the server was inventing movement

@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-07-31 · **Phase:** Sprint 5 - prediction drift root cause found and fixed; starvation cut 3x. Vertical-slice polish not yet started.
+**Last updated:** 2026-07-31 · **Phase:** Sprint 6 - 8-client scaling proven, geometry hypothesis disproven. Latency and rendering work outstanding.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -275,3 +275,42 @@ Fixes: starved actors hold position; a 2-tick input jitter buffer absorbs clock 
 4. **120 FPS unmeasurable** while vsync-capped.
 5. Props and avatars unbatched (137 meshes vs 21 instanced).
 6. Vertical-slice polish (first-person feel, weapon, HUD, visual) not started.
+
+---
+
+## Sprint 6 — validation (2026-07-31)
+
+### Exit criteria — answered
+
+| Question | Answer |
+| --- | --- |
+| Maximum stable client count? | **At least 8**, measured. 179–192 snapshots each, 0 dropped, all peers visible. 16 untested. |
+| Is the geometry hypothesis confirmed? | **Disproven.** Identical inputs on open floor still produce 0/22/22. |
+| Is the networking layer validated? | **Partly.** Replication, scaling to 8, and prediction instrumentation are measured. Latency behaviour is not. |
+
+### Exit criteria — unanswered
+
+| Question | Status |
+| --- | --- |
+| How does latency affect gameplay? | **Not measured.** No 20–250 ms sweep was run. Lag compensation is still only exercised at ~1 ms RTT where rewind is a no-op. |
+| What rendering optimisations were achieved? | **None this sprint.** Sprint 4 figures (110 draw calls, 17 lights) stand unchanged. |
+| Ready to shift to gameplay polish? | **Not yet** — see below. |
+
+### The blocker that changed shape
+
+Three sprints recorded an "8-client scaling limit". There isn't one. Every failing run was a
+*second* run against a reused server; every first run passes, including 8 clients.
+
+The real defect is **stale server state after a client generation disconnects**, which is worse in
+one sense — it affects every long-lived server, which is every real deployment — and better in
+another, because it is a concrete bug rather than an architectural ceiling.
+
+### Open, ranked
+
+1. **Server degrades after clients disconnect.** Highest priority; blocks any persistent server.
+2. **Residual 22/s corrections** on all but the first-connecting client. Six hypotheses eliminated.
+   Current suspicion is the harness, not the engine.
+3. **Latency unvalidated** — no sweep run.
+4. **120 FPS unmeasurable** while vsync-capped.
+5. **Props and avatars unbatched** — 137 meshes vs 21 instanced.
+6. **Vertical-slice polish not started** — first-person feel, weapon, HUD, visual.

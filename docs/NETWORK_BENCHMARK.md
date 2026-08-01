@@ -110,3 +110,73 @@ frame is comfortably inside a 16.7 ms budget and its true cost is unknown.
 - Re-measure prediction corrections after the actor-collision change.
 - Establish a vsync-independent frame-time measurement.
 - 16-client run has never been attempted.
+
+---
+
+# Sprint 6 — Validation results (2026-07-31)
+
+Two long-standing hypotheses were tested and **both disproven**. Method: `npm run nettest` with the
+new `--scenario` flag against a dedicated server.
+
+## Client scaling — the limit was never real
+
+| Clients | Server state | Snapshots each | Dropped | Peers visible | Result |
+| --- | --- | --- | --- | --- | --- |
+| 3 | fresh | 128–133 | 0 | all | PASS |
+| 4 | fresh | 129–135 | 0 | all | PASS |
+| **8** | **fresh** | **179–192** | **0** | **all 7/7** | **PASS** |
+| 4 | reused | 0 | — | — | FAIL |
+| 8 | reused | 0 | — | — | FAIL |
+
+**Conclusion: maximum stable client count is at least 8, and the failure was never about client
+count.** Every failing run in three sprints was a *second* run against a server that had already
+served and lost a previous batch of clients. Every first run passes.
+
+The real defect is **stale server state after a client generation disconnects**, now recorded in
+TECH_DEBT.md as the highest-priority correctness item. 16 clients remain untested.
+
+## Geometry hypothesis — disproven
+
+Sprint 5 hypothesised that level-geometry contact drove the residual correction rate, since the
+harness gave each client a different movement pattern from a different spawn.
+
+Tested with `--scenario open`: **identical inputs** for every client, driving straight out of spawn
+across open floor.
+
+| Client | Travelled | Comparisons | Lookup misses | Corrections/s | Error |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 7.9 m | 176 | 1 | **0** | 0.000 m |
+| 2 | 8.2 m | 177 | 1 | 22 | 0.724 m |
+| 3 | 8.2 m | 177 | 1 | 22 | 0.724 m |
+
+Identical inputs, identical environment, near-identical distance travelled, identical comparison
+counts — and still bimodal. **Geometry is not the cause.**
+
+The lookup-miss instrumentation added this sprint also rules out a second candidate: the perfect
+client is genuinely comparing (176 comparisons, 1 miss), not silently skipping evaluation.
+
+**What remains:** the *first-connecting* client corrects zero times; every other client corrects
+~22/s. The harness steps all clients back-to-back within one event-loop turn, so only the first
+sends in a favourable phase relative to the server tick. That is the next hypothesis, and it is
+about the harness rather than the engine.
+
+## Input starvation — fixed and measured
+
+Sprint 5's fix, re-measured:
+
+| Metric | Before | After |
+| --- | --- | --- |
+| Starved ticks (3 clients) | 19.7 / 12.3 / 3.4% | 6.6 / 4.1 / 1.4% |
+| Best-case corrections/s | 22 | 0–2 |
+| Best-case error | 0.37 m | 0.000–0.054 m |
+
+## Not measured this sprint
+
+Stated plainly rather than estimated:
+
+- **Latency sweep (20–250 ms).** Not run. Lag compensation remains validated only at ~1 ms RTT,
+  where rewind is a no-op.
+- **16-client run.** Not attempted.
+- **CPU / GPU utilisation under multi-client load.** Not instrumented.
+- **Rendering optimisation.** No batching work was done this sprint, so the 110 draw calls / 17
+  lights figures from Sprint 4 stand unchanged.

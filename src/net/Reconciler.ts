@@ -53,6 +53,16 @@ export interface ReconcileStats {
   lastReplayTicks: number;
   /** Residual visual offset still being smoothed out. */
   smoothingOffset: { x: number; y: number; z: number };
+  /**
+   * Snapshots whose acknowledged tick had no stored prediction to compare against.
+   *
+   * These are silently skipped, so a client with a high miss count looks *perfectly accurate* in
+   * the correction stats while actually never evaluating its prediction at all. Counted separately
+   * because zero corrections means two very different things depending on this number.
+   */
+  lookupMisses: number;
+  /** Snapshots where a stored prediction was found and compared. */
+  comparisons: number;
 }
 
 export class Reconciler {
@@ -85,6 +95,8 @@ export class Reconciler {
     correctionsPerSecond: 0,
     lastReplayTicks: 0,
     smoothingOffset: { x: 0, y: 0, z: 0 },
+    lookupMisses: 0,
+    comparisons: 0,
   };
 
   /** Records an input the client has applied locally and sent to the server. */
@@ -149,9 +161,11 @@ export class Reconciler {
     this.stats.pendingInputs = this.pending.size;
 
     if (!predictedAtAck) {
+      this.stats.lookupMisses++;
       adoptServerAuthority(actor, serverState);
       return;
     }
+    this.stats.comparisons++;
 
     const current = { x: actor.position.x, y: actor.position.y, z: actor.position.z };
     const authoritative = { x: serverState.px, y: serverState.py, z: serverState.pz };

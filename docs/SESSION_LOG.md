@@ -564,3 +564,51 @@ I chose depth over breadth deliberately. The brief said to prefer finishing one 
 over touching ten, and prediction drift was the item blocking confidence in everything built on top
 of it. Polishing the feel of a game whose movement disagrees with its server on every snapshot would
 have been decorating an unresolved fault.
+
+---
+
+## Session 12 — 2026-07-31 — Sprint 6: two hypotheses disproven
+
+**Entered with:** a validation brief demanding measurement over estimation, and my own NEXT_TASK
+naming the geometry hypothesis as item one.
+
+### What happened
+
+Built the scenario support the geometry test needed, ran it, and **disproved my own hypothesis**.
+With identical inputs, identical open-floor environment and near-identical distance travelled, the
+correction rate stayed stubbornly bimodal: 0 / 22 / 22. Geometry is not the cause.
+
+Then added lookup-miss instrumentation to test a second idea — that the "perfect" client might not
+be accurate at all, merely never evaluating. That was also wrong: 176 comparisons, 1 miss. It really
+does agree with the server.
+
+### The finding that mattered
+
+While running scenarios back to back I noticed the failures had a shape I had been blind to: **every
+failing run was a second run against the same server process.** Every first run passed.
+
+Tested it directly — 8 clients as the first run on a fresh server: **PASS**, 179–192 snapshots each,
+zero dropped, every client seeing all seven peers.
+
+So the "8-client scaling limit" that three sprints of documentation described does not exist. The
+real defect is stale server state after a client generation disconnects. I had run the 8-client test
+three times across three sessions and never once run it first.
+
+That is a lesson about experimental hygiene rather than about netcode: I varied the thing I was
+interested in and left the server process uncontrolled, so a confound sat in every measurement.
+Fresh state per trial should have been the default from the first run.
+
+### Scope, honestly
+
+The brief had eight steps. I reached three: geometry validation, client scaling, and the technical
+debt and documentation passes. **The latency sweep, playability review and rendering optimisation
+were not done** — the two hypotheses consumed the budget, and I would rather report two solid
+disproofs than four thin gestures.
+
+Sprint 6's exit criteria are therefore only partly met, and I have said so rather than declaring the
+sprint complete.
+
+### Corrected in the docs
+
+"Maximum stable client count: 4" is now "at least 8". The scaling-limit framing is removed from
+NETWORK_BENCHMARK, PROJECT_STATUS and BACKLOG, and replaced with the disconnect bug.

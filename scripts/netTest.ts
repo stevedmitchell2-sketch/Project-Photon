@@ -26,6 +26,9 @@ import { dist3 } from '../src/util/math';
 
 interface TestClient {
   name: string;
+  /** Ground distance covered, so a client pinned against geometry is visible in the results. */
+  travelled: number;
+  lastPos: { x: number; z: number };
   client: NetClient;
   director: MatchDirector;
   physics: PhysicsWorld;
@@ -48,7 +51,7 @@ async function createClient(name: string, url: string, team: string | null): Pro
   const client = new NetClient(transport, director, physics, events);
   await client.connect(name, team);
 
-  return { name, client, director, physics, events, tick: 0 };
+  return { name, client, director, physics, events, tick: 0, travelled: 0, lastPos: { x: 0, z: 0 } };
 }
 
 /** Advances one client by a tick with a scripted input. */
@@ -63,23 +66,71 @@ function stepClient(tc: TestClient, pattern: (tick: number) => Partial<ReturnTyp
   tc.director.step(TICK_DT);
   tc.client.recordPrediction();
   tc.client.update(TICK_DT);
+
+  const p = local.position;
+  if (tc.tick > 0) tc.travelled += Math.hypot(p.x - tc.lastPos.x, p.z - tc.lastPos.z);
+  tc.lastPos.x = p.x;
+  tc.lastPos.z = p.z;
   tc.tick++;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Movement scenarios.
+ *
+ * `varied` is the historical default: each client gets a different pattern from a different spawn,
+ * which is realistic but confounds any per-client comparison. The others exist to isolate whether
+ * position and surroundings — rather than the client itself — drive prediction corrections.
+ *
+ *   identical  every client runs the same input sequence; differences must come from the world
+ *   open       identical, aimed at the arena centre where the floor is clear
+ *   cover      identical, driven into the corner geometry each client spawns beside
+ */
+type Scenario = 'varied' | 'identical' | 'open' | 'cover';
+
 function parseArgs(argv: string[]) {
   let port = 8090;
   let clients = 2;
   let seconds = 12;
+  let scenario: Scenario = 'varied';
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.slice(2);
     const value = argv[i + 1];
     if (key === 'port') port = Number(value) || port;
     if (key === 'clients') clients = Number(value) || clients;
     if (key === 'seconds') seconds = Number(value) || seconds;
+    if (key === 'scenario') scenario = value as Scenario;
   }
-  return { port, clients, seconds };
+  return { port, clients, seconds, scenario };
+}
+
+/**
+ * Builds the per-client input pattern for a scenario.
+ *
+ * `open` and `cover` differ only in sign: both drive straight, one away from the corner the client
+ * spawned in and one into it. That keeps everything except the surroundings constant, which is the
+ * whole point of the comparison.
+ */
+function patternsFor(scenario: Scenario): Array<(t: number) => Record<string, unknown>> {
+  switch (scenario) {
+    case 'identical':
+      return [(t: number) => ({ moveZ: 1, moveX: Math.sin(t / 40), sprint: true })];
+    case 'open':
+      // Straight ahead from spawn: every corner spawn faces the arena centre.
+      return [() => ({ moveZ: 1, sprint: true })];
+    case 'cover':
+      // Straight backwards into the corner the client spawned beside.
+      return [() => ({ moveZ: -1, sprint: true })];
+    case 'varied':
+    default:
+      return [
+        (t: number) => ({ moveZ: 1, moveX: Math.sin(t / 40), sprint: true }),
+        (t: number) => ({ moveZ: -1, moveX: Math.cos(t / 30), sprint: false }),
+        (t: number) => ({ moveZ: 1, moveX: 0, jump: t % 90 === 0, jumpPressed: t % 90 === 0 }),
+        (t: number) => ({ moveX: 1, moveZ: Math.sin(t / 25) }),
+      ];
+  }
 }
 
 async function main(): Promise<void> {
@@ -102,13 +153,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Drive distinct movement patterns so each client is doing something observable.
-  const patterns = [
-    (t: number) => ({ moveZ: 1, moveX: Math.sin(t / 40), sprint: true }),
-    (t: number) => ({ moveZ: -1, moveX: Math.cos(t / 30), sprint: false }),
-    (t: number) => ({ moveZ: 1, moveX: 0, jump: t % 90 === 0, jumpPressed: t % 90 === 0 }),
-    (t: number) => ({ moveX: 1, moveZ: Math.sin(t / 25) }),
-  ];
+  const patterns = patternsFor(args.scenario);
+  console.log(`[nettest] scenario: ${args.scenario}`);
 
   // Run in real time. An earlier version drove ticks as fast as the loop allowed, which sent ~570
   // input packets/second and was correctly kicked by the server's flood protection — the rate
@@ -159,10 +205,15 @@ async function main(): Promise<void> {
         `    snapshots        ${s.snapshotsReceived} received, ${s.snapshotsDropped} dropped\n` +
         `    ping             ${s.quality.rttMs} ms (jitter ${s.quality.jitterMs} ms, loss ${s.quality.packetLossPercent}%)\n` +
         `    corrections/s    ${s.corrections}\n` +
+        `    compared         ${s.comparisons} (missed ${s.lookupMisses})\n` +
         `    last error       ${s.lastCorrectionMetres.toFixed(3)} m\n` +
         `    interp buffer    ${s.interpolationDelayMs} ms\n` +
         `    bandwidth        down ${(s.downstreamBps / 1024).toFixed(1)} KB/s, up ${(s.upstreamBps / 1024).toFixed(1)} KB/s\n` +
-        `    peer divergence  ${maxDivergence.toFixed(3)} m`,
+        `    peer divergence  ${maxDivergence.toFixed(3)} m
+` +
+        `    position         (${tc.director.state.actors.get(tc.client.actorId)?.position.x.toFixed(1)}, ${tc.director.state.actors.get(tc.client.actorId)?.position.z.toFixed(1)})
+` +
+        `    travelled        ${tc.travelled.toFixed(1)} m`,
     );
 
     if (!s.connected) {

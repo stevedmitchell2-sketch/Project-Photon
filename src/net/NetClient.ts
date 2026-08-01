@@ -57,6 +57,10 @@ export interface NetClientStats {
   lastCorrectionMetres: number;
   interpolationDelayMs: number;
   snapshotDelayMs: number;
+  /** Snapshots skipped because no stored prediction matched the acknowledged tick. */
+  lookupMisses: number;
+  /** Snapshots where prediction was actually compared against the server. */
+  comparisons: number;
 }
 
 export class NetClient {
@@ -105,6 +109,8 @@ export class NetClient {
     lastCorrectionMetres: 0,
     interpolationDelayMs: 0,
     snapshotDelayMs: 0,
+    lookupMisses: 0,
+    comparisons: 0,
   };
 
   onKicked: ((reason: string) => void) | null = null;
@@ -464,6 +470,8 @@ export class NetClient {
     this.stats.bytesSent = this.bytesOut;
     this.stats.corrections = this.reconciler.stats.correctionsPerSecond;
     this.stats.lastCorrectionMetres = this.reconciler.stats.lastErrorMetres;
+    this.stats.lookupMisses = this.reconciler.stats.lookupMisses;
+    this.stats.comparisons = this.reconciler.stats.comparisons;
     this.stats.interpolationDelayMs = Math.round(this.interpolator.delayMs);
     this.stats.snapshotDelayMs = Math.round(now() - this.lastSnapshotAtMs);
     this.stats.quality = {
