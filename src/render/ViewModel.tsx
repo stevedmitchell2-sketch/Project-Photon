@@ -6,6 +6,7 @@ import { WEAPONS } from '@/config/weapons';
 import { clamp, damp } from '@/util/math';
 import { useGame } from './GameContext';
 import { photonMaterial } from './materials/PhotonMaterials';
+import { partMaterial, scanRig, useAsset } from '@/assets/useAsset';
 
 /**
  * First-person weapon view model.
@@ -37,11 +38,31 @@ export function ViewModel({ colorblind }: Props) {
   const { camera } = useThree();
   const root = useRef<THREE.Group>(null);
   const emitter = useRef<THREE.Mesh>(null);
-  const cellRefs = useRef<Array<THREE.Mesh | null>>([]);
   const muzzle = useRef<THREE.PointLight>(null);
   const sway = useRef({ yaw: 0, pitch: 0, kick: 0, muzzleLife: 0 });
-  const railRefs = useRef<Array<THREE.Mesh | null>>([]);
   const railPhase = useRef(0);
+
+  /**
+   * The imported hero rifle, when one exists.
+   *
+   * Null for a clean checkout, which is the normal state — the procedural rifle below is the
+   * fallback. Dropping `HeroLaserRifle_v01.glb` into `public/assets/weapons/` is the entire
+   * integration step; no code below changes.
+   */
+  const imported = useAsset('hero_rifle');
+
+  /**
+   * Addressable parts, scanned from whichever subtree is present.
+   *
+   * Both sources follow the same contract: the procedural meshes are *named* `PART_core`,
+   * `PART_rail_03` and so on, exactly as an imported asset's nodes would be. The animation below
+   * therefore has one code path, not two, and cannot drift between them.
+   */
+  const rig = useRef<{ parts: Map<string, THREE.Object3D>; sockets: Map<string, THREE.Object3D> }>({
+    parts: new Map(),
+    sockets: new Map(),
+  });
+  const rigVersion = useRef(-1);
 
   const local = game.localActor!;
   const base = teamColor(local.team, colorblind);
@@ -166,17 +187,27 @@ export function ViewModel({ colorblind }: Props) {
     const filled = actor.weapon.recharging
       ? actor.weapon.rechargeProgress * config.cellCapacity
       : actor.weapon.charge;
-    for (let i = 0; i < cellRefs.current.length; i++) {
-      const cell = cellRefs.current[i];
+    for (let i = 0; i < config.cellCapacity; i++) {
+      const cell = rig.current.parts.get(`cell_${String(i).padStart(2, '0')}`) as THREE.Mesh | undefined;
       if (!cell) continue;
       const lit = i < filled;
       cell.material = lit ? cellMaterial : cellEmptyMaterial;
       cell.scale.setScalar(lit ? 1 : 0.72);
     }
 
+    // Rescan when the geometry source changes — once on mount, and again if an imported asset
+    // arrives after the procedural fallback has already rendered.
+    const version = imported ? 1 : 0;
+    if (rigVersion.current !== version) {
+      rigVersion.current = version;
+      rig.current = scanRig(group);
+    }
+    const parts = rig.current.parts;
+
     // Emitter glows hotter as the cell drains, which reads as heat build-up.
     const heat = 1 - actor.weapon.charge / config.cellCapacity;
-    emitterMaterial.emissiveIntensity = 0.6 + heat * 1.6 + sway.current.kick * 1.8;
+    const emitterMat = partMaterial(parts.get('emitter')) ?? emitterMaterial;
+    emitterMat.emissiveIntensity = 0.6 + heat * 1.6 + sway.current.kick * 1.8;
 
     /**
      * Charging rails and energy core.
@@ -193,24 +224,41 @@ export function ViewModel({ colorblind }: Props) {
       ? actor.weapon.rechargeProgress
       : (railPhase.current + delta * 0.35) % 1;
 
-    for (let i = 0; i < railRefs.current.length; i++) {
-      const rail = railRefs.current[i];
-      if (!rail) continue;
+    // Rails are discovered, not counted: an asset may ship any number of `PART_rail_NN` nodes and
+    // the band spreads across however many it finds.
+    const rails: THREE.Object3D[] = [];
+    for (let i = 0; i < 32; i++) {
+      const rail = parts.get(`rail_${String(i).padStart(2, '0')}`);
+      if (!rail) break;
+      rails.push(rail);
+    }
+
+    for (let i = 0; i < rails.length; i++) {
+      const rail = rails[i];
       // Each segment lights as the travelling band passes it.
-      const at = i / Math.max(1, railRefs.current.length - 1);
+      const at = i / Math.max(1, rails.length - 1);
       const distance = Math.abs(at - railPhase.current);
       const near = Math.max(0, 1 - distance * 6);
       const idle = charging ? 0 : 0.12;
       rail.scale.setScalar(0.85 + near * 0.35);
-      (rail.material as THREE.MeshStandardMaterial).emissiveIntensity =
-        (idle + near * (charging ? 1.5 : 0.5)) * 1.2;
+      const mat = partMaterial(rail);
+      if (mat) mat.emissiveIntensity = (idle + near * (charging ? 1.5 : 0.5)) * 1.2;
     }
     railMaterial.emissiveIntensity = charging ? 1.2 : 0.35;
 
     // Core pulses with remaining charge — full and steady when loaded, faint and fast when empty.
     const chargeFraction = actor.weapon.charge / config.cellCapacity;
-    coreMaterial.emissiveIntensity =
+    const coreMat = partMaterial(parts.get('core')) ?? coreMaterial;
+    coreMat.emissiveIntensity =
       0.35 + chargeFraction * 1.1 + Math.sin(t * (charging ? 9 : 2.4)) * 0.18;
+
+    // Muzzle light rides the asset's socket when one is supplied, so an imported rifle with a
+    // differently-placed barrel lights from the right point with no code change.
+    const muzzleSocket = rig.current.sockets.get('muzzle');
+    if (muzzleSocket && muzzle.current) {
+      muzzleSocket.getWorldPosition(TMP_A);
+      muzzle.current.position.copy(group.worldToLocal(TMP_A));
+    }
 
     // Muzzle flash light.
     if (actor.fx.firedThisTick) sway.current.muzzleLife = 0.06;
@@ -220,10 +268,22 @@ export function ViewModel({ colorblind }: Props) {
     }
   });
 
+  // An imported hero rifle replaces the primitives entirely. Everything else in this component —
+  // sway, kick, ADS blend, charge rails, core pulse, muzzle light — is unchanged and drives it
+  // through the same name-addressed parts.
+  if (imported) {
+    return (
+      <group ref={root} scale={VIEW_MODEL_SCALE}>
+        <primitive object={imported.scene} />
+        <pointLight ref={muzzle} color={glow} intensity={0} distance={5} decay={2} />
+      </group>
+    );
+  }
+
   return (
     <group ref={root} scale={VIEW_MODEL_SCALE}>
       {/*
-        PH-6 Photon Rifle.
+        PH-6 Photon Rifle — procedural fallback.
         ------------------
         Sports equipment, not a military weapon. The silhouette reads as a competition instrument:
         a long low body, an exposed energy spine, and a visible core — the parts that do the work are
@@ -266,9 +326,7 @@ export function ViewModel({ colorblind }: Props) {
       {Array.from({ length: 7 }, (_, i) => (
         <mesh
           key={`rail${i}`}
-          ref={(node) => {
-            railRefs.current[i] = node;
-          }}
+          name={`PART_rail_${String(i).padStart(2, '0')}`}
           material={railMaterial}
           position={[0, 0.034, 0.14 - i * 0.048]}
         >
@@ -277,7 +335,7 @@ export function ViewModel({ colorblind }: Props) {
       ))}
 
       {/* Energy core: a visible chamber behind a transparent housing. */}
-      <mesh material={coreMaterial} position={[0, -0.004, 0.045]} rotation={[0, 0, Math.PI / 2]}>
+      <mesh name="PART_core" material={coreMaterial} position={[0, -0.004, 0.045]} rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.021, 0.021, 0.075, 12]} />
       </mesh>
       <mesh material={frame} position={[0, -0.004, 0.045]} rotation={[0, 0, Math.PI / 2]}>
@@ -312,7 +370,7 @@ export function ViewModel({ colorblind }: Props) {
       <mesh material={frame} position={[0, 0.016, -0.47]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.032, 0.032, 0.03, 12]} />
       </mesh>
-      <mesh ref={emitter} material={emitterMaterial} position={[0, 0.016, -0.5]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh name="PART_emitter" ref={emitter} material={emitterMaterial} position={[0, 0.016, -0.5]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.019, 0.027, 0.05, 12]} />
       </mesh>
       {/* Emitter prongs — the shape that makes the muzzle recognisable in a screenshot. */}
@@ -367,9 +425,7 @@ export function ViewModel({ colorblind }: Props) {
       {Array.from({ length: 8 }, (_, i) => (
         <mesh
           key={`cell${i}`}
-          ref={(node) => {
-            cellRefs.current[i] = node;
-          }}
+          name={`PART_cell_${String(i).padStart(2, '0')}`}
           position={[-0.0355, -0.022, -0.14 + i * 0.023]}
           rotation={[0, -Math.PI / 2, 0]}
           material={cellMaterial}
@@ -377,6 +433,12 @@ export function ViewModel({ colorblind }: Props) {
           <planeGeometry args={[0.016, 0.022]} />
         </mesh>
       ))}
+
+      {/* Sockets. The procedural rifle declares the same attachment points the contract requires of
+          an imported one, so systems that mount to them work identically against either. */}
+      <object3D name="SOCKET_muzzle" position={[0, 0.016, -0.55]} />
+      <object3D name="SOCKET_grip" position={[0, -0.108, 0.075]} />
+      <object3D name="SOCKET_sight" position={[0, 0.075, -0.26]} />
 
       <pointLight ref={muzzle} position={[0, 0.016, -0.55]} color={glow} intensity={0} distance={5} decay={2} />
     </group>

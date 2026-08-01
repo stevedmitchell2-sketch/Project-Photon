@@ -24,7 +24,8 @@
     "latency-sweep": "tsx scripts/latencySweep.ts",
     "predict-align": "tsx scripts/predictionAlign.ts",
     "scale": "tsx scripts/processScale.ts",
-    "spawn-audit": "tsx scripts/spawnAudit.ts"
+    "spawn-audit": "tsx scripts/spawnAudit.ts",
+    "asset-audit": "tsx scripts/assetAudit.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
