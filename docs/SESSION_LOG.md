@@ -10,6 +10,42 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 19 - 2026-08-01 - Sprint 13: architecture where there were boxes
+
+**Brief:** stop polishing placeholder geometry and replace it. Build architecture, not walls; a
+broadcast rig, not a ceiling; an iconic weapon; landmarks; environment storytelling. Make someone
+say "I want to play there".
+
+**Outcome:** wall articulation, broadcast ceiling rig and cover detailing delivered. Landmarks,
+floor markings, lighting drama and the weapon replacement not delivered.
+
+### The correction that made the sprint possible
+
+Sprint 11 concluded procedural geometry had hit its ceiling, and Sprint 12 built an asset pipeline on
+that basis. Both were right about *hero assets*. The conclusion was applied too broadly, and it
+caused two sprints to route around a problem that code was actually well suited to.
+
+Architecture is rule-based. The arena perimeter was four boxes; 474 generated elements on a 4 m bay
+rhythm - ribs, panels, trim channels, hatches, vents, cable runs, kick plates, cornices, trusses,
+fixtures, cover caps - turned it into a constructed interior for 1.22 ms and 17 draw calls. A person
+would have had to place all of them by hand.
+
+The rule now recorded: **if the detail is a rhythm, generate it; if it is a silhouette, model it.**
+
+### The showcase test was run honestly
+
+HUD hidden, screenshots taken, per the brief. The verdict is that the arena reads as a constructed
+interior and does not read as a championship venue. Naming the three reasons - no lighting contrast,
+no landmarks, featureless floor - was more useful than claiming the sprint succeeded.
+
+### Two things that needed a second pass
+
+Overhead structure authored at a physically plausible dark value disappeared entirely, because the
+rig hangs below the roof with nothing lighting it from above; it had to be lifted several values.
+And the first pass put a service hatch on every bay, which read as wallpaper rather than as a
+serviced building - fittings need a slower rhythm than the structure they sit on.
+
 ## Session 18 - 2026-08-01 - Sprint 12: the asset pipeline
 
 **Brief:** build a production asset pipeline. Registry, validation, importer, modular kit spec, hero

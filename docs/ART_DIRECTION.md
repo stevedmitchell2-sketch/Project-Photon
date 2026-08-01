@@ -200,7 +200,37 @@ ADS and its projectile lead are all unexercised as a result.
 A longer arena unblocks the difficulty ladder, the weapon's ranged design, and the visual drama of
 depth all at once.
 
-## 10. The honest limit of procedural art
+## 10. Rhythm versus silhouette
+
+The rule that decides whether something should be generated or modelled, and the correction to a
+conclusion Sprint 11 drew too broadly:
+
+> **If the detail is a rhythm, generate it. If it is a silhouette, model it.**
+
+Sprint 11 concluded that procedural geometry had hit its ceiling. That is true of *hero assets* —
+a rifle, a character — where what is missing is surface density: bevels, panel gaps, edge wear,
+cable runs, moulded detail. No amount of procedural cleverness substitutes for an artist there.
+
+It is **not** true of architecture. Sprint 13 built the arena's wall articulation, broadcast rig and
+cover detailing entirely in code: 474 elements on a regular bay rhythm, derived from the existing
+brush dimensions, costing 1.22 ms and 17 draw calls. A person would have to place four hundred of
+those by hand and keep them aligned, and would get it wrong.
+
+Practically:
+
+| Generate | Model |
+| --- | --- |
+| Wall bays, ribs, panel rhythm | Weapons |
+| Trim channels and lit strips | Characters |
+| Truss grids, fixture arrays | Hero props with a distinctive shape |
+| Cover caps, posts, banding | Anything the player looks at closely |
+| Floor markings, lane lines | Anything asymmetric or organic |
+| Anything derived from level data | Anything whose value is its outline |
+
+The dividing question is: **does this repeat on a rule?** If yes, a generator will place it better
+and consistently, and it will keep working for every future arena for free.
+
+## 11. The honest limit of procedural art
 
 Everything in Photon is generated from code — geometry from primitives, textures from canvas
 drawing, materials from parameters. That has taken the project a long way and it has a ceiling, which
@@ -220,4 +250,6 @@ the rifle's animation is written against part references, avatars are instanced 
 material), and the material library is keyed by substance. An imported mesh replaces geometry
 without touching the systems that drive it.
 
-That is a scoping judgement, recorded here so it is not rediscovered.
+That is a scoping judgement, recorded here so it is not rediscovered — but read it alongside
+section 10. The limit is real for hero assets and does *not* apply to rule-based architecture, which
+is where Sprint 13 found most of the remaining visual gain.

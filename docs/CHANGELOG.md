@@ -4,6 +4,54 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.19.0] - 2026-08-01 - Sprint 13: architecture where there were boxes
+
+### The correction
+
+Sprint 11 concluded procedural geometry had hit its ceiling. That was true of **hero assets** and
+was applied too broadly. Architecture is the opposite case: repetitive structural detail on a
+regular rhythm is what code does *better* than a person.
+
+The rule, now in ART_DIRECTION section 10: **if the detail is a rhythm, generate it; if it is a
+silhouette, model it.**
+
+### What changed
+
+`ArenaArchitecture` reads the existing brushes and builds along them. No arena data changed, no
+collision changed.
+
+**Walls** — structural ribs on a 4 m bay rhythm, recessed panels between them, a lit trim channel at
+eye height, service hatches every third bay, vents every fourth, cable runs, a kick plate grounding
+the floor join, a cornice at the roof line. Fittings sit on a slower rhythm than the bays on
+purpose: detail that repeats every bay reads as wallpaper.
+
+**Ceiling** — a broadcast rig replacing a 60 x 60 slab. Truss grid on a wider pitch than the walls,
+chord members giving depth from the only angle it is seen, light fixtures at the intersections, four
+broadcast cameras on the diagonals over the contested ground, speaker arrays down the long axis.
+
+**Cover** — capping rail, corner posts and a lit strip echoing the wall trim. Cover sits at eye
+height in the middle of the play space, so a bare box is in frame more than any wall is.
+
+### Two things that had to be got right
+
+- **Overhead structure needs lifting well above the ceiling's own value.** The rig hangs below the
+  roof with nothing lighting it from above; a physically plausible dark truss disappeared entirely.
+- **Fittings on a slower rhythm than bays.** The first pass put a hatch on every bay and it read as
+  a repeating texture rather than as a serviced building.
+
+### Cost
+
+Measured interleaved: **474 instances in 18 batches for 1.22 ms and 17 draw calls.** GPU 10.1 to
+11.3 ms of a fragment-bound frame.
+
+### Showcase test
+
+Run with the HUD hidden, per the brief. Honest verdict in the sprint report: the arena now reads as
+a constructed interior rather than a graybox, and it does **not** yet read as a championship venue.
+The remaining gap is named there and is mostly lighting drama, landmarks and a floor.
+
+---
+
 ## [0.18.0] - 2026-08-01 - Sprint 12: the asset pipeline
 
 Photon's limiting factor stopped being technology two sprints ago. This builds the factory.

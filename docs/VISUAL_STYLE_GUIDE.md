@@ -267,3 +267,50 @@ objective held → neutral.
 one-per-second beat for the countdown, a slow swell for the final minute, a steady flood for
 victory. That keeps the room legible with the sound off and to a player who cannot separate the
 colours — the same rule as section 7, applied to architecture instead of UI.
+
+---
+
+## 13. Architectural articulation (Sprint 13)
+
+Nothing structural in Photon may read as an untreated box. `ArenaArchitecture` generates the
+articulation from brush data, so this section is the rule set it implements — and the rule set any
+future arena inherits automatically.
+
+### Walls
+
+| Element | Rhythm | Purpose |
+| --- | --- | --- |
+| Structural rib | Every 4 m bay | Gives a long wall a unit the eye can measure |
+| Recessed panel | Fills each bay | The shadow line at the panel edge is the read, not the depth |
+| Lit trim channel | Continuous, eye height | The arena's signature horizontal line |
+| Kick plate | Continuous, base | Grounds the wall and hides the floor join |
+| Cornice | Continuous, top | Terminates the wall into the roof structure |
+| Service hatch | Every 3rd bay | Says the building is maintained |
+| Vent | Every 4th bay | As above |
+| Cable run | Every 2nd bay | As above |
+
+**Service fittings must sit on a slower rhythm than the bays.** Architecture that repeats every bay
+reads as wallpaper. Prime-ish intervals (3, 4) against a 1-bay rhythm keep it feeling placed.
+
+### Ceilings
+
+A ceiling is a **broadcast rig**, never a slab. Truss grid on a *wider* pitch than the walls — a
+ceiling on the same rhythm reads as repeated texture instead of structure. Chord members below the
+main beams, because underneath is the only angle it is ever seen from.
+
+**Overhead structure must be authored several values lighter than the ceiling itself.** It hangs
+below the roof with nothing lighting it from above, so a physically plausible dark truss disappears
+entirely. This is albedo faking the spill a real fixture would throw on its own frame.
+
+### Cover
+
+Cover sits at eye height in the middle of the play space and is the object players look at most
+closely. Three elements turn a box into equipment:
+
+1. **Capping rail** — proud on every side. What the eye reads when peeking over cover, and the
+   single strongest difference between "crate" and "barrier".
+2. **Corner posts** — imply a frame the panel is mounted into.
+3. **Lit strip under the cap** — makes cover visible in a dark corner and its top edge unambiguous.
+
+The strip uses the same colour as the wall trim channel deliberately: one lit horizontal language
+across walls and cover is what makes the arena feel designed rather than assembled.
