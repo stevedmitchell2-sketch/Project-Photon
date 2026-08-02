@@ -8,6 +8,7 @@ import { DEG2RAD } from '@/util/math';
 import { ArenaEnvironment } from './ArenaEnvironment';
 import { ArenaArchitecture } from './ArenaArchitecture';
 import { ArenaMesh } from './ArenaMesh';
+import { ArenaVenue } from './ArenaVenue';
 import { ArenaProps } from './ArenaProps';
 import { useGame } from './GameContext';
 import { ImpactFX } from './ImpactFX';
@@ -94,6 +95,7 @@ export function Scene({ graphics, accessibility }: Props) {
 
       <ArenaMesh arena={arena} shadows={graphics.shadows} />
       <ArenaArchitecture />
+      <ArenaVenue maxLights={graphics.maxDynamicLights} />
       <PhotonCore
         colorblind={accessibility.colorblindPalette}
         maxLights={graphics.maxDynamicLights}

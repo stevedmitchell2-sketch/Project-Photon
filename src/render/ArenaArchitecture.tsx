@@ -39,7 +39,7 @@ import { useGame } from './GameContext';
 /** Bay spacing. Matches the 4 m module grid the kit specification is built around. */
 const BAY = 4;
 
-interface Face {
+export interface Face {
   /** Centre of the wall face, on its inward surface. */
   centre: THREE.Vector3;
   /** Unit vector along the wall's length. */
@@ -59,7 +59,7 @@ interface Face {
  * shell gets its architecture for free. A wall is treated as facing the arena centre, which is true
  * of every perimeter wall and is the only assumption made here.
  */
-function facesFrom(brushes: Brush[]): Face[] {
+export function facesFrom(brushes: Brush[]): Face[] {
   const faces: Face[] = [];
 
   for (const brush of brushes) {
@@ -99,7 +99,7 @@ function facesFrom(brushes: Brush[]): Face[] {
 }
 
 /** One placement: position, rotation and scale for an instanced element. */
-interface Placement {
+export interface Placement {
   position: THREE.Vector3;
   yaw: number;
   scale: THREE.Vector3;
