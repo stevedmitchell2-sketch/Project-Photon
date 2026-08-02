@@ -37,12 +37,29 @@ export interface LoadedAsset {
   scene: THREE.Group;
   /** Attachment points by name, without the `SOCKET_` prefix. */
   sockets: Map<string, THREE.Object3D>;
-  /** Runtime-animated parts by name, without the `PART_` prefix. */
+  /**
+   * Runtime-animated parts by name, without the `PART_` prefix.
+   *
+   * Resolves to the highest-detail instance. A part named in more than one LOD level appears once
+   * here, pointing at its LOD0 node — see `allParts` when every copy matters.
+   */
   parts: Map<string, THREE.Object3D>;
+  /**
+   * Every copy of every part, including the ones in lower LOD levels.
+   *
+   * The contract requires an animated part to exist in each level, so driving only the LOD0 copy
+   * leaves the object frozen the moment the camera backs off far enough to switch. Animation code
+   * should write through this; code that only needs a transform can use `parts`.
+   */
+  allParts: Map<string, THREE.Object3D[]>;
   /** Collision meshes, for the physics layer. Never added to the render scene. */
   collision: THREE.Mesh[];
   /** Animation clips shipped in the file, by name. */
   clips: Map<string, THREE.AnimationClip>;
+  /** The `THREE.LOD` built from `LOD0..n`, or null when the asset declares a single level. */
+  lod: THREE.LOD | null;
+  /** Skinned meshes, if any. Their skeleton is driven through `AssetAnimator`. */
+  skinned: THREE.SkinnedMesh[];
   /** What validation made of it. Empty when clean. */
   findings: Finding[];
   /** Frees geometry, materials and textures owned by this asset. */
@@ -95,22 +112,90 @@ export function loadAsset(id: string): Promise<LoadedAsset | null> {
   return promise;
 }
 
+/**
+ * The name a node had **in the file**, not the one three.js gave it.
+ *
+ * `GLTFLoader` guarantees unique object names by appending `_1`, `_2` to duplicates. That is a
+ * reasonable default and it breaks this contract head-on: an animated part is *required* to exist in
+ * every LOD level, so `PART_core` in LOD0 and LOD1 arrive as `core` and `core_1`, and every lookup
+ * for `core` finds only the highest-detail copy.
+ *
+ * The parser keeps an `associations` map from each object back to its source index, so the original
+ * name is recoverable. Falling back to the object name keeps this safe for objects the parser did
+ * not create.
+ */
+function originalNames(gltf: { parser?: unknown }): Map<THREE.Object3D, string> {
+  const names = new Map<THREE.Object3D, string>();
+  const parser = gltf.parser as
+    | {
+        json?: { nodes?: Array<{ name?: string }> };
+        associations?: Map<object, { nodes?: number; index?: number; type?: string }>;
+      }
+    | undefined;
+  const nodes = parser?.json?.nodes;
+  const associations = parser?.associations;
+  if (!nodes || !associations) return names;
+
+  for (const [object, association] of associations) {
+    // three.js has used two shapes for this record across versions; accept either.
+    const index =
+      typeof association?.nodes === 'number'
+        ? association.nodes
+        : association?.type === 'nodes'
+          ? association.index
+          : undefined;
+    if (index === undefined) continue;
+    const name = nodes[index]?.name;
+    if (name) names.set(object as THREE.Object3D, name);
+  }
+  return names;
+}
+
+/**
+ * Builds a `THREE.LOD` from `LOD0..n` sibling groups.
+ *
+ * Distances come from the model's own size rather than from constants, because a 0.6 m rifle and a
+ * 1.85 m character cannot share a switch distance and neither can be guessed without knowing the
+ * asset. Each level is shown from a multiple of the bounding radius, which makes the switch happen
+ * at roughly the same *screen size* for everything — which is the only thing that matters.
+ */
+function buildLod(levels: Map<number, THREE.Object3D>): THREE.LOD | null {
+  if (levels.size < 2) return null;
+
+  const lod = new THREE.LOD();
+  const ordered = [...levels.entries()].sort((a, b) => a[0] - b[0]);
+
+  const box = new THREE.Box3().setFromObject(ordered[0][1]);
+  const radius = Math.max(0.25, box.getBoundingSphere(new THREE.Sphere()).radius);
+
+  // LOD0 from zero, then 12x and 30x the radius. Tuned so a character swaps at roughly 22 m and
+  // 55 m, which is past the range at which its silhouette is doing any work.
+  const multipliers = [0, 12, 30, 60, 120];
+  ordered.forEach(([, group], i) => {
+    lod.addLevel(group, radius * (multipliers[i] ?? multipliers[multipliers.length - 1] * (i + 1)));
+  });
+  return lod;
+}
+
 async function load(entry: AssetEntry): Promise<LoadedAsset> {
   const gltf = await gltfLoader().loadAsync(assetUrl(entry));
   const scene = gltf.scene as THREE.Group;
 
   if (entry.scale && entry.scale !== 1) scene.scale.setScalar(entry.scale);
 
+  const trueName = originalNames(gltf);
+  const nameOf = (node: THREE.Object3D): string => trueName.get(node) ?? node.name;
+
   const sockets = new Map<string, THREE.Object3D>();
   const parts = new Map<string, THREE.Object3D>();
+  const allParts = new Map<string, THREE.Object3D[]>();
   const collision: THREE.Mesh[] = [];
+  const skinned: THREE.SkinnedMesh[] = [];
   const lodGroups = new Map<string, THREE.Object3D[]>();
+  const lodLevels = new Map<number, THREE.Object3D>();
   const nodeNames: string[] = [];
-  const zonesFound = new Set<string>();
 
-  const teamZones = new Set(
-    (entry.zones ?? []).filter((z) => z.teamColored).map((z) => z.zone),
-  );
+  const teamZones = new Set((entry.zones ?? []).filter((z) => z.teamColored).map((z) => z.zone));
   const substanceFor = new Map<string, Substance>(
     (entry.zones ?? [])
       .filter((z) => !z.useSourceMaterial)
@@ -121,8 +206,10 @@ async function load(entry: AssetEntry): Promise<LoadedAsset> {
   const detach: THREE.Object3D[] = [];
 
   scene.traverse((node) => {
-    nodeNames.push(node.name);
-    const name = node.name;
+    const name = nameOf(node);
+    nodeNames.push(name);
+
+    if ((node as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(node as THREE.SkinnedMesh);
 
     if (name.startsWith(NODE_PREFIX.socket)) {
       sockets.set(name.slice(NODE_PREFIX.socket.length), node);
@@ -133,7 +220,13 @@ async function load(entry: AssetEntry): Promise<LoadedAsset> {
     }
 
     if (name.startsWith(NODE_PREFIX.part)) {
-      parts.set(name.slice(NODE_PREFIX.part.length), node);
+      const id = name.slice(NODE_PREFIX.part.length);
+      // First writer wins, and the traversal reaches LOD0 first, so `parts` holds the highest
+      // detail copy while `allParts` keeps every level's.
+      if (!parts.has(id)) parts.set(id, node);
+      const list = allParts.get(id) ?? [];
+      list.push(node);
+      allParts.set(id, list);
       // Falls through: a part is normal geometry that also happens to be addressable.
     }
 
@@ -148,16 +241,29 @@ async function load(entry: AssetEntry): Promise<LoadedAsset> {
       const list = lodGroups.get(level) ?? [];
       list.push(node);
       lodGroups.set(level, list);
+      const index = Number.parseInt(level, 10);
+      // Only a top-level group is a switchable level; a mesh *inside* LOD0 called `LOD0_barrel`
+      // is detail, not a level.
+      if (Number.isFinite(index) && node.parent === scene && !lodLevels.has(index)) {
+        lodLevels.set(index, node);
+      }
     }
 
     if (name.startsWith(NODE_PREFIX.material)) {
-      const zone = name.slice(NODE_PREFIX.material.length);
-      zonesFound.add(zone);
+      // The zone is the first segment only: `MAT_shell_receiver` is zone `shell`. See contract.ts.
+      const zone = name.slice(NODE_PREFIX.material.length).split('_')[0];
       applyZone(node, zone, substanceFor.get(zone), teamZones.has(zone));
     }
   });
 
   for (const node of detach) node.parent?.remove(node);
+
+  const lod = buildLod(lodLevels);
+  if (lod) {
+    // `addLevel` reparents each group onto the LOD, so the groups leave `scene` on their own; the
+    // LOD then goes back in their place.
+    scene.add(lod);
+  }
 
   const clips = new Map<string, THREE.AnimationClip>();
   for (const clip of gltf.animations ?? []) clips.set(clip.name, clip);
@@ -177,8 +283,11 @@ async function load(entry: AssetEntry): Promise<LoadedAsset> {
     scene,
     sockets,
     parts,
+    allParts,
     collision,
     clips,
+    lod,
+    skinned,
     findings,
     dispose: () => disposeTree(scene),
   };
@@ -210,13 +319,45 @@ function applyZone(
   const source = mesh.material as THREE.MeshStandardMaterial | undefined;
   const color = source?.color?.getHex?.() ?? 0xffffff;
 
-  mesh.material = photonMaterial(substance, {
-    color,
-    emissive: teamColored ? color : undefined,
-    unique: teamColored,
-  });
+  // Does the file bring its own surface detail?
+  //
+  // This is the line between the two kinds of asset the pipeline has to serve. A blockout ships flat
+  // colours and *wants* the library's response substituted wholesale. A production asset ships baked
+  // normal and ORM maps that are the entire reason it looks better than a box, and substituting them
+  // away throws out the work — which is exactly what this function used to do to every asset,
+  // unconditionally.
+  //
+  // So: textured materials are kept and *tuned* by the substance rather than replaced by it.
+  const hasAuthoredMaps = Boolean(
+    source?.normalMap ?? source?.roughnessMap ?? source?.metalnessMap ?? source?.map,
+  );
+
+  if (hasAuthoredMaps && source) {
+    // Team-coloured zones still need their own instance, because their colour is written per actor
+    // every frame and a shared one would repaint every other wearer.
+    const material = teamColored ? (source.clone() as THREE.MeshStandardMaterial) : source;
+    const reference = photonMaterial(substance, { color }) as THREE.MeshStandardMaterial;
+    // Take the library's *response* — envelope values the maps modulate — and leave the maps alone.
+    // Roughness and metalness maps multiply, so the scalars stay as gain rather than as the answer.
+    if (!source.roughnessMap) material.roughness = reference.roughness;
+    if (!source.metalnessMap) material.metalness = reference.metalness;
+    if (teamColored) {
+      material.emissive = new THREE.Color(color);
+      material.emissiveIntensity = reference.emissiveIntensity;
+    }
+    material.envMapIntensity = reference.envMapIntensity;
+    mesh.material = material;
+  } else {
+    mesh.material = photonMaterial(substance, {
+      color,
+      emissive: teamColored ? color : undefined,
+      unique: teamColored,
+    });
+  }
+
   mesh.userData.photonZone = zone;
   mesh.userData.teamColored = teamColored;
+  mesh.userData.authoredMaps = hasAuthoredMaps;
 }
 
 /** Summarises a loaded scene for the validator. */
@@ -272,9 +413,17 @@ function inspect(
     nodeNames,
     triangles: lodTriangles[0] ?? triangles,
     lodTriangles,
-    materialZones: nodeNames
-      .filter((n) => n.startsWith(NODE_PREFIX.material))
-      .map((n) => n.slice(NODE_PREFIX.material.length)),
+    // First segment only, and de-duplicated, matching what `applyZone` actually binds. The two
+    // read the same names from the same nodes, so a validator using a different rule reports
+    // undeclared zones the importer mapped correctly and unused mappings it already applied —
+    // which is exactly what the first real file through this pipeline produced.
+    materialZones: [
+      ...new Set(
+        nodeNames
+          .filter((n) => n.startsWith(NODE_PREFIX.material))
+          .map((n) => n.slice(NODE_PREFIX.material.length).split('_')[0]),
+      ),
+    ],
     textures: [...textures],
     largestTexture,
     textureMemoryMb: textureBytes / 1024 / 1024,

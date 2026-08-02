@@ -63,8 +63,23 @@ const socketsIn = (nodeNames: string[]): string[] =>
 const partsIn = (nodeNames: string[]): string[] =>
   nodeNames.filter((n) => n.startsWith(NODE_PREFIX.part)).map((n) => n.slice(NODE_PREFIX.part.length));
 
-const zonesIn = (nodeNames: string[]): string[] =>
-  nodeNames.filter((n) => n.startsWith(NODE_PREFIX.material)).map((n) => n.slice(NODE_PREFIX.material.length));
+/**
+ * Zones present in a file.
+ *
+ * The zone is the **first segment** after `MAT_`, so `MAT_shell_receiver` is zone `shell`, and the
+ * list is de-duplicated because a zone spread over four meshes is still one zone.
+ *
+ * This has to match `applyZone` exactly. When the two disagreed, the first real asset put through
+ * the pipeline reported thirteen warnings — every zone both undeclared *and* unused at the same
+ * time — for a file the importer had bound completely correctly.
+ */
+const zonesIn = (nodeNames: string[]): string[] => [
+  ...new Set(
+    nodeNames
+      .filter((n) => n.startsWith(NODE_PREFIX.material))
+      .map((n) => n.slice(NODE_PREFIX.material.length).split('_')[0]),
+  ),
+];
 
 /**
  * Validates a manifest entry on its own, without the file.

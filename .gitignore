@@ -48,3 +48,4 @@ replays/
 
 # Local editor/agent config
 .claude/
+public/assets/

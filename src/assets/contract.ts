@@ -38,17 +38,43 @@ export const NODE_PREFIX = {
    *
    * This is what lets one animation implementation drive both the procedural rifle and an imported
    * one: the code asks for `core`, and gets whichever node is called `PART_core`.
+   *
+   * **A node carries one prefix.** An animated part that also needs a material zone — which is most
+   * of them, since the parts worth animating tend to be the glowing ones — is authored as a
+   * `PART_` transform *containing* a `MAT_` mesh:
+   *
+   * ```
+   *   PART_core            transform the runtime moves
+   *     └─ MAT_core_glow   mesh the material library paints
+   * ```
+   *
+   * Authoring `PART_core` as the mesh itself is the obvious first attempt, and it leaves the
+   * manifest's zone mapped to nothing. It is also how every DCC tool represents this anyway: a
+   * group you keyframe, containing the geometry.
    */
   part: 'PART_',
   /**
    * A material zone. `MAT_shell` is assigned the substance the asset's manifest maps `shell` to,
    * which is how an imported mesh inherits the Photon material library instead of shipping its own
    * flat textures.
+   *
+   * **The zone is the first segment only.** `MAT_shell`, `MAT_shell_receiver` and
+   * `MAT_shell_upper_plate` are all zone `shell`. That rule exists because the first real file put
+   * through this pipeline named its nodes `MAT_shell_receiver` and `MAT_frame_barrel` — which is
+   * what any artist with three pieces of shell will do — and every zone mapping silently missed.
+   * Taking the whole suffix as the zone name makes the obvious naming wrong, so it does not.
    */
   material: 'MAT_',
   /** A surface that takes team colour. Assigned at runtime from the wearing actor's team. */
   team: 'TEAM_',
-  /** Level of detail. `LOD0` is the highest; the importer builds a Three.js LOD group from these. */
+  /**
+   * Level of detail. `LOD0` is the highest; the importer builds a `THREE.LOD` group from these.
+   *
+   * Levels are **siblings under the asset root**, not nested, and each holds the complete model at
+   * that detail. A `PART_` node the runtime animates must exist in every level, or the animation
+   * stops the moment the level switches — which reads as the object dying rather than as a detail
+   * reduction.
+   */
   lod: 'LOD',
   /** Collision geometry. Never rendered; handed to the physics layer. */
   collision: 'COL_',

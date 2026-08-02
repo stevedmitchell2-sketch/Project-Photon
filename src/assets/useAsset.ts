@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { NODE_PREFIX } from './contract';
 import { loadAsset, type LoadedAsset } from './AssetLoader';
+import { AssetAnimator, clipFor, type AnimatorOptions } from './AssetAnimator';
 
 /**
  * React binding for the asset registry.
@@ -24,6 +26,44 @@ export function useAsset(id: string): LoadedAsset | null {
   }, [id]);
 
   return asset;
+}
+
+/**
+ * Drives an asset's clips from a simulation state.
+ *
+ * The whole animation binding in one hook: build a mixer when the asset arrives, cross-fade whenever
+ * the state changes, and advance it once per frame from the render clock rather than the tick clock.
+ *
+ * Advancing from the render clock is deliberate. Animation is presentation, so it runs at display
+ * rate and interpolates freely; the simulation stays at its fixed 64 Hz and never sees any of this.
+ * Driving a mixer from the tick would tie visual smoothness to the network rate and put a Three.js
+ * type inside the deterministic path, which is the one architectural rule this project has held
+ * since M1.
+ *
+ * Returns null while the asset is absent, which is the normal state — the caller keeps its
+ * procedural animation in that case.
+ */
+export function useAssetAnimation(
+  asset: LoadedAsset | null,
+  state: string,
+  options?: AnimatorOptions,
+): AssetAnimator | null {
+  const animator = useMemo(() => (asset ? new AssetAnimator(asset, options) : null), [asset, options]);
+  const lastState = useRef<string | null>(null);
+
+  useEffect(() => () => animator?.dispose(), [animator]);
+
+  useFrame((_, delta) => {
+    if (!animator) return;
+    if (state !== lastState.current) {
+      const clip = clipFor(animator, state);
+      if (clip) animator.play(clip);
+      lastState.current = state;
+    }
+    animator.update(delta);
+  });
+
+  return animator;
 }
 
 /**
