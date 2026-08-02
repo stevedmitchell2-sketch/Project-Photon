@@ -4,6 +4,66 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.22.0] - 2026-08-02 - Sprint 16: Apex
+
+### Operation: Arena 2.0
+
+Sprint 15 proved a spectator bowl could not be fitted into Arena 01, and the reason was structural,
+so this is a structural answer rather than more decoration. **Arena 02, "Apex"** — a building
+designed around a sport rather than a hall with a catwalk in it. It is now the lobby default.
+
+Three player levels, a 28 m roof, a 23 m central atrium with the Photon Core on its axis, two sky
+bridges crossing at different heights, and a real spectator bowl: two raked tiers, VIP suites, press
+boxes, a camera gantry ring and a lighting truss grid, all of it modelled rather than faked.
+
+Six landmarks, one on each wall and two in the middle: the Core and its atrium, the Sky Bridges, the
+Broadcast Tower, the Fusion Reactor, the Champion's Walk, and the Sky Decks.
+
+### The idea that made it affordable
+
+`bounds` is the **play space, not the building**. The field stays 60 x 60 — identical to Classic — so
+navigation, the minimap and the heatmaps cost exactly what they cost before, and the whole bowl lives
+in a 12 m ring outside it. Because navigation casts downward from `ceilingY + 1`, every spectator
+surface is invisible to the bake without a single exclusion flag.
+
+### Two-fold symmetry
+
+Red maps exactly onto blue and green onto yellow — measured at **0.0%** difference in path distance
+to the objective — but opposite walls are free to be different buildings. The cost, reported rather
+than hidden, is that 3- and 4-team modes are 26% uneven across the two diagonals.
+
+### The arena audit
+
+`npm run arena-audit` is the other half of this sprint. It found, in order: four spawn points inside
+the Broadcast Tower's wall; the tower's door facing the wall; ramps running under the walkway they
+land on; railing gaps cut 3 m from where the spokes arrive; a 44 degree stair no bot can climb; two
+bridges railed end to end; a landing pad mirrored onto the wrong side of its own span; a ramp pitched
+to climb toward the middle of the arena; and a deck approach that made bots walk 77 m the wrong way
+round the building.
+
+**Every one of those typechecked, linted, passed the suite, built clean and rendered correctly.**
+
+It also fails **Classic**, which has been four-fold symmetric in name only since M1: red and blue are
+17.1% apart, green and yellow 37.6%. Its dark room and its two staircases were never part of the
+symmetry and nobody had measured it.
+
+### Performance
+
+| | Classic | Apex |
+|---|---|---|
+| Brushes | 154 | 915 |
+| Draw calls (shell) | 17 | 32 |
+| Nav nodes / bake | 2271 / 58 ms | 2627 / 118 ms |
+| Median sight line | 8.6 m | **11.8 m** |
+
+In game: **60 FPS, GPU 10.3 ms, CPU 2.0 ms, sim 1.80 ms, 248 draw calls** — six times the geometry
+and three times the volume of Classic for the same frame.
+
+Truss lighting came down by half after the first look. The inverse-square arithmetic for a fixture
+23 m above the field says 2600, and 2600 blew the building to white under bloom.
+
+---
+
 ## [0.21.0] - 2026-08-02 - Sprint 15: the spectator bowl
 
 ### Scale

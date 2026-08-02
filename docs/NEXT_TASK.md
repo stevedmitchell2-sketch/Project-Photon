@@ -1,65 +1,67 @@
 # NEXT TASK
 
-**Read first:** [PROJECT_STATUS.md](./PROJECT_STATUS.md), [ART_DIRECTION.md](./ART_DIRECTION.md).
+**Read first:** [PROJECT_STATUS.md](./PROJECT_STATUS.md), [ARENA_DESIGN.md](./ARENA_DESIGN.md).
 
 Working philosophy: **Observe -> Measure -> Fix -> Play Again.**
 
 ---
 
-## 0. Re-measure the frame in a clean context
+## 1. Play Apex, then measure the difficulty ladder on it
 
-One number is still owed. The venue's cost was interleaved twice: **-0.07 ms** in a healthy context
-and **1.3 ms** later, after the browser context had degraded to a 33 ms baseline with samples
-swinging 28-39 ms. The first is trustworthy, the second is not.
+Apex is structurally validated and has been looked at, but **nobody has played a full match on it.**
+Everything below assumes a real playtest happens first.
 
-Take one clean reading in a fresh pane before building anything that assumes headroom. Clean
-readings this session, venue present: 60 FPS, GPU 9.6-12.1 ms, CPU 1.6-2.5 ms, sim 0.6-2.1 ms,
-157-235 draw calls.
+Then measure the thing this arena was partly built for. Bot aim error is specified in metres of miss
+at range, and Classic's median sight line of 8.6 m is why `hard` and `expert` have measured the same
+as `medium` since Sprint 10. Apex's median is 11.8 m with 22% of bearings past 25 m.
 
-Also unconfirmed: the Photon Core's point light looked as though it floods the central room to white
-at close range. Observed only in a degraded context, so look again before touching it.
+```bash
+npm run spawn-audit -- --seconds 240 --bots 6 --difficulty hard
+```
 
-## 1. The arena has no room for a spectator bowl
+Run the ladder on Apex and see whether four tiers separate. If they do, that unblocks a backlog item
+that has been stuck for six sprints. If they do not, the fix is in `botDifficulty.ts`, not the map.
 
-This is the sprint's real finding and it constrains everything that follows. The section is 9 m of
-roof over a 5 m deck, and the deck walkway runs to within 0.5 m of the perimeter wall. That leaves
-4 m of wall, players use the lower half, and a projecting balcony would put a ceiling 0.6 m over
-their heads.
+## 2. Fix Classic's symmetry, or retire it from competitive use
 
-The galleries are therefore **relief**, capped at 0.5 m of projection. They read now, but they will
-never read as a bowl at that depth.
+The audit found a real defect nobody knew about: Classic is four-fold symmetric in name only. Red
+and blue are **17.1%** apart in path distance to the objective, green and yellow **37.6%**. The dark
+room at (-21, 6) and the two staircases were never part of the rotation.
 
-**If a real bowl matters, the arena section has to change** - raise the roof over the perimeter, or
-pull the deck away from the walls. That is arena data, not a render change, and it needs a
-playtest because it moves sight lines.
+Every balance number measured on Classic since M1 carries that bias. Either mirror those three
+features properly or stop using it for anything but benchmarks.
 
-## 2. Hero spaces beyond the centre
+## 3. Cross-diagonal fairness on Apex
 
-Sprint 15 asked for three memorable callouts and delivered none. The Core is still the only
-landmark. Candidates with distinct silhouettes: a Broadcast Hub on one wall, an Energy Tower in a
-corner, a Champion's Walk along an approach.
+Two-fold symmetry balances team *pairs* exactly and leaves 3- and 4-team modes **26%** uneven across
+the diagonals. Red and blue are 0.0% apart; green and yellow are 4.6% apart and both sit about 10 m
+further from the objective than red and blue.
 
-## 3. Atmosphere
+This is a known, measured, deliberate cost. If 4-team modes matter, the answer is a second route out
+of the green and yellow corners, not a change to the symmetry.
 
-Still no haze, dust or drifting particles. The banners are the only ambient motion in the building.
+## 4. Finish the presentation
 
-**Budget them explicitly.** Transparent overdraw is the third-largest GPU cost, and the frame is
-already over target before anything is added.
+Apex has the architecture. It still lacks:
 
-## 4. Architectural variety
-
-Everything is still rectangular. Curves, diagonals, circular structures and overhangs are untouched,
-and they are what would make different parts of the map distinguishable from each other.
+- **Atmosphere.** No haze, no dust, no drifting particles, no beams. A 28 m atrium is the first
+  space in this project where volumetrics would actually pay for themselves. **Budget them
+  explicitly** — transparent overdraw is the third-largest GPU cost and the frame is already over
+  the 120 FPS target at 10.3 ms.
+- **A hero weapon.** The Sprint 12 pipeline accepts a drop-in asset; nothing has been made.
+- **Characters.** Still primitive blockouts, and now the most visible graybox by a wide margin —
+  the building around them is finished and they are not.
+- **Two small art notes from the first look:** the truss fixture pods read as cyan cubes floating
+  free of the grid, and the upper half of the arena is still flatter in contrast than the lower.
 
 ## 5. Still open
 
-- **120 FPS unmet** - GPU 10-12 ms against an 8.33 ms budget, fragment-bound.
-- **Characters are primitive blockouts** - the most visible remaining graybox.
-- **Difficulty is two tiers, not four**, blocked on an arena with sight lines beyond ~10 m.
+- **120 FPS unmet.** GPU 10.3 ms against an 8.33 ms budget, fragment-bound.
+- **Residual prediction corrections** on some clients, narrowed to a stale acknowledged tick.
 
 ## Standing note
 
-Twelve sprints of rules. Sprint 15 added two the hard way:
+Thirteen sprints of rules. Sprint 16 added the one that matters most:
 
 - when a system looks broken, check the instrument first;
 - when a playtest names a culprit, measure before you fix it;
@@ -68,9 +70,9 @@ Twelve sprints of rules. Sprint 15 added two the hard way:
 - build the thing that checks the work before doing much of the work;
 - if the detail is a rhythm, generate it; if it is a silhouette, model it;
 - a landmark has to be visible from where players actually stand;
-- **do not disturb a working preview mid-sprint.** Opening a second browser tab to run a comparison
-  broke the pane's compositing for a whole session. The measurement environment is part of the
-  build;
-- **geometry that reads as absent is usually inside something.** The galleries were built, batched,
-  instanced and committed, and were buried in a wall the entire time. Nothing catches that except
-  looking at it. Typecheck, lint, tests and a clean build all passed on a gallery no one could see.
+- do not disturb a working preview mid-sprint - the measurement environment is part of the build;
+- geometry that reads as absent is usually inside something;
+- **a level is not correct because it compiles, collides and renders.** Ten separate defects in
+  Apex passed typecheck, lint, seventy tests and a clean build, and every one of them made part of
+  the arena unusable. Space has properties no compiler models: headroom, reachability, steepness,
+  symmetry. **Write the audit that measures them, and run it before you look at the thing.**

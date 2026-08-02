@@ -13,6 +13,66 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 22 - 2026-08-02 - Sprint 16: Operation Arena 2.0
+
+**Brief:** stop decorating the current layout. Redesign the arena itself - verticality, iconic
+sightlines, scale, spectator integration, navigation, variety, without losing gameplay readability.
+
+**Outcome:** Arena 02 "Apex", plus the structural audit that made it possible to build at all.
+
+### The decision that shaped everything
+
+`bounds` is the play space, not the building. Keeping the field at 60 x 60 - identical to Classic -
+means navigation, the minimap and the heatmaps cost exactly what they cost before, and the entire
+spectator bowl lives in a 12 m ring outside the play boundary where it is free. Because navigation
+casts downward from `ceilingY + 1`, every spectator surface is invisible to the bake without a
+single exclusion flag.
+
+That is what made a 28 m building over a 60 m field affordable: 60 FPS, GPU 10.3 ms, 248 draw calls,
+against Classic's 10-12 ms and 235.
+
+### Building the audit first was the right call
+
+`npm run arena-audit` was written before most of the arena, and it earned that immediately. In
+order, it found: four spawn points inside the Broadcast Tower's wall; the tower's door facing the
+wall instead of the field; ramps running underneath the walkway they were meant to land on; railing
+gaps cut 3 m from where the spokes actually arrive; a 44 degree stair no bot can climb; two bridges
+railed end to end so their stairs landed against glass; a landing pad mirrored onto the opposite
+side of its own span; a ramp pitched to climb toward the middle of the arena and drive its high end
+through the balcony slab; and a Sky Deck approach sitting on a bracket arm, quietly making bots walk
+77 m the wrong way round the building rather than 39 m down the stair beside them.
+
+**Every one of those typechecked, linted, passed seventy tests, built clean and rendered correctly.**
+
+Most of them were the same failure wearing different clothes: a surface with less than crouch
+clearance above it is dropped from the bake entirely, so a flight breaks in the middle and the level
+above it comes out as an island. That single rule is now the first thing ARENA_DESIGN.md says.
+
+It also failed **Classic**, which nobody had ever measured: four-fold symmetric in name only, with
+red and blue 17.1% apart in path distance to the objective. Its dark room and its two staircases
+were never part of the rotation, and every balance number taken on it since M1 carries that bias.
+
+### What went in
+
+Three player levels, a 23 m atrium with the Core on its axis, two sky bridges crossing at different
+heights, six landmarks - one on each wall and two in the middle - and a real bowl with two raked
+tiers, suites, press boxes, a gantry ring and a truss grid.
+
+Two-fold symmetry rather than four: red maps onto blue at 0.0% measured difference, and opposite
+walls get to be different buildings. The cost, stated rather than hidden, is 3- and 4-team modes
+running 26% uneven across the diagonals.
+
+### Where I got it wrong
+
+Lighting. The inverse-square arithmetic for a fixture 23 m above the field says 2600, and 2600 blew
+the whole building to white under bloom and cost the arena every bit of the contrast Sprint 14
+bought. Halved after the first look. The style guide has said since M1 that contrast comes from lit
+regions against unlit ones rather than from raising the floor under everything, and the arithmetic
+being right is not the same as the number being right.
+
+I also spent far too long trying to reason out one connectivity failure that a five-line path trace
+answered in one run. When a graph question resists three rounds of geometry, print the graph.
 ## Session 21 - 2026-08-02 - Sprint 15: the spectator galleries
 
 **Brief:** turn the Central Arena into a world-class venue. Scale, atmosphere, league identity,
