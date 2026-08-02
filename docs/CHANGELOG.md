@@ -4,6 +4,56 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.20.0] - 2026-08-01 - Sprint 14: the Photon Core
+
+One iconic space rather than an evenly improved map.
+
+### The Photon Core
+
+A landmark suspended in the central objective room: a pulsing core inside three rings crossed on
+different axes and spinning at different rates, a containment cage of four struts, and a beam
+descending to the floor.
+
+**Crossed rings rather than a sphere.** A sphere looks identical from every angle and therefore
+reads as flat; crossed rings give parallax and tell you where you are standing relative to it.
+
+**The Core is also the objective readout** — it takes the colour of whoever holds the room, strobes
+while contested, floods on a win. So it keeps being worth looking at after the first match, and it
+puts the project's oldest identity idea (the building reports the state of the match) at the visual
+centre of the arena instead of in a HUD element.
+
+**Placement took a correction.** A first pass hung it *above* the objective room. That gap is only
+2.8 m, so a 5 m ring assembly clipped through the roof, and from the ground floor the roof edge
+occluded it from every approach. A landmark nobody can see is not a landmark. Inside the room it is
+framed by the four doorways and players fight around it.
+
+### Lighting drama
+
+**Ambient fill halved, 0.42 to 0.20**, key light raised to compensate. The single change that gave
+the arena mood.
+
+Ambient is a floor under every surface simultaneously, so at 0.42 the perimeter was lit to within a
+hair of the objective and nothing drew the eye. The arena had been disobeying its own style guide,
+which has said since M1 that contrast comes from lit-versus-unlit regions rather than a global dim.
+
+### Competition floor
+
+Boundary lines inset from the walls, panel seams on the module grid giving the floor scale, a
+segmented ring marking the objective, and chevrons on each approach pointing inward. The chevrons
+are navigation payload: from a corridor you can see which way the middle is without a HUD.
+
+### Performance
+
+GPU 10.3-11.7 ms, CPU 1.7-2.2 ms, 199-214 draw calls, 60 FPS held. Roughly +0.5 ms and +60 draw
+calls against Sprint 13, for the Core, the floor markings and the extra fill from higher contrast.
+
+### Hero camera test
+
+Run with the HUD hidden. First Photon frames with a focal point, a readable enemy silhouette against
+it, real vertical contrast and a distinctive shape. Honest remaining weaknesses in the sprint report.
+
+---
+
 ## [0.19.0] - 2026-08-01 - Sprint 13: architecture where there were boxes
 
 ### The correction

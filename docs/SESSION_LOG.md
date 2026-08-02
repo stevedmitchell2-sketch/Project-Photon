@@ -11,6 +11,41 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 20 - 2026-08-01 - Sprint 14: Hero Arena
+
+**Brief:** create one iconic space rather than improving every room equally. A landmark, lighting
+drama, floor redesign, scale, atmosphere, colour language, and a hero camera test.
+
+**Outcome:** landmark, lighting and floor delivered. Scale and atmosphere not delivered.
+
+### What worked
+
+The Photon Core is the first thing in this project that functions as a landmark. Crossed rotating
+rings rather than a sphere, because a sphere reads identically from every angle and therefore reads
+as flat. It doubles as the objective readout - team colour, contested strobe, victory flood - which
+is what stops it becoming scenery players stop seeing after one match.
+
+The lighting change was smaller and mattered as much: ambient fill from 0.42 to 0.20. Ambient is a
+floor under every surface at once, so the old value lit the perimeter to within a hair of the
+objective and nothing drew the eye. The arena had been disobeying its own style guide since M1.
+
+### The correction worth recording
+
+The Core was first hung in the volume between the objective room roof and the arena ceiling. In the
+arena data that looked like the obvious place - the tallest free space in the building. In practice
+the gap is 2.8 m, so a 5 m ring assembly clipped through the roof, and from the ground floor the
+roof edge occluded it from every approach.
+
+**A landmark has to be visible from where players actually stand**, which is a different question
+from where there is room for it. Moving it inside the objective room fixed both problems and made
+the most contested ground in the game the most memorable.
+
+### Honest state
+
+The central room photographs. The rest of the map does not. Scale and atmosphere were the two parts
+of the brief that went undone, and they are exactly what separates "a good room" from "a venue".
+
 ## Session 19 - 2026-08-01 - Sprint 13: architecture where there were boxes
 
 **Brief:** stop polishing placeholder geometry and replace it. Build architecture, not walls; a

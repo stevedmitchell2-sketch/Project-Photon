@@ -19,7 +19,8 @@ scope rationale and [ARCHITECTURE.md](./ARCHITECTURE.md) for the invariants each
 | **Phase 11 — Art Direction Alpha** | Material library, procedural surface detail, PH-6 hero rifle, art bible | 🟨 **Materials and weapon done; environment kit, characters and atmosphere not started** |
 | **Phase 12 — Asset Pipeline** | Name-based glTF contract, registry, importer, validation, audit tooling, seven specification documents | ✅ **Complete — proven end to end against the weapon** |
 | **Phase 13 — Architectural Articulation** | Generated wall bays, broadcast ceiling rig, cover detailing | ✅ **Complete — 1.22 ms for 474 elements** |
-| **Phase 14 — Light, Landmarks and Floor** | Dramatic lighting contrast, named landmark structures, competition floor markings, then Phase 1 content authoring | ⬜ **Next** |
+| **Phase 14 — Hero Arena** | Photon Core landmark, lighting contrast, competition floor markings | ✅ **Complete — the central room photographs** |
+| **Phase 15 — Scale and Atmosphere** | Spectator balconies, hanging banners, volumetric haze, drifting dust, then Phase 1 content authoring | ⬜ **Next** |
 | M6 — Tools & Ship | Map/spawn/lighting/bot-path editors, weapon tuning, replays, telemetry, CI perf budgets | ⬜ Not started |
 
 ---

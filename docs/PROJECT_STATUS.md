@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-01 · **Phase:** Sprint 13 - the arena reads as architecture rather than boxes. Remaining visual gap is lighting drama, landmarks and floor.
+**Last updated:** 2026-08-01 · **Phase:** Sprint 14 - the central arena has a landmark, lighting contrast and a marked floor. It is the first space that photographs.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -50,6 +50,8 @@ ladder.
 | Hero weapon | PH-6 rifle with animated charge rails and energy core | ~30 draw calls (was 8); **drives imported or procedural geometry through one name-addressed path** |
 | Asset pipeline | Name-based contract over standard glTF | 9 assets specified, 0 authored; `npm run asset-audit` passes; importer, validation and 17 tests in place |
 | Arena architecture | Generated from brush data: ribs, panels, trim, hatches, trusses, cover caps | **474 instances in 18 batches, 1.22 ms, 17 draw calls** measured interleaved |
+| Photon Core | Landmark and objective readout in one | Crossed rotating rings, team-coloured, strobes contested, floods on win |
+| Lighting | Ambient 0.42 -> 0.20, key 1.1 -> 1.55 | Perimeter falls away; the middle is the brightest thing in the room |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
 | Combat | Shields → health, headshots, assists, killfeed, scoring | 60 s bot match: 106 shots, 106 impacts, 9 kills |
