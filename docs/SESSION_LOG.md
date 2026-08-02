@@ -12,6 +12,46 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 21 - 2026-08-02 - Sprint 15: the spectator bowl, unverified
+
+**Brief:** turn the Central Arena into a world-class venue. Scale, atmosphere, league identity,
+three hero spaces, architectural variety, hero weapon, cinematic review.
+
+**Outcome:** the spectator bowl was built and committed. Atmosphere, hero spaces and architectural
+variety were not started. **The cinematic review could not be performed and the sprint has no
+verified performance numbers.**
+
+### What was built
+
+`ArenaVenue` fills the 4 m band of perimeter wall between the upper deck and the roof with a
+spectator bowl: recessed galleries, raked tiers, suite mullions, warm press and VIP boxes, a
+parapet, an LED ribbon board and hanging championship banners. Nothing collides and no arena data
+changed, so no sight line a player uses is affected.
+
+The design bet is that an occupied gallery at 25 m is sold by depth, repetition, an edge and warm
+windows breaking the rhythm - not by spectator models, which at that distance would be a few pixels
+each and cost more than everything else combined.
+
+### What went wrong, and the lesson
+
+Partway through the sprint the frame dropped to 4 FPS with GPU at 23-37 ms against a 10-12 ms
+baseline. Diagnosis was ambiguous: an interleaved toggle put the new geometry at 0.07 ms and only
+render files had changed, but simulation time was up ~10x, which no rendering change can cause -
+though a saturated main thread can inflate it as a symptom.
+
+To settle it I opened a second browser tab to get a clean context. **That broke the preview pane's
+compositing for the rest of the session**, through a full preview restart and a tab close. From that
+point nothing could be seen or measured.
+
+So the sprint ends with working code that has never been looked at, and an open performance question
+it was in the middle of answering. The lesson is recorded in NEXT_TASK: **do not disturb a working
+preview mid-sprint - the measurement environment is part of the build.**
+
+The honest handling was to commit the work with the verification gap stated plainly in the commit
+message, the changelog, PROJECT_STATUS and NEXT_TASK item 0, rather than to report screenshots and
+numbers that were not taken.
+
 ## Session 20 - 2026-08-01 - Sprint 14: Hero Arena
 
 **Brief:** create one iconic space rather than improving every room equally. A landmark, lighting

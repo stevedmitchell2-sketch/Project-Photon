@@ -4,6 +4,48 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.21.0] - 2026-08-02 - Sprint 15: the spectator bowl
+
+### Scale
+
+The arena had a landmark and lighting contrast after Sprint 14 and still read as a *room*. The
+missing ingredient was never detail — it was **the implication of an audience**.
+
+`ArenaVenue` builds a spectator bowl into the 4 m band of perimeter wall between the 5 m upper deck
+and the 9 m roof. Nothing there collides, no arena data changes, and no sight line a player uses is
+altered — the bowl lives entirely above the top of play. That constraint is also why it works: real
+arena seating is above and behind the boundary looking down, and putting it anywhere reachable would
+make the space feel smaller, not larger.
+
+Per wall face: a dark recess behind the wall line so the eye reads depth, a bright parapet giving
+the recess an edge, three raked seating tiers stepping up and back, mullions dividing it into
+suites, and warm lit press and VIP boxes on a slower rhythm — the only warm/cool contrast in the
+building and the reason the galleries read as *occupied*.
+
+**No spectator models, deliberately.** At 25 m a figure is a few pixels and would cost more than
+everything else here combined. What sells an occupied gallery at that distance is depth, repetition,
+an edge, and windows breaking the rhythm.
+
+### League identity and motion
+
+An **LED ribbon board** wrapping the lower gallery — the most recognisable piece of arena furniture
+there is — animated by scrolling the texture offset rather than redrawing, per the Sprint 10
+measurement. **Championship banners** hanging in the tall volume with a slow sway: the cheapest
+ambient motion available and the fastest way to communicate ceiling height.
+
+### Verification is incomplete
+
+**The browser preview pane stopped compositing partway through this sprint and could not be
+recovered.** The galleries have not been seen rendered and their cost has not been measured.
+
+Known: the code typechecks, lints and builds; the full suite passes; an interleaved toggle of the
+venue group taken before the pane failed put its geometry at **0.07 ms**.
+
+Not known: whether it looks right, and what the frame costs. **Re-measure and look before building
+anything on top of this.**
+
+---
+
 ## [0.20.0] - 2026-08-01 - Sprint 14: the Photon Core
 
 One iconic space rather than an evenly improved map.
