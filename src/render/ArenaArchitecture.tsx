@@ -346,10 +346,80 @@ export function ArenaArchitecture() {
       }
     }
 
+    // --- Competition floor -------------------------------------------------
+    //
+    // The floor is a third of every frame and was a bare plane. A sports floor is *marked*: it tells
+    // you where the play area ends, where the objective is, and which way is which. Those markings
+    // are navigation aids first and decoration second, which is why they are laid out from the
+    // arena's own bounds and objective volumes rather than authored.
+    const laneLines: Placement[] = [];
+    const floorSeams: Placement[] = [];
+    const objectiveRing: Placement[] = [];
+    const approachChevrons: Placement[] = [];
+
+    const FLOOR_Y = 0.03;
+
+    // Boundary line inset from the wall, the way a court is marked inside its room.
+    const inset = 3;
+    const halfX = spanX / 2 - inset;
+    const halfZ = spanZ / 2 - inset;
+    place(laneLines, 0, FLOOR_Y, -halfZ, [halfX * 2, 0.04, 0.18]);
+    place(laneLines, 0, FLOOR_Y, halfZ, [halfX * 2, 0.04, 0.18]);
+    place(laneLines, -halfX, FLOOR_Y, 0, [0.18, 0.04, halfZ * 2]);
+    place(laneLines, halfX, FLOOR_Y, 0, [0.18, 0.04, halfZ * 2]);
+
+    // Panel seams on the module grid. These are what give the floor scale — a featureless plane
+    // gives the eye no size reference at all, which is most of what makes a graybox look like one.
+    const SEAM_PITCH = 8;
+    for (let i = -Math.floor(spanX / SEAM_PITCH / 2); i <= Math.floor(spanX / SEAM_PITCH / 2); i++) {
+      place(floorSeams, i * SEAM_PITCH, FLOOR_Y - 0.005, 0, [0.06, 0.03, spanZ - 2]);
+    }
+    for (let k = -Math.floor(spanZ / SEAM_PITCH / 2); k <= Math.floor(spanZ / SEAM_PITCH / 2); k++) {
+      place(floorSeams, 0, FLOOR_Y - 0.005, k * SEAM_PITCH, [spanX - 2, 0.03, 0.06]);
+    }
+
+    // Objective marking: a segmented ring on the floor of the contested room, plus chevrons on each
+    // approach pointing inward. The chevrons are the navigation payload — from a corridor you can
+    // see which way the middle is without a HUD.
+    const hill = game.arena.definition.objectives.find((o) => o.kind === 'hill');
+    if (hill) {
+      const radius = Math.max(hill.s[0], hill.s[2]) * 0.62;
+      const segments = 20;
+      for (let i = 0; i < segments; i++) {
+        // Broken ring: gaps read as installed lighting, a solid circle reads as paint.
+        if (i % 2 === 1) continue;
+        const angle = (i / segments) * Math.PI * 2;
+        place(
+          objectiveRing,
+          hill.p[0] + Math.cos(angle) * radius,
+          FLOOR_Y,
+          hill.p[2] + Math.sin(angle) * radius,
+          [0.9, 0.05, 0.16],
+          -angle,
+        );
+      }
+
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2;
+        for (let step = 0; step < 3; step++) {
+          const distance = radius + 3.5 + step * 2.6;
+          place(
+            approachChevrons,
+            hill.p[0] + Math.cos(angle) * distance,
+            FLOOR_Y,
+            hill.p[2] + Math.sin(angle) * distance,
+            [1.5 - step * 0.25, 0.05, 0.14],
+            -angle + Math.PI / 2,
+          );
+        }
+      }
+    }
+
     return {
       ribs, panels, trims, hatches, vents, conduits, kicks, capitals,
       trusses, fixtures, lamps, cameras, speakers, hangers,
       coverCaps, coverPosts, coverStrips, pillarBands,
+      laneLines, floorSeams, objectiveRing, approachChevrons,
     };
   }, [game]);
 
@@ -383,6 +453,12 @@ export function ArenaArchitecture() {
       <Elements placements={layout.coverCaps} substance="titanium" color={0x2f3742} />
       <Elements placements={layout.pillarBands} substance="brushedAluminium" color={0x596475} />
       <TrimChannels placements={layout.coverStrips} color={palette.trim} />
+
+      {/* Competition floor */}
+      <Elements placements={layout.floorSeams} substance="titanium" color={0x1b2029} />
+      <TrimChannels placements={layout.laneLines} color={0xdfe9f5} />
+      <TrimChannels placements={layout.objectiveRing} color={palette.trim} />
+      <TrimChannels placements={layout.approachChevrons} color={0x8fa4bd} />
     </group>
   );
 }

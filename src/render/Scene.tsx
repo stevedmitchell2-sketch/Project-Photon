@@ -11,6 +11,7 @@ import { ArenaMesh } from './ArenaMesh';
 import { ArenaProps } from './ArenaProps';
 import { useGame } from './GameContext';
 import { ImpactFX } from './ImpactFX';
+import { PhotonCore } from './PhotonCore';
 import { PlayerAvatars } from './PlayerAvatars';
 import { ProjectileRenderer } from './ProjectileRenderer';
 import { RendererStats } from './RendererStats';
@@ -93,6 +94,10 @@ export function Scene({ graphics, accessibility }: Props) {
 
       <ArenaMesh arena={arena} shadows={graphics.shadows} />
       <ArenaArchitecture />
+      <PhotonCore
+        colorblind={accessibility.colorblindPalette}
+        maxLights={graphics.maxDynamicLights}
+      />
       <TeamIdentity
         colorblind={accessibility.colorblindPalette}
         maxLights={graphics.maxDynamicLights}

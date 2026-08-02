@@ -9,12 +9,24 @@
  */
 export const LIGHTING = {
   /**
-   * Global fill. Deliberately restrained: ambient cannot be masked per-room, so a generous term
-   * makes an unlit space impossible — a dark room reads exactly as bright as the lit floor. Low
-   * fill plus the arena's own fixtures is what gives the level light and shade.
+   * Global fill.
+   *
+   * Halved in Sprint 14, and this is the single change that gave the arena mood. Ambient cannot be
+   * masked per-room, so it is a *floor* under every surface simultaneously — at 0.42 the perimeter
+   * was lit to within a hair of the objective and nothing in the frame drew the eye. The arena was
+   * disobeying its own style guide, which has said since M1 that contrast comes from lit-versus-unlit
+   * regions rather than from a global dim.
+   *
+   * Dropping the floor is what lets the fixtures matter. The Photon Core and the ceiling rig now
+   * carry the middle of the room, and the corners fall away, which is what a broadcast venue looks
+   * like: a bright competition surface under a dark roof.
+   *
+   * The lower bound is `LUMINANCE_TARGETS.blackFloor` — below it a room stops being atmospheric and
+   * becomes a bug. `npm run dev` plus the lighting probe verifies this; do not lower it further
+   * without re-running that.
    */
-  ambientIntensity: 0.42,
-  hemisphereIntensity: 0.3,
+  ambientIntensity: 0.2,
+  hemisphereIntensity: 0.14,
 
   /** Image-based lighting. Required for metallic surfaces to render as anything but black. */
   environmentIntensity: 0.6,
@@ -23,8 +35,14 @@ export const LIGHTING = {
   /** ACES rolls midtones down hard; above 1 keeps mid-dark surfaces off the floor of the curve. */
   toneMappingExposure: 1.35,
 
-  /** The single shadow-casting key light. */
-  keyLightIntensity: 1.1,
+  /**
+   * The single shadow-casting key light.
+   *
+   * Raised alongside the ambient cut. With less fill, the key has to do more of the work of
+   * separating surfaces from each other, and a strong directional is what produces the long shadows
+   * that make a large space read as large.
+   */
+  keyLightIntensity: 1.55,
   keyLightColor: 0xbfd8ff,
   keyLightPosition: [18, 34, 12] as const,
 } as const;
