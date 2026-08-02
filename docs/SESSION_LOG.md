@@ -13,14 +13,13 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
-## Session 21 - 2026-08-02 - Sprint 15: the spectator bowl, unverified
+## Session 21 - 2026-08-02 - Sprint 15: the spectator galleries
 
 **Brief:** turn the Central Arena into a world-class venue. Scale, atmosphere, league identity,
 three hero spaces, architectural variety, hero weapon, cinematic review.
 
-**Outcome:** the spectator bowl was built and committed. Atmosphere, hero spaces and architectural
-variety were not started. **The cinematic review could not be performed and the sprint has no
-verified performance numbers.**
+**Outcome:** the spectator galleries were built, then found broken on the first look, then fixed.
+Atmosphere, hero spaces, architectural variety and the hero weapon were not started.
 
 ### What was built
 
@@ -33,24 +32,35 @@ The design bet is that an occupied gallery at 25 m is sold by depth, repetition,
 windows breaking the rhythm - not by spectator models, which at that distance would be a few pixels
 each and cost more than everything else combined.
 
-### What went wrong, and the lesson
+### What the first look found
 
-Partway through the sprint the frame dropped to 4 FPS with GPU at 23-37 ms against a 10-12 ms
-baseline. Diagnosis was ambiguous: an interleaved toggle put the new geometry at 0.07 ms and only
-render files had changed, but simulation time was up ~10x, which no rendering change can cause -
-though a saturated main thread can inflate it as a symptom.
+The preview pane failed partway through the sprint and the work was committed unseen. The pane
+recovered later in the same session, and the first look found the galleries **buried inside the
+wall** - recess and all three seating tiers at negative inward offsets, behind a solid brush. Only
+the parapet, ribbon and mullions were ever rendering.
 
-To settle it I opened a second browser tab to get a clean context. **That broke the preview pane's
-compositing for the rest of the session**, through a full preview restart and a tab close. From that
-point nothing could be seen or measured.
+Typecheck, lint, 70 tests and a clean build had all passed on a gallery nobody could see. That is
+the lesson worth keeping: **geometry that reads as absent is usually inside something, and no
+automated gate catches it.**
 
-So the sprint ends with working code that has never been looked at, and an open performance question
-it was in the middle of answering. The lesson is recorded in NEXT_TASK: **do not disturb a working
-preview mid-sprint - the measurement environment is part of the build.**
+The fix is relief rather than recess, capped at 0.5 m because the deck walkway stops 0.5 m short of
+the wall. Which surfaced the sprint's real finding: with 9 m of roof over a 5 m deck, **this arena
+has no room for a spectator bowl at all.** Getting one needs an arena-data change, not a render
+change.
 
-The honest handling was to commit the work with the verification gap stated plainly in the commit
-message, the changelog, PROJECT_STATUS and NEXT_TASK item 0, rather than to report screenshots and
-numbers that were not taken.
+### The performance scare, and the lesson
+
+Partway through the sprint the frame dropped to 4 FPS with GPU at 23-37 ms and sim at 9.60 ms
+against a 10-12 ms baseline. To settle whether it was content, I opened a second browser tab for a
+clean context. **That broke the preview pane's compositing for the rest of that session**, through a
+tab close and a full preview restart.
+
+It was never the content. On a recovered pane the same build measured **60 FPS, GPU 10.2 ms, sim
+0.70 ms** with the venue present. So: **do not disturb a working preview mid-sprint - the
+measurement environment is part of the build.**
+
+One number is still owed. The venue interleaved at -0.07 ms in a healthy context and 1.3 ms later in
+a degraded one; the second is not trustworthy and NEXT_TASK item 0 is to take a clean reading.
 
 ## Session 20 - 2026-08-01 - Sprint 14: Hero Arena
 

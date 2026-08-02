@@ -33,16 +33,44 @@ there is — animated by scrolling the texture offset rather than redrawing, per
 measurement. **Championship banners** hanging in the tall volume with a slow sway: the cheapest
 ambient motion available and the fastest way to communicate ceiling height.
 
-### Verification is incomplete
+### The first look found the defect
 
-**The browser preview pane stopped compositing partway through this sprint and could not be
-recovered.** The galleries have not been seen rendered and their cost has not been measured.
+The preview pane recovered, so the galleries were finally seen in game — and the first look found
+them **buried inside the wall**. The recess and all three seating tiers sat at negative inward
+offsets, behind the wall surface, and the perimeter wall is a solid brush. What actually rendered
+was the parapet, the ribbon and the mullions: a lit horizontal stripe.
 
-Known: the code typechecks, lints and builds; the full suite passes; an interleaved toggle of the
-venue group taken before the pane failed put its geometry at **0.07 ms**.
+The premise was wrong, not the arithmetic. A recess only reads if something is genuinely cut away,
+and the render layer cannot cut a hole in a collision brush.
 
-Not known: whether it looks right, and what the frame costs. **Re-measure and look before building
-anything on top of this.**
+So the gallery is **relief standing proud of the wall**, with a budget that is measured rather than
+guessed: the perimeter deck is a 5 m walkway whose outer edge stops **0.5 m short of the wall**, so
+anything projecting up to half a metre hangs over that gap and never over ground a player stands on.
+
+That rules out the obvious alternative too. A true overhanging balcony needs a metre or more of
+projection, and at 5.6 m over a deck floor at 5.0 m it would put a ceiling 0.6 m above the heads of
+players walking the deck. Nine metres of roof over a five metre deck leaves four metres of wall, and
+players already use the lower half of it. **There is no room in this section for a real bowl.**
+
+Rows are now split per suite with a deterministic wobble instead of running as one 60 m box — an
+unbroken band is precisely what reads as a stripe. Banners moved below the deck slab, where they are
+unobstructed and give the ground floor its only tall verticals.
+
+### Performance
+
+| | |
+|---|---|
+| Venue cost, clean interleave | **−0.07 ms** (below noise) |
+| Venue draw calls | **8** (one per batch), 188 instances |
+| Frame, clean context, venue present | **60 FPS**, GPU 9.6–12.1 ms, CPU 1.6–2.5 ms, sim 0.6–2.1 ms, 157–235 draw |
+
+A second interleave taken after the browser context had degraded to a 33 ms baseline put the venue
+at 1.3 ms with samples ranging 28–39 ms. That number is not trustworthy and wants one clean
+re-measure.
+
+This also settles the question Sprint 15 left open: the 4 FPS and sim 9.60 ms that looked like a
+content regression were **the browser context, not the arena** — the same build measured 60 FPS and
+sim 0.70 ms on a fresh pane.
 
 ---
 
