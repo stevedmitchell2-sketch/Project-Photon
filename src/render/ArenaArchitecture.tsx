@@ -204,7 +204,19 @@ export function ArenaArchitecture() {
     const spanX = maxX - minX;
     const spanZ = maxZ - minZ;
     const ceilingY = game.arena.definition.ceilingY;
-    const trussY = ceilingY - 0.9;
+    /**
+     * Where the procedural broadcast rig hangs.
+     *
+     * `ceilingY` is the arena's **navigation** ceiling — the height the bake casts down from — and
+     * on arenas whose roof is far above the top of play those are wildly different numbers. Apex
+     * has a 28 m roof and a nav ceiling of 11.4, so reading the rig height off `ceilingY` hung a
+     * complete lighting truss at 10.5 m, straight through the sky bridges.
+     *
+     * `rigCeilingY` lets an arena say where its roof actually is. Arenas that model their own rig
+     * turn the whole thing off with `proceduralCeilingRig`.
+     */
+    const trussY = (game.arena.definition.rigCeilingY ?? ceilingY) - 0.9;
+    const wantRig = game.arena.definition.proceduralCeilingRig !== false;
 
     const place = (
       list: Placement[],
@@ -417,7 +429,12 @@ export function ArenaArchitecture() {
 
     return {
       ribs, panels, trims, hatches, vents, conduits, kicks, capitals,
-      trusses, fixtures, lamps, cameras, speakers, hangers,
+      trusses: wantRig ? trusses : [],
+      fixtures: wantRig ? fixtures : [],
+      lamps: wantRig ? lamps : [],
+      cameras: wantRig ? cameras : [],
+      speakers: wantRig ? speakers : [],
+      hangers: wantRig ? hangers : [],
       coverCaps, coverPosts, coverStrips, pillarBands,
       laneLines, floorSeams, objectiveRing, approachChevrons,
     };

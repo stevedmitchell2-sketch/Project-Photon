@@ -76,6 +76,21 @@ export function ArenaVenue({ maxLights }: { maxLights: number }) {
   const game = useGame();
 
   const layout = useMemo(() => {
+    // Arenas whose section has room for a real bowl build one out of brushes and opt out here.
+    // Drawing this on top of Apex would put a half-metre of fake seating through 12 m of real
+    // seating, which is worse than either on its own.
+    if (game.arena.definition.proceduralGalleries === false) {
+      return {
+        recesses: [] as Placement[],
+        parapets: [] as Placement[],
+        ribbons: [] as Placement[],
+        rows: [] as Placement[],
+        mullions: [] as Placement[],
+        suiteGlass: [] as Placement[],
+        banners: [] as Placement[],
+        bannerPoles: [] as Placement[],
+      };
+    }
     const faces = facesFrom(game.arena.definition.brushes);
 
     const recesses: Placement[] = [];

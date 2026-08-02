@@ -25,6 +25,7 @@
     "predict-align": "tsx scripts/predictionAlign.ts",
     "scale": "tsx scripts/processScale.ts",
     "spawn-audit": "tsx scripts/spawnAudit.ts",
+    "arena-audit": "tsx scripts/arenaAudit.ts",
     "asset-audit": "tsx scripts/assetAudit.ts"
   },
   "dependencies": {

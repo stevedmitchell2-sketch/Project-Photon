@@ -192,4 +192,24 @@ export interface ArenaDefinition {
   reactiveZones?: ReactiveZone[];
   /** Vertical levels for the minimap floor selector. */
   floorHeights: number[];
+  /**
+   * Whether the renderer should generate relief spectator galleries on the perimeter walls.
+   *
+   * Defaults to on, which is right for arenas whose section has no room for real seating — the
+   * galleries are a few centimetres of relief standing proud of the wall, which is all that fits.
+   *
+   * Arenas that build an actual bowl out of brushes must turn this **off**, or they get a second,
+   * fake gallery drawn through the real one.
+   */
+  proceduralGalleries?: boolean;
+  /**
+   * Where the renderer's procedural broadcast rig should hang. Defaults to `ceilingY`.
+   *
+   * Needed because `ceilingY` is the *navigation* ceiling. On an arena whose roof is far above the
+   * top of play those are different numbers, and reading the rig height off the nav ceiling hangs a
+   * lighting truss in the middle of the play space.
+   */
+  rigCeilingY?: number;
+  /** Whether to generate a procedural ceiling rig at all. Off for arenas that model their own. */
+  proceduralCeilingRig?: boolean;
 }

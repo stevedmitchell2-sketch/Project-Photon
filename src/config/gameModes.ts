@@ -201,7 +201,7 @@ export const defaultMatchSettings = (): MatchSettings => {
   const mode = GAME_MODES.team_deathmatch;
   return {
     mode: mode.id,
-    arena: 'arena01_classic',
+    arena: 'arena02_apex',
     teams: ['red', 'blue'],
     scoreLimit: mode.scoreLimit,
     timeLimitSeconds: mode.timeLimitSeconds,

@@ -1,9 +1,16 @@
 import { DEG2RAD } from '@/util/math';
 import type { PhysicsWorld } from '@/physics/PhysicsWorld';
 import { ARENA_01_CLASSIC } from './arena01_classic';
+import { ARENA_02_APEX } from './arena02_apex';
 import type { ArenaDefinition, Brush, SurfaceKind } from './MapTypes';
 
+/**
+ * Apex first: it is the flagship venue and the default in the lobby. Classic is kept because it is
+ * the reference arena every benchmark, spawn audit and latency sweep was measured against, and
+ * retiring it would silently invalidate every number in NETWORK_BENCHMARK.md.
+ */
 export const ARENAS: Record<string, ArenaDefinition> = {
+  [ARENA_02_APEX.id]: ARENA_02_APEX,
   [ARENA_01_CLASSIC.id]: ARENA_01_CLASSIC,
 };
 
