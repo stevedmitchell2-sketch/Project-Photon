@@ -32,6 +32,25 @@ import { useGame } from './GameContext';
  *
  * Individual figures at 25 m would be a few pixels each and cost more than everything else here
  * combined.
+ *
+ * ## Why the gallery projects instead of recessing
+ *
+ * The first version placed the recess and the seating rows at *negative* inward offsets, meaning
+ * behind the wall surface. The wall is a solid brush, so all of it was buried: what actually
+ * rendered was the parapet, the ribbon and the mullions — a strip of trim, which is exactly what it
+ * looked like in game. A recess only reads if something is actually cut out, and the render layer
+ * cannot cut a hole in a collision brush.
+ *
+ * So the gallery is built as **relief standing proud of the wall** instead. The constraint that
+ * makes this safe is measured, not guessed: the perimeter deck is a 5 m walkway whose outer edge
+ * stops **0.5 m short of the wall**. Anything projecting up to half a metre therefore hangs over
+ * that gap and never over ground a player stands on. Every offset here is inside that budget.
+ *
+ * That also rules out the obvious alternative. A real balcony overhanging the play space would need
+ * a metre or more of projection at 5.6 m, and the deck floor is at 5.0 m — it would put a ceiling
+ * 0.6 m above the heads of players walking the deck. There is no room in this section for a true
+ * bowl; 9 m of ceiling over a 5 m deck leaves 4 m of wall, and players already use the lower half
+ * of it. Relief is what fits.
  */
 
 /** Gallery band, measured from the floor. Above the 5 m upper deck, below the 9 m roof. */
@@ -39,6 +58,19 @@ const GALLERY_BOTTOM = 5.6;
 const GALLERY_TOP = 8.5;
 /** Metres of wall per seating suite. Wider than the 4 m structural bay, so the two rhythms differ. */
 const SUITE_WIDTH = 7.5;
+/**
+ * Hard ceiling on how far anything may stand proud of the wall.
+ *
+ * The gap between the deck's outer edge and the wall. Staying inside it is what keeps the whole
+ * assembly out of the players' way without needing a single collision change.
+ */
+const MAX_RELIEF = 0.5;
+
+/** Deterministic per-suite jitter, so rows vary without a seeded RNG in the render layer. */
+function jitter(a: number, b: number): number {
+  const n = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
 
 export function ArenaVenue({ maxLights }: { maxLights: number }) {
   const game = useGame();
@@ -77,36 +109,45 @@ export function ArenaVenue({ maxLights }: { maxLights: number }) {
         list.push({ position, yaw: face.yaw, scale: new THREE.Vector3(...scale) });
       };
 
-      // The recess. A dark plane set *behind* the wall line, which is what gives the gallery depth —
-      // without it the seating reads as decals stuck on a flat surface.
-      push(recesses, 0, bandCentre, -0.35, [face.length, bandHeight, 0.1]);
+      // The dark backdrop the seating sits against, laid just proud of the wall so it is visible at
+      // all. It cannot be a real recess — see the note above — so it earns its depth by being the
+      // darkest value in the band with brighter geometry standing in front of it.
+      push(recesses, 0, bandCentre, 0.02, [face.length, bandHeight, 0.04]);
 
-      // Parapet: the bright horizontal edge the recess sits behind. This is the element that most
-      // makes the band read as a balcony rather than a hole.
-      push(parapets, 0, GALLERY_BOTTOM - 0.15, 0.34, [face.length, 0.7, 0.6]);
+      // Parapet: the bright horizontal edge in front of the seating. This is the element that most
+      // makes the band read as a balcony rather than a stripe, so it takes the full relief budget.
+      push(parapets, 0, GALLERY_BOTTOM - 0.15, MAX_RELIEF - 0.06, [face.length, 0.7, 0.42]);
 
-      // LED ribbon board on the parapet face — the continuous animated band every real arena has
-      // wrapped around its lower tier.
-      push(ribbons, 0, GALLERY_BOTTOM - 0.15, 0.66, [face.length, 0.34, 0.08]);
+      // LED ribbon board on the parapet's inner face — the continuous animated band every real arena
+      // has wrapped around its lower tier.
+      push(ribbons, 0, GALLERY_BOTTOM - 0.15, MAX_RELIEF + 0.1, [face.length, 0.34, 0.08]);
 
-      // Raked seating. Three rows stepping up and back; each row is one stretched instance rather
-      // than individual seats, because at 25 m the read is the *banding*, not the seats.
-      for (let tier = 0; tier < 3; tier++) {
-        const t = tier / 2;
-        push(
-          rows,
-          0,
-          GALLERY_BOTTOM + 0.5 + t * (bandHeight - 1.2),
-          -0.05 - t * 0.28,
-          [face.length - 0.4, 0.42, 0.5],
-        );
+      // Raked seating: three rows stepping up *and back*, the lowest nearest the play space. Split
+      // per suite rather than run as one 60 m box, because an unbroken band is precisely what reads
+      // as a stripe — the eye needs the rows to be interrupted to count them as rows. Each suite
+      // takes a small deterministic offset in depth and height so the tiers are not a perfect grid.
+      for (let suite = 0; suite < suites; suite++) {
+        const centreOffset = start + suiteWidth * (suite + 0.5);
+        for (let tier = 0; tier < 3; tier++) {
+          const t = tier / 2;
+          const wobble = jitter(suite, tier) * 0.06;
+          push(
+            rows,
+            centreOffset,
+            GALLERY_BOTTOM + 0.5 + t * (bandHeight - 1.2) + wobble,
+            // Front row most proud, back row nearly flat against the wall. This is the rake.
+            0.34 - t * 0.26 + wobble,
+            [suiteWidth - 0.45, 0.42, 0.3],
+          );
+        }
       }
 
       for (let suite = 0; suite <= suites; suite++) {
         const offset = start + suiteWidth * suite;
-        // Mullions between suites, running the full band height. The vertical rhythm is what stops
-        // a long dark band reading as a stripe.
-        push(mullions, offset, bandCentre, 0.12, [0.3, bandHeight, 0.5]);
+        // Mullions between suites, running the full band height and standing proud of every row so
+        // they cut the seating into bays. The vertical rhythm is what stops a long dark band reading
+        // as a stripe.
+        push(mullions, offset, bandCentre, MAX_RELIEF - 0.12, [0.3, bandHeight, 0.44]);
       }
 
       // Lit suite windows on a slower rhythm than the suites themselves — press boxes and VIP boxes
@@ -115,16 +156,19 @@ export function ArenaVenue({ maxLights }: { maxLights: number }) {
       for (let suite = 0; suite < suites; suite++) {
         if (suite % 3 !== 1) continue;
         const centreOffset = start + suiteWidth * (suite + 0.5);
-        push(suiteGlass, centreOffset, bandCentre + 0.35, 0.05, [suiteWidth - 1.2, 1.5, 0.06]);
+        push(suiteGlass, centreOffset, bandCentre + 0.35, 0.06, [suiteWidth - 1.2, 1.5, 0.06]);
       }
 
-      // Championship banners hanging below the gallery, in the tall volume over the deck. Long
-      // vertical shapes are the fastest way to communicate ceiling height.
+      // Championship banners, hung from the *underside* of the upper deck so they read from the
+      // ground floor, where players actually spend the match. The first pass hung them at 3.7 m on a
+      // pole at 5.25 m, which put the pole and the top of every banner straight through the deck
+      // walkway at 5.0 m. Below the slab they are unobstructed, and they give the ground floor the
+      // only tall vertical shapes and the only saturated colour it has.
       for (let suite = 0; suite < suites; suite++) {
         if (suite % 2 !== 0) continue;
         const centreOffset = start + suiteWidth * (suite + 0.5);
-        push(banners, centreOffset, 3.7, 1.5, [1.9, 3.0, 0.06]);
-        push(bannerPoles, centreOffset, 5.25, 1.5, [2.1, 0.12, 0.12]);
+        push(banners, centreOffset, 3.35, 1.6, [1.9, 2.6, 0.06]);
+        push(bannerPoles, centreOffset, 4.7, 1.6, [2.1, 0.12, 0.12]);
       }
     }
 
