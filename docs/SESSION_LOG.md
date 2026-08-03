@@ -14,6 +14,49 @@ attempted, what was learned, and what a future session should not repeat.
 
 
 
+
+## Session 23 - 2026-08-02 - The pipeline carries a real file
+
+**Direction change:** the procedural architecture phase is complete. Visual quality now comes from
+replacing generated geometry with authored assets. Every major object in the level is temporary and
+the engine's job is to accept its replacement.
+
+**Outcome:** the asset pipeline loaded its first real glTF, and six defects fell out of it.
+
+### The thing worth remembering
+
+Sprint 12 built an asset system with a contract, a registry, a validator, budgets, a CLI audit and a
+documentation set. It was careful work and it had **never loaded a file**, because the repository
+holds no binaries and the content does not exist. Four sprints later the first genuine glTF went
+through it and found six defects in half a minute -- two of them in the contract itself, and both of
+the kind an artist would hit on their first export:
+
+- `MAT_shell_receiver` silently failed to match zone `shell`, because the importer took the whole
+  suffix as the zone name and every artist with three pieces of shell names them that way;
+- an animated emissive part needs to be both a `PART_` and a `MAT_`, and a node carries one prefix.
+
+Neither was findable by reading the code. Both were obvious within seconds of a file existing.
+
+The fix that made it possible is worth more than the fixes it enabled: a hand-written glTF writer
+that runs under Node, generating contract-compliant reference assets on demand into a git-ignored
+directory. No binary committed, CI unaffected, procedural fallbacks still working, and now a
+concrete artifact to diff an artist's file against when it fails to import.
+
+### What else was missing
+
+LOD levels were parsed, counted for validation, and thrown away -- `THREE.LOD` appeared nowhere.
+Clips were parsed into a Map and dropped -- no `AnimationMixer` existed in the project at all. The
+validator used a different zone rule from the importer, so a correctly bound file reported thirteen
+warnings. And `applyZone` replaced every material wholesale, which is right for a blockout and
+destroys a production asset whose baked maps are the entire reason it looks better than a box.
+
+All specified. All documented. None of it exercised.
+
+### The rule
+
+**A pipeline that has never carried a real file is a design document.** If the content cannot exist
+yet, generate a reference version of it. A few hundred lines, and it is the only way to find out
+whether the specification is true.
 ## Session 22 - 2026-08-02 - Sprint 16: Operation Arena 2.0
 
 **Brief:** stop decorating the current layout. Redesign the arena itself - verticality, iconic

@@ -4,6 +4,58 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.23.0] - 2026-08-02 - The pipeline carries a real file
+
+### Direction
+
+The procedural architecture phase is over. Future visual quality comes from **replacing** generated
+geometry with authored assets, not from generating more of it. Every major object in the level is
+now explicitly temporary, and the engine's job is to accept its replacement seamlessly.
+
+### The problem with the pipeline
+
+Sprint 12 built an asset system that had never loaded a file. The importer, the validator, the
+socket and part binding, the LOD levels and the material zones were all written against a
+specification and tested against nothing — the repository holds no binaries and the content does not
+exist yet. With the project now pivoting to replacement, that was the thing standing in front of
+everything else.
+
+`npm run make-reference-assets` writes real `.glb` files that follow the contract exactly, into a
+git-ignored directory, from a hand-written glTF writer that runs under Node. Nothing is committed,
+CI never needs the content pipeline, and deleting `public/assets/` returns the procedural fallbacks.
+
+### What the first real file found
+
+Six defects in the first half-minute, two of them flaws in the contract rather than in the file:
+
+| | |
+|---|---|
+| Zone naming | `MAT_shell_receiver` did not match zone `shell`. The zone is now the **first segment**, so the obvious naming is the correct naming |
+| Duplicate names | three.js renames duplicates, so `PART_core` in two LOD levels became `core` and `core_1`. Names are now read back through the parser's associations map |
+| One prefix per node | An animated emissive part must be two things at once. `PART_` transforms now contain `MAT_` meshes |
+| LODs | Parsed, counted, thrown away. `THREE.LOD` now built, with switch distances from the model's own bounding radius |
+| Validator drift | It used a different zone rule from the importer, so a correctly bound file reported thirteen warnings. Both now read the same names the same way |
+| Authored maps | `applyZone` replaced every material wholesale, destroying the baked normal and ORM maps that are the entire point of a production asset. Textured materials are now kept and *tuned* by the substance |
+
+### The animation system
+
+The largest hole: clips were parsed into a `Map` and dropped, and no `AnimationMixer` existed
+anywhere in the project. **`AssetAnimator`** adds cross-fading, one-shot events, and a candidate
+table that maps a simulation state onto whichever clip name the asset happens to use — because the
+clip vocabulary belongs to the artist, not the engine.
+
+`useAssetAnimation` advances the mixer from the **render** clock, never the tick. Animation is
+presentation; the simulation stays fixed-step at 64 Hz and never sees a Three.js type.
+
+### Measured
+
+- **hero_rifle**: zero findings. 6 zones, 9 parts, 4 sockets, 2 LOD levels, 3876 triangles against
+  a 28k budget. Renders in game as the view model.
+- **hero_athlete**: skinned mesh, 3 LOD levels, 2 clips, and a skeleton the mixer measurably moves.
+- **86 tests**, up from 77.
+
+---
+
 ## [0.22.0] - 2026-08-02 - Sprint 16: Apex
 
 ### Operation: Arena 2.0

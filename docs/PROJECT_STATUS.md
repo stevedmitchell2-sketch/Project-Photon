@@ -1,6 +1,6 @@
 # PROJECT STATUS — PROJECT PHOTON
 
-**Last updated:** 2026-08-02 · **Phase:** Sprint 16 - Arena 02 "Apex". Three player levels, a real spectator bowl, and a structural audit that found ten defects nothing else caught.
+**Last updated:** 2026-08-02 · **Phase:** Asset replacement. Procedural architecture is finished; the engine now loads, LODs, skins and animates real glTF, proven against generated reference assets.
 **Build:** `tsc --noEmit` clean · `vite build` clean · dev server on port 5180
 
 ---
@@ -54,6 +54,7 @@ ladder.
 | Lighting | Ambient 0.42 -> 0.20, key 1.1 -> 1.55 | Perimeter falls away; the middle is the brightest thing in the room |
 | Spectator galleries | Relief galleries in Classic's 5-9 m wall band | Verified. 8 draw calls, cost below noise. Superseded on Apex by a real bowl |
 | **Arena 02 "Apex"** | 84 x 84 building over a 60 x 60 field, 28 m roof, 3 player levels, 6 landmarks | Default arena. 60 FPS, GPU 10.3 ms, 248 draw calls, 2627 nav nodes, 28/28 spawns reachable |
+| Asset pipeline | Importer, LOD construction, skinning, `AssetAnimator`, reference-asset generator | Proven end to end against real `.glb`. `hero_rifle` renders in game; `hero_athlete` skeleton animates |
 | Arena audit | `npm run arena-audit` + 7 structural tests | Gates connectivity, level reachability, mirror-pair fairness, draw calls, sight lines |
 | Movement | Sprint, slide, crouch, jump, mantle, lean, coyote/buffer | Walk 5.2 / sprint 8.4 m/s; slide entry 11.13 m/s; jump arc matches v₀=7.1, g=22 |
 | Weapon | 6-shot cell, forced recharge, trickle, vent, ADS, spread, recoil | Full cycle traced tick by tick |
