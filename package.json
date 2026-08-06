@@ -27,6 +27,7 @@
     "spawn-audit": "tsx scripts/spawnAudit.ts",
     "arena-audit": "tsx scripts/arenaAudit.ts",
     "make-reference-assets": "tsx scripts/makeReferenceAssets.ts",
+    "asset-inspect": "tsx scripts/assetInspect.ts",
     "asset-audit": "tsx scripts/assetAudit.ts"
   },
   "dependencies": {

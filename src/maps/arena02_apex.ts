@@ -1239,10 +1239,15 @@ function buildSpawns(): SpawnPoint[] {
     [0, 0.1, 15],
     [-22, 0.1, 4],
     [22, 0.1, -4],
-    [-13, 0.1, -13],
-    [13, 0.1, 13],
-    [-13, 0.1, 13],
-    [13, 0.1, -13],
+    // Clear of the field cover. The first cut put these on the +/-13 diagonals, which is exactly
+    // where the long barriers sit, and the spawn resolver relocated all four every match — working
+    // as designed, but a spawn authored inside geometry is still an authoring defect. These are the
+    // positions the resolver itself chose, so they are known clear, and they keep the 180 degree
+    // pairing: (-13.5,-16.5) maps to (13.5,16.5) and (-15,13.5) to (15,-13.5).
+    [-13.5, 0.1, -16.5],
+    [13.5, 0.1, 16.5],
+    [-15, 0.1, 13.5],
+    [15, 0.1, -13.5],
     [-25.5, MEZZ + 0.1, -18],
     [25.5, MEZZ + 0.1, 18],
     [18, MEZZ + 0.1, -25.5],

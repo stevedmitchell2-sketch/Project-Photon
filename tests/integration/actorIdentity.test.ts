@@ -107,6 +107,11 @@ describe('local actor identity', () => {
     expect(session.director.state.actors.has(serverId)).toBe(false);
   });
 
+  // 20 s, not the default 5. This one drives five real loopback clients through a full join/leave
+  // generation against a live server, and it lands between 3.5 s and just over 5 s depending on how
+  // busy the machine is — so at the default it fails as a timeout, with no assertion error, roughly
+  // one run in three. A slow integration test is not a flaky one; it just needs to be allowed to
+  // finish.
   it('survives a full generation of clients leaving and a new one joining', async () => {
     session = new LoopbackSession({ settings: { botsEnabled: false, botsPerTeam: 0 } });
     await session.start();
@@ -129,5 +134,5 @@ describe('local actor identity', () => {
     expect(third.director.state.localActorId).toBe(third.client.actorId);
     expect(third.client.stats.snapshotsReceived).toBeGreaterThan(10);
     expect(third.travelled).toBeGreaterThan(1);
-  });
+  }, 20_000);
 });
