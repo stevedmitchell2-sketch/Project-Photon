@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { teamColor, teamEmissive } from '@/config/teams';
@@ -7,6 +7,7 @@ import { clamp, damp } from '@/util/math';
 import { useGame } from './GameContext';
 import { photonMaterial } from './materials/PhotonMaterials';
 import { partMaterial, scanRig, useAsset } from '@/assets/useAsset';
+import { clearMuzzle, publishMuzzle } from './MuzzleRegistry';
 
 /**
  * First-person weapon view model.
@@ -65,6 +66,11 @@ export function ViewModel({ colorblind }: Props) {
   const rigVersion = useRef(-1);
 
   const local = game.localActor!;
+
+  // Stop publishing when the view model goes away, so a stale muzzle cannot outlive the weapon that
+  // owned it and drag the next player's bolts toward wherever this one was last standing.
+  useEffect(() => () => clearMuzzle(local.id), [local.id]);
+
   const base = teamColor(local.team, colorblind);
   const glow = teamEmissive(local.team, colorblind);
 
@@ -255,9 +261,14 @@ export function ViewModel({ colorblind }: Props) {
     // Muzzle light rides the asset's socket when one is supplied, so an imported rifle with a
     // differently-placed barrel lights from the right point with no code change.
     const muzzleSocket = rig.current.sockets.get('muzzle');
-    if (muzzleSocket && muzzle.current) {
+    if (muzzleSocket) {
       muzzleSocket.getWorldPosition(TMP_A);
-      muzzle.current.position.copy(group.worldToLocal(TMP_A));
+      // Publish *before* converting. `worldToLocal` transforms its argument in place, so reading
+      // TMP_A afterwards yields the muzzle in view-model space — which measured as a 31.9 m error
+      // against the simulated origin instead of the real 0.44 m, and put every bolt near the world
+      // origin. Order matters here and nothing about the types says so.
+      publishMuzzle(actor.id, TMP_A);
+      if (muzzle.current) muzzle.current.position.copy(group.worldToLocal(TMP_A));
     }
 
     // Muzzle flash light.

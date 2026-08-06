@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { teamEmissive } from '@/config/teams';
+import { muzzleOffset } from './MuzzleRegistry';
 import { useGame } from './GameContext';
 
 /**
@@ -10,6 +11,12 @@ import { useGame } from './GameContext';
  * Each bolt is drawn as a stretched, additively-blended capsule oriented along its velocity, which
  * gives it a motion-trail read without a separate trail system or any per-frame geometry churn.
  * One InstancedMesh covers every bolt in flight from every player.
+ *
+ * ## Drawn from the barrel, resolved on the authoritative path
+ *
+ * The simulated origin is not the muzzle — see `MuzzleRegistry`. Bolts are therefore drawn from
+ * wherever the weapon actually is and converge onto the simulated line over their first few metres.
+ * Hit detection is untouched: this moves pixels, not rays.
  */
 
 const MAX_BOLTS = 256;
@@ -47,6 +54,7 @@ export function ProjectileRenderer({ colorblind }: Props) {
       dir: new THREE.Vector3(),
       up: new THREE.Vector3(0, 1, 0),
       color: new THREE.Color(),
+      offset: new THREE.Vector3(),
     }),
     [],
   );
@@ -75,6 +83,18 @@ export function ProjectileRenderer({ colorblind }: Props) {
       if (speed < 1e-4) continue;
       scratch.dir.divideScalar(speed);
       scratch.quaternion.setFromUnitVectors(scratch.up, scratch.dir);
+
+      // Start the bolt at the barrel and let it settle onto the simulated line. The offset is zero
+      // once the bolt is past the convergence distance, and zero always when the shooter has no
+      // known muzzle — so this degrades exactly to the previous behaviour rather than to a guess.
+      muzzleOffset(
+        game.match.state.actors.get(p.ownerId),
+        scratch.position,
+        scratch.dir,
+        p.distanceTravelled,
+        scratch.offset,
+      );
+      scratch.position.add(scratch.offset);
 
       // Bolts stretch as they leave the muzzle, so the first frame does not look like a stub.
       const stretch = Math.min(1, p.distanceTravelled / 3) * BOLT_LENGTH + 0.4;

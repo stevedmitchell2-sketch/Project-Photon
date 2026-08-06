@@ -1246,8 +1246,11 @@ function buildSpawns(): SpawnPoint[] {
     // pairing: (-13.5,-16.5) maps to (13.5,16.5) and (-15,13.5) to (15,-13.5).
     [-13.5, 0.1, -16.5],
     [13.5, 0.1, 16.5],
-    [-15, 0.1, 13.5],
-    [15, 0.1, -13.5],
+    // y 0.0, not 0.1: at 0.1 the capsule clips the raised threshold strip of the Champion's Walk
+    // and the resolver drops it 10 cm on every server start. Harmless, but it logs a relocation
+    // warning every boot, and a warning nobody needs to read is a warning nobody reads.
+    [-15, 0.0, 13.5],
+    [15, 0.0, -13.5],
     [-25.5, MEZZ + 0.1, -18],
     [25.5, MEZZ + 0.1, 18],
     [18, MEZZ + 0.1, -25.5],
