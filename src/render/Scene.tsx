@@ -14,6 +14,7 @@ import { useGame } from './GameContext';
 import { ImpactFX } from './ImpactFX';
 import { PhotonCore } from './PhotonCore';
 import { PlayerAvatars } from './PlayerAvatars';
+import { AssetAvatars, useImportedCharacters } from './AssetAvatars';
 import { ProjectileRenderer } from './ProjectileRenderer';
 import { RendererStats } from './RendererStats';
 import { TeamIdentity } from './TeamIdentity';
@@ -28,6 +29,9 @@ export function Scene({ graphics, accessibility }: Props) {
   const game = useGame();
   const arena = game.arena;
   const palette = arena.definition.palette;
+  // Which character source is live this session. False until an asset resolves, and false forever
+  // on a clean checkout, so the blockout stays the default rather than the exception.
+  const imported = useImportedCharacters();
 
   // Dynamic lights are the first thing to go in Performance Mode; optional lights drop first.
   const lights = useMemo(() => {
@@ -108,11 +112,18 @@ export function Scene({ graphics, accessibility }: Props) {
         colorblind={accessibility.colorblindPalette}
         maxBeaconLights={graphics.preset === 'performance' ? 0 : 2}
       />
-      <PlayerAvatars
-        colorblind={accessibility.colorblindPalette}
-        enemyOutlines={accessibility.enemyOutlines}
-        localTeam={game.localActor?.team ?? 'red'}
-      />
+      {/* Two character sources, one gate. `imported` is false for a clean checkout — which is the
+          normal state — so the primitive blockout keeps drawing everyone exactly as before. It only
+          hands over once a character asset has actually resolved. */}
+      {imported ? (
+        <AssetAvatars colorblind={accessibility.colorblindPalette} />
+      ) : (
+        <PlayerAvatars
+          colorblind={accessibility.colorblindPalette}
+          enemyOutlines={accessibility.enemyOutlines}
+          localTeam={game.localActor?.team ?? 'red'}
+        />
+      )}
       <ProjectileRenderer colorblind={accessibility.colorblindPalette} />
       <ImpactFX colorblind={accessibility.colorblindPalette} maxLights={graphics.maxDynamicLights} />
       <ViewModel colorblind={accessibility.colorblindPalette} />

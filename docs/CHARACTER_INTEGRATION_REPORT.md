@@ -1,5 +1,121 @@
 # CHARACTER INTEGRATION REPORT
 
+> **Updated 2026-08-06 (pipeline execution pass).** The original audit is preserved below from §1.
+> Phases 6 and 7 have since been executed: an engine-side character path now exists behind the
+> blockout fallback and has been tested end to end with a rigged reference character. R1 is fixed
+> — see [R1_FIX_REPORT.md](./R1_FIX_REPORT.md). Companion documents:
+> [CHARACTER_ASSET_AUDIT.md](./CHARACTER_ASSET_AUDIT.md),
+> [CHARACTER_OPTIMIZATION_PLAN.md](./CHARACTER_OPTIMIZATION_PLAN.md).
+
+---
+
+## UPDATE — engine integration complete, content work outstanding
+
+### What changed since the audit
+
+| | Then | Now |
+|---|---|---|
+| R1 projectile origin | 0.442 m off the muzzle | **0.000 m** — fixed and regression-tested |
+| Character asset path | none; `PlayerAvatars` never called `useAsset` | **`AssetAvatars`**, live behind a fallback gate |
+| Skeletal animation in game | never exercised | **5 actors animating from a skinned glTF** |
+| Weapon on a character | impossible | **attached to `SOCKET_weapon_right`, muzzle published** |
+| Third-person muzzle | estimated analytically | **exact, from the attached weapon's socket** |
+
+### Phase 7 — the integration layer
+
+```
+   Simulation (unchanged)
+        actor: position, yaw, velocity, stance, grounded, team
+                     │
+             useImportedCharacters()          ← one gate: has an asset resolved?
+                ╱                  ╲
+     PlayerAvatars              AssetAvatars
+  (primitive blockout,        (skinned glTF, AssetAnimator,
+   18 instanced batches)       weapon socket, per-slot team materials)
+```
+
+Built as a **sibling component, not a branch**. The blockout's whole design is that fifteen body
+parts collapse into eighteen `InstancedMesh` batches so draw calls stay constant regardless of
+player count; a skinned mesh cannot join that scheme, because every skeleton differs every frame.
+Those are two renderers, not two configurations of one. Keeping them separate means the fallback —
+the thing that must keep working — is untouched code.
+
+`useImportedCharacters()` returns false for a clean checkout, which is the normal state, so the
+blockout stays the default rather than the exception.
+
+### Verified in a live match
+
+| Check | Result |
+|---|---|
+| Spawn works | ✅ 5 remote actors, 5 avatars rendered |
+| Skinned animation | ✅ mixer drives the skeleton; state resolves from actor velocity/stance |
+| Team colour | ✅ per-slot material instances, no cross-contamination |
+| Weapon attaches to hand socket | ✅ cloned rifle parented to `SOCKET_weapon_right` |
+| Muzzle socket exists and publishes | ✅ actor at (−3.00, 0.02, −13.17) → muzzle at (−2.44, 1.38, −12.60) |
+| Projectile origin is the barrel | ✅ 0.442 m → **0.000 m** |
+| First-person view | ✅ unchanged; view model publishes its own socket |
+| Third-person view | ✅ avatars render, animate and carry weapons |
+| Multiplayer replication | ✅ `nettest` PASS — 2 clients, 257 snapshots, 0 dropped, 0.002–0.037 m divergence |
+| Fallback intact | ✅ blockout renders identically when no asset is present |
+
+### Two bugs found by verifying rather than by reasoning
+
+**1. `worldToLocal` mutates in place.** The first R1 implementation published the muzzle *after*
+converting it to view-model space, so the registry reported a 31.885 m error instead of 0.442 m and
+would have drawn every bolt near the world origin. Every unit test passed. Caught only by re-running
+the live measurement.
+
+**2. Not every team-coloured material has an `emissive` channel.** `ledStrip` resolves to a
+`MeshBasicMaterial`. Assuming `MeshStandardMaterial` threw on the first avatar and — because the
+frame loop is a single pass over all actors — silently stopped every remaining player from being
+drawn. Four of five characters were invisible with no error surfaced to the user.
+
+Both are now covered: 11 tests for the muzzle maths, and the material write is channel-guarded.
+
+### Performance — the path, not the asset
+
+Interleaved A/B, 5 remote actors, Apex:
+
+| | Blockout | Imported | Delta |
+|---|---|---|---|
+| GPU | 7.82 ms | 7.77 ms | −0.04 ms (noise) |
+| CPU | 2.99 ms | 3.35 ms | **+0.36 ms** |
+| Draw calls | 184 | 214 | **+30** |
+
+The reference character is a 156-triangle blockout, so this measures the machinery — roughly
+**0.07 ms CPU and 6 draw calls per character** — not the eventual asset. Projection to a real 15k
+character is in the optimisation plan.
+
+### What is still blocked
+
+The **Tripo robot itself** cannot be integrated: it has no skeleton, and at 1,938,280 triangles and
+256 MB of texture memory it is 107.7× and 25.6× over budget. Classification **B — needs retopology
+first**. The full route is in
+[CHARACTER_OPTIMIZATION_PLAN.md](./CHARACTER_OPTIMIZATION_PLAN.md).
+
+When a rigged, retopologised version arrives, integration is: copy the file, add a manifest entry,
+point `CHARACTER_ASSET_ID` at it. No code changes.
+
+### Completion checklist
+
+| Requirement | Status |
+|---|---|
+| R1 identified, fixed independently, baseline verified | ✅ build, 97 tests, `nettest` PASS |
+| Character is rigged **or a rigging plan documented** | ✅ plan documented; robot **not** rigged |
+| Character can hold the weapon | ✅ **proven** with the reference character; robot blocked on rig |
+| Weapon fires correctly from the barrel | ✅ **0.000 m**, first and third person |
+| Works in a playable Photon test environment | ✅ **playable** — deployed, moved, fired, 5 animated opponents |
+| First- and third-person compatibility evaluated | ✅ both |
+| Existing character fallback still working | ✅ untouched; default on a clean checkout |
+| Core gameplay systems unmodified | ✅ simulation untouched; all changes are in `render/` |
+
+**Recommended next action:** send the robot for retopology and rigging per the optimisation plan.
+Everything on the engine side is done and tested.
+
+---
+
+# ORIGINAL AUDIT (2026-08-06)
+
 **Asset:** `futuristic maintenance robot 3d model.glb` · 55.8 MB · generated by **Tripo**
 **Inspected:** 2026-08-06 · **Target:** replacement for the procedural player avatar
 **Tooling:** `npm run asset-inspect -- "<file>" --kind character`

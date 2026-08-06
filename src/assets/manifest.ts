@@ -48,6 +48,15 @@ export interface AssetEntry {
   optional?: boolean;
   /** Scale applied on import, for assets authored in the wrong unit. */
   scale?: number;
+  /**
+   * Yaw correction in radians, for assets authored facing the wrong way.
+   *
+   * Photon's forward is -Z, matching the glTF convention. A model exported facing +Z needs `Math.PI`
+   * here. It lives in the manifest rather than in the renderer because it is a property of the
+   * *file*, and burying it in render code means the next asset with the same problem gets a second
+   * hard-coded rotation somewhere else.
+   */
+  yawOffset?: number;
 }
 
 /**
