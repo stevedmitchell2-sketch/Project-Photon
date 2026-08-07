@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { AssetAnimator, clipFor } from '@/assets/AssetAnimator';
+import { AssetAnimator, clipCoverage, clipFor } from '@/assets/AssetAnimator';
 import { useAsset } from '@/assets/useAsset';
 import { teamEmissive } from '@/config/teams';
 import type { Actor } from '@/gameplay/types';
 import { lerp } from '@/util/math';
+import { isDev } from '@/util/env';
 import { useGame } from './GameContext';
 import { publishMuzzle, clearMuzzle } from './MuzzleRegistry';
 
@@ -145,6 +146,20 @@ export function AssetAvatars({ colorblind }: Props) {
       });
     }
     slots.current = made;
+
+    // Surface a clip library that covers nothing. This is silent otherwise: the
+    // character animates, so it appears to work, and it takes noticing that a
+    // standing player is playing a run cycle to catch it.
+    if (made.length > 0 && isDev()) {
+      const coverage = clipCoverage(made[0].animator);
+      if (coverage.resolved === 0) {
+        console.warn(
+          `[assets] "${CHARACTER_ASSET_ID}" ships ${made[0].animator.available.length} clip(s) ` +
+            `(${made[0].animator.available.join(', ')}) and none match a movement state. ` +
+            `Every state will play the same clip. Missing: ${coverage.missing.join(', ')}`,
+        );
+      }
+    }
 
     return () => {
       for (const slot of made) {

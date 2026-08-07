@@ -205,10 +205,38 @@ export const CLIP_CANDIDATES: Record<string, readonly string[]> = {
   death: ['death', 'Death', 'die'],
 };
 
-/** Resolves a state to a clip the asset has, or null. */
+/**
+ * Resolves a state to a clip the asset has, or null.
+ *
+ * Falls back to the asset's only clip when nothing matches. A file that ships one
+ * unnamed clip — which is what Mixamo produces, named `mixamo.com` — otherwise
+ * resolves *nothing*: the Service Unit had zero of nine movement states match, so
+ * the animator never switched and played the same cycle whether the actor was
+ * standing, sprinting or dead. Better to play the one clip deliberately than to
+ * fall through and look frozen by accident.
+ */
 export function clipFor(animator: AssetAnimator, state: string): string | null {
   for (const candidate of CLIP_CANDIDATES[state] ?? [state]) {
     if (animator.has(candidate)) return candidate;
   }
-  return null;
+  return animator.available.length === 1 ? animator.available[0] : null;
+}
+
+/**
+ * How many movement states an asset can actually express.
+ *
+ * Worth calling on import, because a clip library that resolves nothing is
+ * invisible: the character animates, so it looks like it works, and it takes a
+ * close look at a standing player to notice they are playing a run cycle.
+ */
+export function clipCoverage(animator: AssetAnimator): {
+  resolved: number;
+  total: number;
+  missing: string[];
+} {
+  const states = Object.keys(CLIP_CANDIDATES);
+  const missing = states.filter(
+    (state) => !CLIP_CANDIDATES[state].some((candidate) => animator.has(candidate)),
+  );
+  return { resolved: states.length - missing.length, total: states.length, missing };
 }
