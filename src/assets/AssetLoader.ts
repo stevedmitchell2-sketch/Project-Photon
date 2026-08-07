@@ -258,6 +258,11 @@ async function load(entry: AssetEntry): Promise<LoadedAsset> {
 
   for (const node of detach) node.parent?.remove(node);
 
+  const overridden = applyMaterialOverrides(scene, entry);
+  if (overridden > 0 && isDev()) {
+    console.info(`[assets] ${entry.id}: applied ${overridden} material override(s)`);
+  }
+
   const lod = buildLod(lodLevels);
   if (lod) {
     // `addLevel` reparents each group onto the LOD, so the groups leave `scene` on their own; the
@@ -291,6 +296,48 @@ async function load(entry: AssetEntry): Promise<LoadedAsset> {
     findings,
     dispose: () => disposeTree(scene),
   };
+}
+
+/**
+ * Applies the manifest's per-material overrides, keyed by material name.
+ *
+ * A second, simpler path alongside `applyZone`, and it exists because real assets
+ * do not arrive the way the contract imagines. `applyZone` looks for `MAT_`-prefixed
+ * *node* names; the Service Unit carries its zones as four material *slots* named
+ * `MAT_shell`, `MAT_joint` and so on, which is what a Blender export of a
+ * multi-material mesh actually produces. Node-name matching finds nothing there.
+ *
+ * So overrides match on the material's own name. That covers slot-based assets
+ * without changing how node-based ones resolve, and it makes look iteration data
+ * rather than a Blender round trip.
+ */
+function applyMaterialOverrides(scene: THREE.Object3D, entry: AssetEntry): number {
+  const overrides = entry.materialOverrides;
+  if (!overrides) return 0;
+
+  const touched = new Set<THREE.Material>();
+  scene.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (!material || touched.has(material)) continue;
+      const spec = overrides[material.name];
+      if (!spec) continue;
+      touched.add(material);
+
+      const std = material as THREE.MeshStandardMaterial;
+      if (spec.color !== undefined) std.color?.setHex(spec.color);
+      if (spec.metallic !== undefined && 'metalness' in std) std.metalness = spec.metallic;
+      if (spec.roughness !== undefined && 'roughness' in std) std.roughness = spec.roughness;
+      if (spec.emissive !== undefined) std.emissive?.setHex(spec.emissive);
+      if (spec.emissiveIntensity !== undefined && 'emissiveIntensity' in std) {
+        std.emissiveIntensity = spec.emissiveIntensity;
+      }
+      std.needsUpdate = true;
+    }
+  });
+  return touched.size;
 }
 
 /**

@@ -70,6 +70,25 @@ export interface AssetEntry {
    * Measure once in engine, put the number here.
    */
   footOffset?: number;
+  /**
+   * Explicit state -> clip name mapping, overriding every naming heuristic.
+   *
+   * Needed because some names carry no information at all. Mixamo emits
+   * `mixamo.com` for every download, so no candidate list can tell an idle from a
+   * sprint — only the person who downloaded it knows. This is where they say so.
+   */
+  clips?: Record<string, string>;
+  /**
+   * Per-material overrides applied at load, keyed by the material's name in the file.
+   *
+   * For adjusting a shipped asset's look without re-exporting it. Zone assignment
+   * is geometry and belongs in the DCC tool; the *values* a zone renders with are
+   * data, and iterating them here is far cheaper than a Blender round trip.
+   */
+  materialOverrides?: Record<
+    string,
+    { color?: number; metallic?: number; roughness?: number; emissive?: number; emissiveIntensity?: number }
+  >;
 }
 
 /**
@@ -125,6 +144,37 @@ export const ASSET_MANIFEST: AssetEntry[] = [
      * which is what identifies it as a bind-pose offset rather than animation.
      */
     footOffset: -0.2,
+    /**
+     * The asset ships one clip called `mixamo.com`, which matches no state by name.
+     * Declaring it as the idle is the only way the engine can know: nine states
+     * resolved to nothing before this existed, and the animator played a run cycle
+     * on stationary robots.
+     *
+     * Add entries here as named clips are imported.
+     */
+    clips: { idle: 'mixamo.com' },
+    /**
+     * Material balance pass.
+     *
+     * Measured in game, the graphite zone covers 28.5% of the model — forearms,
+     * shins, neck and hands — and at 0.055 luminance it read almost black. The
+     * robot looked like a dark industrial machine with a white torso rather than a
+     * premium white service unit.
+     *
+     * Rather than reassign geometry between zones (which is a Blender edit and a
+     * re-export), the graphite is lifted to a mid grey-blue and given more
+     * metallic response, moving it toward the titanium end of the palette. The
+     * ceramic identity stays dominant, the dark mass shrinks, and the mechanical
+     * parts still read as mechanical.
+     */
+    materialOverrides: {
+      // 0.055 -> 0.185. Still clearly darker than the shell, no longer a void.
+      MAT_joint: { color: 0x2f3742, metallic: 0.72, roughness: 0.42 },
+      // Slightly brighter and glossier, so titanium reads as machined rather than grey.
+      MAT_accent: { color: 0x9aa4b4, metallic: 0.9, roughness: 0.22 },
+      // A touch cooler and brighter: the ceramic should be the brightest thing on it.
+      MAT_shell: { color: 0xdfe4ea, metallic: 0.16, roughness: 0.33 },
+    },
     zones: [
       { zone: 'shell', substance: 'compositePolymer', useSourceMaterial: true },
       { zone: 'joint', substance: 'carbonFibre', useSourceMaterial: true },

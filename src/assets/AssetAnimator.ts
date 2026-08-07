@@ -89,6 +89,9 @@ export class AssetAnimator {
   /** Clip names this asset actually shipped, in file order. */
   readonly available: string[];
 
+  /** Explicit state -> clip mapping from the manifest. Beats every heuristic. */
+  readonly aliases: Record<string, string>;
+
   constructor(asset: LoadedAsset, options: AnimatorOptions = {}) {
     // The mixer binds to the asset root, not to a mesh. A character's clips address joints that are
     // siblings of the skinned mesh rather than children of it, so binding to the mesh finds nothing
@@ -97,6 +100,7 @@ export class AssetAnimator {
     this.mixer.timeScale = options.timeScale ?? 1;
 
     this.available = [...asset.clips.keys()];
+    this.aliases = asset.entry.clips ?? {};
     for (const [name, raw] of asset.clips) {
       const clip = options.keepRootMotion ? raw : stripRootMotion(raw);
       const action = this.mixer.clipAction(clip);
@@ -115,7 +119,11 @@ export class AssetAnimator {
   }
 
   has(name: string): boolean {
-    return this.actions.has(name);
+    if (this.actions.has(name)) return true;
+    // Also accept a normalised match, so a caller asking for "idle" finds a clip
+    // the file called "Armature|Idle|Layer0".
+    const wanted = normaliseClipName(name);
+    return this.available.some((available) => normaliseClipName(available) === wanted);
   }
 
   /**
@@ -184,6 +192,34 @@ export class AssetAnimator {
 }
 
 /**
+ * Normalises an exported clip name.
+ *
+ * Nobody ships clean clip names. Mixamo emits `mixamo.com` for every download, and
+ * once a file has been through Blender the same clip arrives as
+ * `Armature|mixamo.com|Layer0`. Other tools prefix the rig name, suffix a take
+ * number, or use spaces where the engine expects underscores.
+ *
+ * Rather than grow the candidate lists forever, names are reduced to their
+ * meaningful part before matching: pipe-delimited wrappers dropped, rig prefixes
+ * stripped, separators unified, case folded.
+ *
+ *     "Armature|mixamo.com|Layer0"  ->  "mixamo.com"
+ *     "mixamorig:Run Forward"       ->  "run_forward"
+ *     "Take 001|Idle"               ->  "idle"
+ */
+export function normaliseClipName(name: string): string {
+  // Pipe-delimited exports wrap the real name: keep the longest segment that is
+  // not obviously boilerplate.
+  const segments = name.split('|').map((part) => part.trim()).filter(Boolean);
+  const meaningful =
+    segments.filter((part) => !/^(armature|layer\d*|take\s*\d*|base\s*layer)$/i.test(part)) ;
+  let out = (meaningful.length ? meaningful : segments).slice(-1)[0] ?? name;
+  out = out.replace(/^mixamorig[:_]?/i, '');
+  out = out.replace(/\.(fbx|glb|gltf|dae)$/i, '');
+  return out.trim().replace(/[\s-]+/g, '_').toLowerCase();
+}
+
+/**
  * Maps a simulation state onto a clip name, taking the first the asset actually has.
  *
  * The indirection matters because the clip vocabulary is the artist's, not the engine's. A file may
@@ -193,31 +229,45 @@ export class AssetAnimator {
  * level up.
  */
 export const CLIP_CANDIDATES: Record<string, readonly string[]> = {
-  idle: ['idle', 'Idle', 'idle_loop', 'stand'],
-  walk: ['walk', 'Walk', 'walk_forward', 'locomotion_walk'],
-  run: ['run', 'Run', 'run_forward', 'sprint', 'locomotion_run'],
-  crouch: ['crouch', 'crouch_idle', 'Crouch'],
-  jump: ['jump', 'Jump', 'jump_start'],
-  fall: ['fall', 'Fall', 'airborne'],
-  slide: ['slide', 'Slide'],
-  fire: ['fire', 'Fire', 'shoot', 'attack'],
-  reload: ['reload', 'Reload', 'vent', 'recharge'],
-  death: ['death', 'Death', 'die'],
+  // Entries are the *real* names from Mixamo's library, normalised, alongside the
+  // generic ones. Guessing at plausible names is how the `fall` state ended up with
+  // no entry for "Falling Idle" — which is what Mixamo actually calls it, and the
+  // clip anyone downloading a fall would pick.
+  idle: ['idle', 'idle_loop', 'stand', 'standing', 'breathing_idle', 'neutral_idle', 'happy_idle'],
+  walk: ['walk', 'walking', 'walk_forward', 'locomotion_walk', 'standard_walk'],
+  run: ['run', 'running', 'run_forward', 'sprint', 'sprinting', 'fast_run', 'jog_forward', 'locomotion_run'],
+  crouch: ['crouch', 'crouching', 'crouch_idle', 'crouched_walking', 'crouch_walk'],
+  jump: ['jump', 'jumping', 'jumping_up', 'jump_start', 'jump_up'],
+  fall: ['fall', 'falling', 'falling_idle', 'airborne', 'fall_loop', 'fall_a_loop'],
+  slide: ['slide', 'sliding', 'running_slide', 'slide_forward'],
+  fire: ['fire', 'firing', 'firing_rifle', 'shoot', 'shooting', 'attack', 'rifle_fire'],
+  reload: ['reload', 'reloading', 'reload_rifle', 'vent', 'recharge'],
+  death: ['death', 'dying', 'die', 'death_from_front', 'falling_back_death', 'death_backward'],
 };
 
 /**
  * Resolves a state to a clip the asset has, or null.
  *
- * Falls back to the asset's only clip when nothing matches. A file that ships one
- * unnamed clip — which is what Mixamo produces, named `mixamo.com` — otherwise
- * resolves *nothing*: the Service Unit had zero of nine movement states match, so
- * the animator never switched and played the same cycle whether the actor was
- * standing, sprinting or dead. Better to play the one clip deliberately than to
- * fall through and look frozen by accident.
+ * Three tiers, most explicit first:
+ *
+ *   1. the manifest's `clips` map — an asset can state outright that its
+ *      `mixamo.com` clip is the idle, which no amount of name matching can infer;
+ *   2. the candidate lists, against normalised names;
+ *   3. the asset's only clip, if it ships exactly one.
+ *
+ * Tier 3 exists because of the Service Unit: it ships one clip named `mixamo.com`,
+ * every state resolved to null, and the animator silently played the same cycle
+ * whether an actor was standing still or sprinting.
  */
 export function clipFor(animator: AssetAnimator, state: string): string | null {
+  const explicit = animator.aliases[state];
+  if (explicit && animator.has(explicit)) return explicit;
+
   for (const candidate of CLIP_CANDIDATES[state] ?? [state]) {
-    if (animator.has(candidate)) return candidate;
+    const match = animator.available.find(
+      (name) => normaliseClipName(name) === normaliseClipName(candidate),
+    );
+    if (match) return match;
   }
   return animator.available.length === 1 ? animator.available[0] : null;
 }
@@ -235,8 +285,11 @@ export function clipCoverage(animator: AssetAnimator): {
   missing: string[];
 } {
   const states = Object.keys(CLIP_CANDIDATES);
-  const missing = states.filter(
-    (state) => !CLIP_CANDIDATES[state].some((candidate) => animator.has(candidate)),
-  );
+  const missing = states.filter((state) => {
+    if (animator.aliases[state] && animator.has(animator.aliases[state])) return false;
+    return !CLIP_CANDIDATES[state].some((candidate) =>
+      animator.available.some((name) => normaliseClipName(name) === normaliseClipName(candidate)),
+    );
+  });
   return { resolved: states.length - missing.length, total: states.length, missing };
 }

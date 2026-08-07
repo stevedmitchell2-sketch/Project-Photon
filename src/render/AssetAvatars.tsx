@@ -69,11 +69,110 @@ function movementState(actor: Actor): string {
   return 'idle';
 }
 
+/**
+ * A restrained emissive face element, mounted on the character's helmet socket.
+ *
+ * Task 3 asks for cyan identity on the head. The asset has none there and adding it
+ * properly means editing the mesh — so instead this hangs off `SOCKET_helmet`, which
+ * is already parented to the head bone. The asset, rig, weights and materials are
+ * untouched, and the accent inherits head animation for free.
+ *
+ * ## Why this shape
+ *
+ * A single horizontal visor bar plus two small sensor pips either side. Horizontal
+ * reads as *optics* — a scanner, a face — where vertical or angular reads as a
+ * threat display, and the brief is explicit that this must communicate intelligence
+ * and friendliness rather than combat.
+ *
+ * Deliberately small: 5 cm of bar on a 25 cm head. The brief warns against neon
+ * overload twice, and at arena distance a thin bright line is legible where a large
+ * glowing panel just becomes a blob under bloom.
+ *
+ * Unlit `MeshBasicMaterial` rather than emissive standard: this is a light source
+ * behind a lens, not a painted surface, and basic material means it holds its colour
+ * regardless of how the arena happens to be lighting the head.
+ */
+const HEAD_ACCENT = {
+  /**
+   * Distance in front of the avatar's centreline, in root-local metres.
+   *
+   * Measured, after three failed attempts at deriving it from the socket. The
+   * helmet socket sits at root-local z **+0.28** — 28 cm behind the centreline —
+   * because a Mixamo head bone's origin is at the base of the skull, not the face.
+   * Every offset applied relative to the socket therefore started 28 cm too far
+   * back, which is exactly the error that kept showing up: 0.53, then 0.20, then
+   * 0.28 m behind the head.
+   *
+   * So the socket is used for *height only*, and depth comes from the model's own
+   * front. 0.11 m clears a head roughly 0.22 m deep.
+   */
+  forward: 0.11,
+  /** Below the socket, which sits at the crown. */
+  drop: 0.1,
+  visor: { width: 0.05, height: 0.014, depth: 0.012 },
+  pip: { size: 0.011, offset: 0.037 },
+};
+
+function buildHeadAccent(color: number): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'PHOTON_head_accent';
+
+  // Laid out around the group's own origin. The group is then placed in socket space
+  // by `calibrateAccent`, so nothing here needs to know the rig's axes.
+  const material = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+  const v = HEAD_ACCENT.visor;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(v.width, v.height, v.depth), material);
+  group.add(bar);
+
+  const p = HEAD_ACCENT.pip;
+  for (const side of [-1, 1]) {
+    const pip = new THREE.Mesh(new THREE.BoxGeometry(p.size, p.size, p.size * 0.7), material);
+    pip.position.set(side * p.offset, 0.012, 0);
+    group.add(pip);
+  }
+
+  group.userData.photonAccentMaterial = material;
+  return group;
+}
+
+/**
+ * Positions the head accent on the face, in the avatar root's own space.
+ *
+ * Parented to the root, not to the head socket. Socket-local placement was tried
+ * three times and failed each time — the accent landed 0.53 m, then 0.20 m, then
+ * 0.28 m behind the skull — because a Mixamo head bone's local axes bear no fixed
+ * relationship to the character's facing, and every attempt to infer which axis
+ * points forward was a guess dressed up as arithmetic.
+ *
+ * Root space has no such ambiguity. `root.rotation.y` is set to the actor's yaw and
+ * nothing else, and the model faces -Z in its own space, so **-Z in root space is
+ * the face**. That is true by construction rather than by inspection.
+ *
+ * The cost of not parenting to the bone is that the accent tracks the head's
+ * position but not its rotation. For a 5 cm bar that is not a visible loss, and it
+ * is steadier: it cannot swing off the face when the clip turns the head.
+ */
+function placeHeadAccent(accent: THREE.Object3D, socket: THREE.Object3D, root: THREE.Object3D): void {
+  socket.getWorldPosition(ACCENT_SCRATCH);
+  root.worldToLocal(ACCENT_SCRATCH);
+  // Height from the socket, so it rides the head as the clip bobs. Lateral and depth
+  // from the model's own centreline and front, because the socket's own x/z carry the
+  // head bone's origin rather than the face — see HEAD_ACCENT.forward.
+  accent.position.set(0, ACCENT_SCRATCH.y - HEAD_ACCENT.drop, -HEAD_ACCENT.forward);
+}
+
+const ACCENT_SCRATCH = new THREE.Vector3();
+
 interface Slot {
   root: THREE.Group;
   animator: AssetAnimator;
   /** The weapon's muzzle socket, when a weapon was attached. */
   muzzle: THREE.Object3D | null;
+  /** Material of the head accent, so team colour can be written to it. */
+  accent: THREE.MeshBasicMaterial | null;
+  /** The accent group and its socket, for one-time placement calibration. */
+  accentNode: THREE.Object3D | null;
+  accentSocket: THREE.Object3D | null;
   /**
    * Materials cloned per slot so team colour can be written without repainting everyone.
    *
@@ -136,10 +235,29 @@ export function AssetAvatars({ colorblind }: Props) {
         teamMaterials.push(unique);
       });
 
+      // Head accent, if the asset exposes a helmet socket.
+      let accent: THREE.MeshBasicMaterial | null = null;
+      let accentNode: THREE.Object3D | null = null;
+      let helmet: THREE.Object3D | null = null;
+      root.traverse((node) => {
+        if (node.name === 'SOCKET_helmet' || node.name === 'helmet') helmet = node;
+      });
+      if (helmet) {
+        const built = buildHeadAccent(0x2de0ff);
+        // On the root, not the socket — see placeHeadAccent. The socket stays hidden
+        // and is read only for its world position.
+        root.add(built);
+        accent = built.userData.photonAccentMaterial as THREE.MeshBasicMaterial;
+        accentNode = built;
+      }
+
       made.push({
         root,
         animator: new AssetAnimator({ ...character, scene: root }),
         muzzle: null,
+        accent,
+        accentNode,
+        accentSocket: helmet,
         teamMaterials,
         actorId: null,
         lastState: '',
@@ -166,6 +284,7 @@ export function AssetAvatars({ colorblind }: Props) {
         slot.animator.dispose();
         group.remove(slot.root);
         for (const material of slot.teamMaterials) material.dispose();
+        slot.accent?.dispose();
       }
       slots.current = [];
     };
@@ -256,6 +375,15 @@ export function AssetAvatars({ colorblind }: Props) {
         const tinted = material as THREE.MeshStandardMaterial;
         tinted.color?.setHex(emissive);
         tinted.emissive?.setHex(emissive);
+      }
+      // The head accent takes team colour too, so a glance at the face reads as
+      // friend or enemy before the body does.
+      slot.accent?.color.setHex(emissive);
+      // Follows the head's position every frame. The skeleton has already been
+      // posed by the mixer above, so the socket's world position is current.
+      if (slot.accentNode && slot.accentSocket) {
+        slot.root.updateMatrixWorld(true);
+        placeHeadAccent(slot.accentNode, slot.accentSocket, slot.root);
       }
 
       // Third-person muzzle. This is what makes R1's correction exact for remote players instead of
