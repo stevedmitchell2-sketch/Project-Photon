@@ -40,8 +40,15 @@ import { publishMuzzle, clearMuzzle } from './MuzzleRegistry';
 /** Hard cap on simultaneous imported avatars. Beyond this, actors fall back to nothing rendered. */
 const MAX_ASSET_AVATARS = 24;
 
-/** The registry id of the character asset. */
-export const CHARACTER_ASSET_ID = 'hero_athlete';
+/**
+ * The registry id of the character asset.
+ *
+ * `hero_robot` is the authored Photon Arena Service Unit. `hero_athlete` is the
+ * generated reference character the pipeline was proven against — kept in the
+ * registry because it is regenerable in one command and useful for testing this
+ * path without the real asset present.
+ */
+export const CHARACTER_ASSET_ID = 'hero_robot';
 
 /**
  * Maps simulation state onto an animation state name.
@@ -204,9 +211,14 @@ export function AssetAvatars({ colorblind }: Props) {
       }
 
       slot.root.visible = true;
+      // footOffset lands the mesh's feet on the actor's origin. See the manifest
+      // entry: it is a measured property of the rig's bind pose, not a fudge, and
+      // it must not be folded into the simulation — the actor's position is
+      // authoritative and this is purely how the mesh is hung off it.
+      const footOffset = character?.entry.footOffset ?? 0;
       slot.root.position.set(
         lerp(actor.prevPosition.x, actor.position.x, alpha),
-        lerp(actor.prevPosition.y, actor.position.y, alpha),
+        lerp(actor.prevPosition.y, actor.position.y, alpha) + footOffset,
         lerp(actor.prevPosition.z, actor.position.z, alpha),
       );
       // The engine's yaw 0 faces -z and so does a glTF character authored to convention, so the

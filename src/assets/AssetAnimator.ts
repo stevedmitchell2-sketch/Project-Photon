@@ -29,11 +29,56 @@ import type { LoadedAsset } from './AssetLoader';
 /** How long a transition takes, in seconds, unless the caller says otherwise. */
 const DEFAULT_FADE = 0.18;
 
+/** Bone names that count as the animation root for root-motion stripping. */
+const ROOT_BONE_HINTS = ["hips", "root", "armature", "pelvis"];
+
+/**
+ * Removes root translation from a clip.
+ *
+ * Two separate problems, one fix.
+ *
+ * **The simulation owns position.** An actor's world position comes from
+ * `MovementSystem` — it is authoritative, replicated, and re-simulated during lag
+ * compensation. A clip that also translates the root fights it: the mesh drifts
+ * away from the collision capsule it is supposed to represent, and where it ends
+ * up depends on how far through the clip it happens to be.
+ *
+ * **Mixamo exports in centimetres.** The first real character's clip drives
+ * `mixamorigHips.position` over a range of 1.685 to 83.303. Against a model
+ * authored in metres that lifted every avatar clear of the floor — measured at
+ * 0.98 m, 1.99 m and 3.04 m off the ground for three characters standing on the
+ * same spot, because each was at a different frame.
+ *
+ * Rotation is what actually carries the animation, so quaternion and scale tracks
+ * are kept. Only root *translation* goes, and only on the root bone: hip bob on a
+ * spine bone is animation, hip displacement on the root is locomotion the
+ * simulation has already done.
+ */
+function stripRootMotion(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const kept = clip.tracks.filter((track) => {
+    if (!track.name.endsWith(".position")) return true;
+    const node = track.name.split(".")[0].toLowerCase();
+    return !ROOT_BONE_HINTS.some((hint) => node.includes(hint));
+  });
+  if (kept.length === clip.tracks.length) return clip;
+  const stripped = clip.clone();
+  stripped.tracks = kept;
+  return stripped;
+}
+
 export interface AnimatorOptions {
   /** Clip to start on. Defaults to the first clip in the file. */
   initial?: string;
   /** Playback rate multiplier. */
   timeScale?: number;
+  /**
+   * Strip root translation from every clip. On by default.
+   *
+   * Off only for something whose position genuinely is animation rather than
+   * simulation — a scripted prop, a cutscene actor. For anything the simulation
+   * drives, leaving this on is what keeps the mesh on its collision capsule.
+   */
+  keepRootMotion?: boolean;
 }
 
 export class AssetAnimator {
@@ -52,7 +97,8 @@ export class AssetAnimator {
     this.mixer.timeScale = options.timeScale ?? 1;
 
     this.available = [...asset.clips.keys()];
-    for (const [name, clip] of asset.clips) {
+    for (const [name, raw] of asset.clips) {
+      const clip = options.keepRootMotion ? raw : stripRootMotion(raw);
       const action = this.mixer.clipAction(clip);
       action.enabled = true;
       action.setEffectiveWeight(0);

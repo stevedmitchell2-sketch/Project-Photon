@@ -57,6 +57,19 @@ export interface AssetEntry {
    * hard-coded rotation somewhere else.
    */
   yawOffset?: number;
+  /**
+   * Vertical correction in metres, applied where the avatar is placed.
+   *
+   * A rigged character's feet do not always land on its origin once a clip is
+   * playing: stripping root translation returns the root bone to its bind pose,
+   * and if that pose sits the hips higher than the export origin, the whole mesh
+   * floats by the difference.
+   *
+   * Measured per asset rather than derived, because it depends on the clip as
+   * well as the rig — a crouched idle and a standing idle give different answers.
+   * Measure once in engine, put the number here.
+   */
+  footOffset?: number;
 }
 
 /**
@@ -81,6 +94,42 @@ export const ASSET_MANIFEST: AssetEntry[] = [
       { zone: 'vent', substance: 'titanium' },
       { zone: 'trim', substance: 'ledStrip', teamColored: true },
       { zone: 'core', substance: 'energyEmitter', teamColored: true },
+    ],
+  },
+  {
+    /**
+     * The Photon Arena Service Unit. First real authored character in the project.
+     *
+     * Retopologised from a Tripo source (1.94M -> 60,928 triangles), Mixamo-rigged
+     * with 49 joints, and finished with a baked normal + occlusion pass from the
+     * high-poly. Four material zones; the trim zone is emissive and takes team
+     * colour at runtime.
+     */
+    id: 'hero_robot',
+    kind: 'character',
+    file: 'PhotonServiceUnit_v01.glb',
+    format: 'glb',
+    description: 'Photon Arena Service Unit. Ceramic shell, graphite joints, titanium accents.',
+    /**
+     * 0.8445, because the mesh exports at 2.285 m and the target is 1.93 m (6'4").
+     *
+     * Corrected here rather than in Blender on purpose: the height overshoot came
+     * from scaling the armature, and re-scaling a bound rig risks the weights for
+     * no gain. A scale on the import node is animation-safe and reversible.
+     */
+    scale: 0.8445,
+    /**
+     * -0.2 m. Measured, not guessed: with root motion stripped the mesh floated a
+     * consistent 0.20 m above the actor origin on every avatar, including one
+     * standing on the mezzanine at y = 3.33 — the same gap regardless of height,
+     * which is what identifies it as a bind-pose offset rather than animation.
+     */
+    footOffset: -0.2,
+    zones: [
+      { zone: 'shell', substance: 'compositePolymer', useSourceMaterial: true },
+      { zone: 'joint', substance: 'carbonFibre', useSourceMaterial: true },
+      { zone: 'accent', substance: 'brushedAluminium', useSourceMaterial: true },
+      { zone: 'trim', substance: 'ledStrip', teamColored: true },
     ],
   },
   {
