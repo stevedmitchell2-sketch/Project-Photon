@@ -59,6 +59,11 @@ import os
 #:     CLIP_DIR = "C:\Users\You\Documents\ProjectPhoton\Clips"     # SyntaxError
 CLIP_DIR = ""
 
+#: Re-import a clip that is already in the file, replacing it. Leave False for a
+#: normal run: re-running then skips what is already there instead of creating
+#: `Fast Run.001` alongside `Fast Run`. Set True after re-downloading a clip.
+REPLACE_EXISTING = False
+
 #: Substring identifying the armature to receive the clips. The robot's armature
 #: is the only one in the file, so this is a safety net rather than a selector.
 TARGET_ARMATURE_HINT = ""
@@ -71,6 +76,60 @@ EXPECTED = (
     "Jumping Up", "Falling Idle", "Hard Landing",
     "Left Turn", "Button Pushing", "Falling Back Death",
 )
+
+
+def clip_frames(action):
+    """Length in frames, or None if this Blender does not report a range."""
+    span = getattr(action, "frame_range", None)
+    return int(span[1] - span[0]) if span else None
+
+
+def already_stashed(target, name):
+    """True when `target` already carries an NLA track for this clip."""
+    anim = getattr(target, "animation_data", None)
+    if not anim:
+        return False
+    return any(track.name == name for track in anim.nla_tracks)
+
+
+def drop_clip(target, name):
+    """Remove a clip's NLA track and its action, so a re-import is clean."""
+    anim = getattr(target, "animation_data", None)
+    if anim:
+        for track in list(anim.nla_tracks):
+            if track.name == name:
+                anim.nla_tracks.remove(track)
+    action = bpy.data.actions.get(name)
+    if action:
+        action.use_fake_user = False
+        bpy.data.actions.remove(action)
+
+
+def action_channel_count(action):
+    """Number of animated channels, across Blender's old and new action APIs.
+
+    Blender 4.4 restructured actions into layers, strips and channelbags — "slotted
+    actions" — and `Action.fcurves`, the accessor every pre-4.4 script used, is gone
+    in 5.x. Reaching for it raises `AttributeError: 'Action' object has no attribute
+    'fcurves'`.
+
+    This is only used for the report, so an API this does not recognise returns None
+    and prints a dash rather than stopping an import that otherwise worked.
+    """
+    legacy = getattr(action, "fcurves", None)
+    if legacy is not None:
+        return len(legacy)
+
+    total = 0
+    for layer in getattr(action, "layers", []):
+        for strip in getattr(layer, "strips", []):
+            # channelbags is the 4.4+ container; older betas exposed `channels`.
+            bags = getattr(strip, "channelbags", None)
+            if bags is None:
+                bags = getattr(strip, "channels", [])
+            for bag in bags:
+                total += len(getattr(bag, "fcurves", []))
+    return total or None
 
 
 def clip_name_from_file(path):
@@ -135,6 +194,21 @@ def import_clip(path, target):
     with. If the first clip looks wrong, that is the reason — and it is why this
     is worth testing on one file before running all twelve.
     """
+    name = clip_name_from_file(path)
+
+    # Re-runs have to be safe, because the first run of this script crashed partway
+    # through and anyone would simply run it again. Without this, a second import
+    # creates a fresh action, finds `Fast Run` taken, settles for `Fast Run.001`, and
+    # stashes that as a thirteenth track — a clip name that resolves to nothing.
+    existing = bpy.data.actions.get(name)
+    stashed = already_stashed(target, name)
+    if existing and stashed and not REPLACE_EXISTING:
+        return {"file": os.path.basename(path), "clip": name, "ok": True, "skipped": True,
+                "frames": clip_frames(existing), "channels": action_channel_count(existing),
+                "note": "already present"}
+    if REPLACE_EXISTING:
+        drop_clip(target, name)
+
     before_actions = set(bpy.data.actions)
     before_objects = set(bpy.data.objects)
 
@@ -145,7 +219,6 @@ def import_clip(path, target):
     new_actions = [a for a in bpy.data.actions if a not in before_actions]
     new_objects = [o for o in bpy.data.objects if o not in before_objects]
 
-    name = clip_name_from_file(path)
     result = {"file": os.path.basename(path), "clip": name, "ok": False, "note": ""}
 
     if not new_actions:
@@ -163,8 +236,8 @@ def import_clip(path, target):
         action.use_fake_user = True
         stash(target, action)
         result["ok"] = True
-        result["frames"] = int(action.frame_range[1] - action.frame_range[0])
-        result["channels"] = len(action.fcurves)
+        result["frames"] = clip_frames(action)
+        result["channels"] = action_channel_count(action)
 
     # Remove what the import brought in besides the action: a duplicate armature
     # (and a mesh, if the download was not Without Skin). Leaving them behind would
@@ -195,7 +268,7 @@ def stash(target, action):
             return  # already stashed, from an earlier run
     track = anim.nla_tracks.new()
     track.name = action.name
-    track.strips.new(action.name, int(action.frame_range[0]), action)
+    track.strips.new(action.name, int((getattr(action, "frame_range", None) or (0, 0))[0]), action)
     track.mute = True
 
 
@@ -231,10 +304,14 @@ def main():
     print(f"  {'CLIP':<24} {'FRAMES':>7} {'CHANNELS':>9}  RESULT")
     print("  " + "-" * 62)
     for r in results:
+        frames = r.get("frames")
+        channels = r.get("channels")
+        cells = f"{(frames if frames is not None else '-'):>7} {(channels if channels is not None else '-'):>9}"
         if r["ok"]:
-            print(f"  {r['clip']:<24} {r['frames']:>7} {r['channels']:>9}  stashed")
+            state = "already in file" if r.get("skipped") else "stashed"
+            print(f"  {r['clip']:<24} {cells}  {state}")
         else:
-            print(f"  {r['clip']:<24} {'-':>7} {'-':>9}  SKIPPED: {r['note']}")
+            print(f"  {r['clip']:<24} {cells}  SKIPPED: {r['note']}")
 
     imported = {r["clip"] for r in results if r["ok"]}
     missing = [c for c in EXPECTED if c not in imported]
