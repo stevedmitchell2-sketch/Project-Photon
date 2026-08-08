@@ -101,11 +101,56 @@ export interface AssetEntry {
 export const ASSET_MANIFEST: AssetEntry[] = [
   // --- Phase 1: hero assets -------------------------------------------------
   {
+    /**
+     * The PH-6 Photon Rifle.
+     *
+     * ## Status: geometry generated and measured, authoring pass outstanding
+     *
+     * Source is a Tripo generation retopologised through Tripo's own Smart Mesh remesh, which is
+     * kept in `assets/source/tripo/`:
+     *
+     *   Hero laser rifle 3d model.glb        58 MB   1,925,985 faces   the bake donor
+     *   Hero laser rifle 3d model mesh.glb  9.2 MB      27,986 tris    the game mesh
+     *
+     * **27,986 triangles against a 28,000 budget** — 14 to spare, and the first Photon asset ever
+     * inside its budget. The character is 3.4x over. Remeshing the *same* generation rather than
+     * generating twice is what made that possible: the two files are one shape at two densities,
+     * which is the pair `photon_bake.py` needs.
+     *
+     * Measured dimensions: 0.981 x 0.301 x 0.116 m, long axis on **X**. The spec wants 0.92 m ±0.05
+     * with the muzzle down **-Z**, so it is 1 cm long and a quarter turn out. `scale` and `yawOffset`
+     * below correct both without a Blender round trip, the same way the character's height overshoot
+     * is corrected rather than re-exported.
+     *
+     * ## What the file still needs before this entry does anything
+     *
+     * The entry is inert until `public/assets/weapons/HeroLaserRifle_v01.glb` exists, so nothing here
+     * is load-bearing yet. Outstanding, in order:
+     *
+     *   1. `SOCKET_muzzle`, `SOCKET_grip`, `SOCKET_sight` — three empties. Missing sockets fail the
+     *      audit, and the muzzle one is what makes a third-person bolt origin exact rather than
+     *      estimated (see MuzzleRegistry).
+     *   2. Origin moved to the grip. The runtime sways the weapon around its rest transform, and a
+     *      bounding-box origin swings wrong.
+     *   3. Split the single welded primitive into `PART_core`, `PART_emitter` and `rail_00`..`06`.
+     *   4. Drop the 4096px base colour and bake normal + AO from the HD file. That texture alone is
+     *      85 of the asset's 112 MB, and the material pass supplies colour from the zones below, so
+     *      it is not merely oversized — it is unused.
+     */
     id: 'hero_rifle',
     kind: 'weapon',
     file: 'HeroLaserRifle_v01.glb',
     format: 'glb',
     description: 'PH-6 Photon Rifle. Replaces the procedural view model.',
+    /** 0.938, because the remesh exports at 0.981 m and the spec calls for 0.92 m. */
+    scale: 0.938,
+    /**
+     * A quarter turn: the remesh lies along +X and the spec points the muzzle down -Z.
+     *
+     * Sign chosen to match the engine's convention, where positive yaw turns left — the same
+     * convention that had to be checked rather than assumed for the turning state.
+     */
+    yawOffset: Math.PI / 2,
     zones: [
       { zone: 'shell', substance: 'carbonFibre' },
       { zone: 'frame', substance: 'brushedAluminium' },

@@ -216,9 +216,25 @@ function inspect(
   add('info', '');
   add('info', 'RIGGING');
   let blocked = false;
+
+  /**
+   * Only a character genuinely needs a skeleton.
+   *
+   * This reported `FAIL no skin` and `FAIL no animation clips` for every kind, which failed the
+   * inbound gate on a weapon for lacking a rig it was never supposed to have — the PH-6's moving
+   * parts are `PART_` node transforms, not skinning. `blocked` was already scoped to characters;
+   * the *level* was not, and the exit code follows the level.
+   *
+   * Reported as info rather than dropped, because "no rig, and none needed" is worth seeing.
+   */
+  const rigRequired = kind === 'character';
+  const rigLevel: Line['level'] = rigRequired ? 'fail' : 'info';
+
   if (skins.length === 0) {
-    add('fail', `no skin: the file contains no skeleton and no skinned mesh.`);
-    if (kind === 'character') blocked = true;
+    add(rigLevel, rigRequired
+      ? 'no skin: the file contains no skeleton and no skinned mesh.'
+      : `no skin — not required for a ${kind}.`);
+    if (rigRequired) blocked = true;
   } else {
     const joints = skins.reduce((s, k) => s + k.joints.length, 0);
     add('ok', `${skins.length} skin(s), ${joints} joints.`);
@@ -248,8 +264,8 @@ function inspect(
   }
 
   if (animations.length === 0) {
-    add('fail', 'no animation clips.');
-    if (kind === 'character') blocked = true;
+    add(rigLevel, rigRequired ? 'no animation clips.' : `no animation clips — not required for a ${kind}.`);
+    if (rigRequired) blocked = true;
   } else {
     add('ok', `${animations.length} clip(s): ${animations.map((a) => a.name ?? '(unnamed)').join(', ')}`);
   }
