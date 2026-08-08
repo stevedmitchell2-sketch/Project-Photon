@@ -33,7 +33,9 @@ what the manifest's `clips` map is looking for.
 
 1. Download the twelve clips per docs/ANIMATION_CONTENT_PACK.md — FBX Binary,
    **Without Skin**, 30 fps, In Place ON where the option appears.
-2. Put them in one folder. Do not rename them; the filename is the clip name.
+2. Put them in one folder. The filename becomes the clip name, so leave the names
+   alone — a `Robot@` prefix or a ` (1)` duplicate suffix is handled for you, but
+   anything else you type in has to match Mixamo's own spelling exactly.
 3. Set CLIP_DIR below to that folder.
 4. Open the robot .blend, Scripting workspace, run this.
 5. Then run photon_export.py as normal.
@@ -61,6 +63,29 @@ EXPECTED = (
     "Jumping Up", "Falling Idle", "Hard Landing",
     "Left Turn", "Button Pushing", "Falling Back Death",
 )
+
+
+def clip_name_from_file(path):
+    """Derive the clip name from a downloaded filename.
+
+    Mixamo is not consistent about what it writes. Downloading against an uploaded
+    character prefixes the character name — `Robot@Fast Run.fbx` — and downloading
+    the same clip twice gives `Fast Run (1).fbx`. Both produce a name the engine
+    will not match, and the failure is the silent kind: the clip loads fine and the
+    state it was meant for resolves to something else.
+
+    So: everything before an `@` goes, and a trailing browser duplicate marker goes.
+    Nothing else is touched, because the remaining text has to stay character-exact.
+    """
+    name = os.path.splitext(os.path.basename(path))[0]
+    if "@" in name:
+        name = name.split("@")[-1]
+    # " (1)", " (2)" — Chrome's duplicate-download suffix.
+    if name.endswith(")") and " (" in name:
+        head, _, tail = name.rpartition(" (")
+        if tail[:-1].isdigit():
+            name = head
+    return name.strip()
 
 
 def resolve_clip_dir():
@@ -112,7 +137,7 @@ def import_clip(path, target):
     new_actions = [a for a in bpy.data.actions if a not in before_actions]
     new_objects = [o for o in bpy.data.objects if o not in before_objects]
 
-    name = os.path.splitext(os.path.basename(path))[0]
+    name = clip_name_from_file(path)
     result = {"file": os.path.basename(path), "clip": name, "ok": False, "note": ""}
 
     if not new_actions:
