@@ -172,7 +172,25 @@ interface Line {
   text: string;
 }
 
-function inspect(path: string, kindOverride?: AssetKind, expectClips?: number): { lines: Line[]; blocked: boolean } {
+function inspect(
+  path: string,
+  kindOverride?: AssetKind,
+  expectClips?: number,
+  budgetWarn = false,
+): { lines: Line[]; blocked: boolean } {
+  /**
+   * Level for a *budget* overage, as opposed to a structural defect.
+   *
+   * The two are different in kind. A missing skin, an unweighted vertex or a lost socket is broken:
+   * nothing downstream can work around it. Being over a triangle budget is a cost, and cost is a
+   * decision — the character's 3.4x overage was measured (GPU cost flat from 1 to 16 robots, see
+   * CHARACTER_OPTIMIZATION_PLAN.md) and accepted deliberately.
+   *
+   * So `--budget-warn` lets a pipeline treat recorded overages as warnings while keeping every
+   * structural check blocking. Without it a build gate on this asset can never pass, and a gate that
+   * always fails gets ignored, which costs more than it saves.
+   */
+  const budgetLevel: Line['level'] = budgetWarn ? 'warn' : 'fail';
   const { json, bin } = readGltf(path);
   const lines: Line[] = [];
   const add = (level: Line['level'], text: string) => lines.push({ level, text });
@@ -265,7 +283,7 @@ function inspect(path: string, kindOverride?: AssetKind, expectClips?: number): 
 
   const overBudget = triangles / budget.triangles;
   add(
-    overBudget > 1 ? 'fail' : 'ok',
+    overBudget > 1 ? budgetLevel : 'ok',
     `${Math.round(triangles).toLocaleString()} triangles, ${vertices.toLocaleString()} vertices` +
       (overBudget > 1 ? `  —  ${overBudget.toFixed(1)}x the ${budget.triangles.toLocaleString()} budget` : ''),
   );
@@ -345,7 +363,7 @@ function inspect(path: string, kindOverride?: AssetKind, expectClips?: number): 
     add('fail', `largest texture ${largest}px exceeds the ${budget.textureSize}px limit for a ${kind}.`);
   }
   add(
-    vram > budget.textureMemoryMb ? 'fail' : 'ok',
+    vram > budget.textureMemoryMb ? budgetLevel : 'ok',
     `${vram.toFixed(1)} MB of texture memory` +
       (vram > budget.textureMemoryMb ? `  —  ${(vram / budget.textureMemoryMb).toFixed(1)}x the ${budget.textureMemoryMb} MB budget` : ''),
   );
@@ -405,7 +423,7 @@ function main(): void {
   const args = process.argv.slice(2);
   const path = args.find((a) => !a.startsWith('--'));
   if (!path) {
-    console.error('usage: npm run asset-inspect -- <file.glb> [--kind character|weapon|module|prop] [--expect-clips N]');
+    console.error('usage: npm run asset-inspect -- <file.glb> [--kind ...] [--expect-clips N] [--budget-warn]');
     process.exitCode = 1;
     return;
   }
@@ -413,8 +431,9 @@ function main(): void {
   const kind = kindIndex >= 0 ? (args[kindIndex + 1] as AssetKind) : undefined;
   const clipIndex = args.indexOf('--expect-clips');
   const expectClips = clipIndex >= 0 ? Number(args[clipIndex + 1]) : undefined;
+  const budgetWarn = args.includes('--budget-warn');
 
-  const { lines, blocked } = inspect(path, kind, expectClips);
+  const { lines, blocked } = inspect(path, kind, expectClips, budgetWarn);
   const mark: Record<Line['level'], string> = { ok: '  ok  ', warn: ' warn ', fail: ' FAIL ', info: '      ' };
 
   console.log('');

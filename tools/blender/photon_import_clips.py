@@ -396,4 +396,8 @@ def main():
     print("=" * 68 + "\n")
 
 
-main()
+# Guarded so photon_build_character.py can import these helpers without running the
+# whole script as a side effect. Blender's text editor sets __name__ to "__main__" when
+# you press Run Script, so the interactive workflow is unchanged.
+if __name__ == "__main__":
+    main()

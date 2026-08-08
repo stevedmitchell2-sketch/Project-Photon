@@ -30,7 +30,9 @@
     "asset-inspect": "tsx scripts/assetInspect.ts",
     "clip-plan": "tsx scripts/clipPlan.ts",
     "asset-audit": "tsx scripts/assetAudit.ts",
-    "pose-check": "tsx scripts/poseCheck.ts"
+    "pose-check": "tsx scripts/poseCheck.ts",
+    "character-baseline": "tsx scripts/characterBaseline.ts",
+    "build-character": "tsx scripts/buildCharacter.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
