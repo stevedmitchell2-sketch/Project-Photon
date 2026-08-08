@@ -28,6 +28,7 @@
     "arena-audit": "tsx scripts/arenaAudit.ts",
     "make-reference-assets": "tsx scripts/makeReferenceAssets.ts",
     "asset-inspect": "tsx scripts/assetInspect.ts",
+    "clip-plan": "tsx scripts/clipPlan.ts",
     "asset-audit": "tsx scripts/assetAudit.ts"
   },
   "dependencies": {

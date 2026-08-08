@@ -152,7 +152,34 @@ export const ASSET_MANIFEST: AssetEntry[] = [
      *
      * Add entries here as named clips are imported.
      */
-    clips: { idle: 'mixamo.com' },
+    clips: {
+      // The clip that ships with the asset today. Carries no name information, so
+      // only an explicit alias can tell the engine what it is.
+      idle: 'mixamo.com',
+
+      // --- The animation content pack -----------------------------------------
+      //
+      // Names are Mixamo's, verbatim, because that is what the exporter writes into
+      // the file. Verified against the resolver by `npm run clip-plan` before any
+      // download: every entry below is one the candidate lists could *not* match on
+      // their own, so leaving them out would have produced a state that silently
+      // never resolved.
+      //
+      // Clips whose Mixamo names already match a candidate — Breathing Idle,
+      // Walking, Running, Crouch Idle, Jumping Up, Falling Idle, Running Slide,
+      // Falling Back Death — are deliberately absent. They resolve without help,
+      // and an alias for them would be a second place to keep the same fact.
+
+      // No candidate list at all: these states are new.
+      landing: 'Hard Landing',
+      turning: 'Left Turn',
+      interact: 'Button Pushing',
+
+      // A collision, not a gap. "Fast Run" normalises into the *run* candidates, so
+      // without this alias a sprint download would load correctly and silently serve
+      // the run state — the worst kind of failure, because nothing looks wrong.
+      sprint: 'Fast Run',
+    },
     /**
      * Material balance pass.
      *
