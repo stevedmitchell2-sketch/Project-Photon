@@ -28,6 +28,19 @@ are exercised.
 
 ---
 
+## 0. Download the twelve animation clips
+
+The one task where the engine is finished and the content is not. `docs/ANIMATION_CONTENT_PACK.md`
+has the list, the exact Mixamo names and the export settings; `npm run clip-plan` reports 12/12
+resolving and the state mapper reaches all ten driven states live. Coverage in engine is **1/10**,
+because the asset ships one clip called `mixamo.com` and the sole-clip fallback serves it to
+everything — which is why a standing robot plays a run cycle.
+
+Nothing else about characters improves visibly until this is done. It is an afternoon of downloads,
+a `.blend` merge and one `photon_export.py` run.
+
+---
+
 ## 1. Characters are the biggest gap, and now the only one that is blocked on content
 
 The pipeline can load a skinned mesh, build its LOD chain, bind its zones and play its clips — all
@@ -88,6 +101,8 @@ Fourteen sprints of rules:
 - do not disturb a working preview mid-sprint;
 - geometry that reads as absent is usually inside something;
 - a level is not correct because it compiles, collides and renders;
+- a threshold that sits outside the range its input can reach is a state that never happens;
+- an instrument that advances the thing it measures is not an instrument;
 - **a pipeline that has never carried a real file is a design document.** Sprint 12 specified,
   validated, budgeted and documented an asset system, and the first genuine glTF put through it
   found six defects in half a minute — two of them in the contract itself. If content cannot be

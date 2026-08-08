@@ -2,7 +2,7 @@
 
 **Asset:** `hero_robot` · `PhotonServiceUnit_v01.glb` · 49-joint Mixamo humanoid
 **Verify with:** `npm run clip-plan` · locked by `tests/unit/clipCoverage.test.ts`
-**Status:** plan verified, manifest updated, **content not yet downloaded**
+**Status:** plan verified, manifest updated, state mapper wired, **content not yet downloaded**
 
 ---
 
@@ -117,25 +117,29 @@ correctly (`Hard Landing` → `hard_landing`, `Fast Run` → `fast_run`, …).
 
 ---
 
-## What this does not do
+## The state mapper (added after this pack)
 
-**Four states will load and never play**, because `movementState()` in
-`AssetAvatars.tsx` does not produce them. The brief scoped this pass to manifest
-mappings, and the state mapper is renderer code, so it is untouched:
+All four states are now driven. The mapper moved out of `AssetAvatars.tsx` into
+`src/render/CharacterStateMapper.ts`, because each of the four needs *memory* and
+memory inside a `useFrame` loop is where animation bugs hide.
 
-| State | What it needs |
+| State | How it is driven |
 |---|---|
-| `sprint` | A speed threshold splitting run from sprint. The band exists in `MOVEMENT`; the mapper collapses both into `run` |
-| `landing` | A grounded-transition edge plus a `playOnce`, not a looping state |
-| `turning` | A yaw-rate threshold, and runtime mirroring for right turns |
-| `interact` | A gameplay trigger. Nothing in the simulation currently says "this unit is servicing something" |
+| `sprint` | Speed tier with a dead band centred between `walkSpeed` and `sprintSpeed` |
+| `landing` | Grounded-transition edge, qualified by `airTime`, played held rather than looped |
+| `turning` | Yaw rate from the actor's own `prevYaw`, with a 0.22 s hold floor |
+| `interact` | `triggerInteract(actorId)` — plays a clip, carries no gameplay behaviour |
 
-All four are small — roughly a dozen lines in `movementState()` plus one `playOnce`
-call — but they are a renderer change and belong in their own pass.
+**The run threshold had to move.** The old mapper used `speed > 6 -> run`. `walkSpeed`
+is 5.2, so 6 sat *above* the fastest a non-sprinting player can move: the `run` state
+was unreachable without holding sprint, and normal movement played the walk clip. The
+old `run` was already the sprint in all but name, which is why sprint needed the
+boundary moved rather than a new one added above it.
 
 **Coverage today is 1/10** and stays there until the files land. The single
 `mixamo.com` clip serves every state through the sole-clip fallback, which is why a
-standing robot currently plays a run cycle.
+standing robot currently plays a run cycle. The state *transitions* are verifiable
+now; distinct visual output is not, and will not be until the twelve files are in.
 
 ---
 
@@ -145,7 +149,7 @@ standing robot currently plays a run cycle.
 2. Merge into the `.blend`, re-export with `photon_export.py`.
 3. `npm run asset-inspect` — expect 12 clips, rig and weights unchanged.
 4. `npm run clip-plan` — expect 12/12 still resolving against the real file.
-5. Confirm coverage in engine: **8/10 driven states resolving to distinct clips.**
-6. Then the state-mapper pass for `sprint`, `landing`, `turning` and `interact`.
+5. Confirm coverage in engine: **10/10 driven states resolving to distinct clips.** The
+   mapper already reaches all of them; only the clips are missing.
 
-After that, arena presentation and environmental integration.
+Then arena presentation and environmental integration.

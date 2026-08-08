@@ -30,8 +30,21 @@ const CONTENT_PACK: ReadonlyArray<readonly [string, string]> = [
   ['Falling Back Death', 'death'],
 ];
 
-/** States `movementState()` in AssetAvatars can actually produce today. */
-const DRIVEN_STATES = ['idle', 'walk', 'run', 'crouch', 'jump', 'fall', 'slide', 'death'] as const;
+/**
+ * States `CharacterStateMapper` can actually produce today.
+ *
+ * `sprint`, `landing`, `turning` and `interact` joined this list in the state-mapper pass. They were
+ * in the content pack before anything produced them, which is exactly the arrangement this file
+ * exists to make visible: a state that resolves but is never reached costs a download and shows
+ * nothing.
+ */
+const DRIVEN_STATES = [
+  'idle', 'walk', 'run', 'sprint',
+  'crouch', 'slide',
+  'jump', 'fall', 'landing',
+  'turning', 'interact',
+  'death',
+] as const;
 
 const robot = ASSET_MANIFEST.find((e) => e.id === 'hero_robot');
 

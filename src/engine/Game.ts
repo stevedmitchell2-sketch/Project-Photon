@@ -217,6 +217,33 @@ export class Game {
           options = {},
         ) => module.probeArenaLighting(this.arena, position, yaw, pitch, options);
       });
+      // Animation states, for verifying the state mapper against a live match.
+      //
+      // Worth a dev hook rather than a console session of guesswork: the four states added in the
+      // state-mapper pass are all edges or thresholds — a landing lasts a third of a second and a
+      // turn a fifth — and none of them can be confirmed from a screenshot, because every state
+      // currently resolves to the same clip until the animation pack is downloaded. What is
+      // verifiable is which state the mapper *reaches*, and that is only observable from here.
+      void import('@/render/CharacterStateMapper').then((module) => {
+        const handle2 = handle.__PHOTON__ as unknown as {
+          animStates?: unknown;
+          triggerInteract?: unknown;
+        };
+        handle2.animStates = () =>
+          [...this.match.state.actors.values()]
+            .filter((actor) => actor.kind !== 'local')
+            .map((actor) => ({
+              id: actor.id,
+              // `stateOf`, not `resolve`. Resolving here would run the mapper a second time this
+              // frame, halve every hold and consume the landing edge before the renderer saw it.
+              state: module.characterStates.stateOf(actor.id),
+              tier: module.characterStates.tierOf(actor.id),
+              speed: +Math.hypot(actor.velocity.x, actor.velocity.z).toFixed(2),
+              grounded: actor.grounded,
+            }));
+        handle2.triggerInteract = (id: number, duration?: number) =>
+          module.characterStates.triggerInteract(id, duration);
+      });
     }
   }
 

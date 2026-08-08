@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { AssetAnimator, clipCoverage, clipFor } from '@/assets/AssetAnimator';
+import { AssetAnimator, clipCoverage, clipFor, normaliseClipName } from '@/assets/AssetAnimator';
 import { useAsset } from '@/assets/useAsset';
 import { teamEmissive } from '@/config/teams';
-import type { Actor } from '@/gameplay/types';
 import { lerp } from '@/util/math';
 import { isDev } from '@/util/env';
 import { useGame } from './GameContext';
+import { characterStates } from './CharacterStateMapper';
 import { publishMuzzle, clearMuzzle } from './MuzzleRegistry';
 
 /**
@@ -52,21 +52,30 @@ const MAX_ASSET_AVATARS = 24;
 export const CHARACTER_ASSET_ID = 'hero_robot';
 
 /**
- * Maps simulation state onto an animation state name.
+ * Clip names that count as a purpose-built right turn.
  *
- * Reads the same actor fields the blockout's pose function reads, so the two paths cannot disagree
- * about what a player is doing — only about how it looks. Resolution from this name to an actual
- * clip is `clipFor`, which lets an asset ship `run`, `run_forward` or `sprint` and still work.
+ * Runtime mirroring of a skeletal clip means reflecting every track and swapping every left/right
+ * bone pair — a real feature, and one that would live in `AssetAnimator` rather than here. This is
+ * the cheap 90%: if the asset ships a right turn, use it; otherwise the left-turn clip covers both
+ * directions, which on a 0.22 s turn-in-place is a detail nobody sees at arena distance.
+ *
+ * Checked directly against the animator's clip list rather than through `clipFor`, because `clipFor`
+ * falls back to the asset's only clip and would therefore report a right turn for every asset that
+ * ships one animation.
  */
-function movementState(actor: Actor): string {
-  if (!actor.alive) return 'death';
-  if (!actor.grounded) return actor.velocity.y > 0.5 ? 'jump' : 'fall';
-  if (actor.stance === 'slide') return 'slide';
-  if (actor.stance === 'crouch') return 'crouch';
-  const speed = Math.hypot(actor.velocity.x, actor.velocity.z);
-  if (speed > 6) return 'run';
-  if (speed > 0.35) return 'walk';
-  return 'idle';
+const RIGHT_TURN_CLIPS = ['right_turn', 'turn_right', 'turning_right'];
+
+/** Resolves the turning state, taking a dedicated right-turn clip when the asset has one. */
+function turnClipFor(animator: AssetAnimator, turnSign: number): string | null {
+  if (turnSign > 0) {
+    const alias = animator.aliases.turning_right;
+    if (alias && animator.has(alias)) return alias;
+    const match = animator.available.find((name) =>
+      RIGHT_TURN_CLIPS.includes(normaliseClipName(name)),
+    );
+    if (match) return match;
+  }
+  return clipFor(animator, 'turning');
 }
 
 /**
@@ -327,6 +336,9 @@ export function AssetAvatars({ colorblind }: Props) {
     for (const slot of pool) {
       if (slot.actorId !== null && !live.has(slot.actorId)) {
         clearMuzzle(slot.actorId);
+        // Drop the mapper's per-actor memory too, or a rejoining player inherits the tier, hold and
+        // turn state of whoever last used the id — and the map grows for the life of the session.
+        characterStates.release(slot.actorId);
         slot.actorId = null;
         slot.root.visible = false;
       }
@@ -360,11 +372,22 @@ export function AssetAvatars({ colorblind }: Props) {
       // manifest entry rather than here — see `AssetEntry.yawOffset`.
       slot.root.rotation.set(0, actor.yaw + (character?.entry.yawOffset ?? 0), 0);
 
-      const state = movementState(actor);
-      if (state !== slot.lastState) {
-        const clip = clipFor(slot.animator, state);
-        if (clip) slot.animator.play(clip);
-        slot.lastState = state;
+      const decision = characterStates.resolve(actor, delta);
+      // Turn direction is part of the key: a left turn followed by a right turn is two different
+      // clips, and keying on the state name alone would leave the first one playing.
+      const key = decision.state === 'turning' ? `turning${decision.turnSign}` : decision.state;
+      if (key !== slot.lastState) {
+        const clip =
+          decision.state === 'turning'
+            ? turnClipFor(slot.animator, decision.turnSign)
+            : clipFor(slot.animator, decision.state);
+        // `once` states are events with a known duration — the mapper holds them and decides what
+        // follows, so they are played held rather than looped. See AssetAnimator.playHeld.
+        if (clip) {
+          if (decision.once) slot.animator.playHeld(clip);
+          else slot.animator.play(clip);
+        }
+        slot.lastState = key;
       }
       slot.animator.update(delta);
 

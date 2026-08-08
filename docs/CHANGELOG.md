@@ -4,6 +4,71 @@ Newest first. Each entry is scoped to what a reviewer would need to know.
 
 ---
 
+## [0.24.0] - 2026-08-07 - The animation state mapper
+
+### What was wrong
+
+Four states — `sprint`, `landing`, `turning`, `interact` — resolved to clips and were never produced.
+That is the quiet failure the animation pack was written to prevent: nothing throws, nothing logs, the
+character animates, and the state simply never occurs.
+
+Underneath it was a worse one. The old mapper read `speed > 6 -> run`, and `walkSpeed` is **5.2** — so
+6 sat *above* the fastest a non-sprinting player can move. The `run` state was unreachable without
+holding sprint, and normal movement, which is where a player spends the whole match, played the walk
+clip. The old `run` was already the sprint in everything but name.
+
+### The mapper
+
+`src/render/CharacterStateMapper.ts`, out of `AssetAvatars.tsx`. All four new states need memory, and
+memory in the middle of a `useFrame` loop is where animation bugs hide. Out here it is a plain class
+with no Three.js import, so every threshold and every edge is testable.
+
+- **sprint** — a four-tier speed ladder with dead bands, all derived from `MOVEMENT` rather than
+  written down again. Normal movement runs; the sprint band starts midway between `walkSpeed` and
+  `sprintSpeed`.
+- **landing** — the airborne -> grounded edge, qualified by `airTime` so a step lip is not an impact,
+  held 0.34 s and released early above sprint speed so recovery never fights input.
+- **turning** — yaw rate from the actor's own replicated `prevYaw` divided by `TICK_DT`, not the frame
+  delta, with a 0.22 s hold floor so a mouse flick is not a twitch. Signed for mirroring; a purpose-
+  built right-turn clip is used automatically if the asset ships one.
+- **interact** — `triggerInteract(actorId)`. Plays a clip and nothing else: it does not reserve the
+  actor, block input, or start a timer the simulation can see. Deliberately not replicated.
+
+`AssetAnimator.playHeld` is new. `playOnce` restores the state it interrupted on the mixer's
+`finished` event, which is right for a fire or a hit reaction and a race under a state machine — the
+mapper asks for locomotion when the hold expires, then the pending event yanks playback back to a
+fall clip on a character that is now standing.
+
+### Two flicker fixes the live sample found
+
+Measured on Apex with five bots, and neither was visible from a screenshot.
+
+**`grounded` is not a clean signal.** Repeated single-tick drops — `fall` entered and left inside
+18 ms, once at 9.53 m/s — as bots crossed ramp seams and bridge joints. Airborne is now qualified by
+`airTime` the same way landing is. Fall episodes went from routinely one frame to a **median of
+217 ms** across 21 episodes.
+
+**The landing gate was too tight.** At `walkSpeed * 0.75` only 3 landings got through in 20 seconds
+across five players, one of them at 3.71 m/s and barely under the bar — players land moving almost
+every time. Raised to the sprint entry threshold, so a landing plays through a walk and a run and is
+skipped only at sprint: **11 events**, median 349 ms, matching the hold.
+
+### Known and left alone
+
+`walk` is a transit band and produces short episodes — 32 of 53 were a single frame, median 19 ms — as
+actors accelerate through it. The 180 ms cross-fade is longer than the episode, so the walk clip never
+reaches visible weight; adding a dwell timer would fix a number nobody can see at the cost of delaying
+every locomotion start.
+
+### Verified
+
+Live on Apex with the real Service Unit: `sprint` (8.59 m/s), `run` (5.4 m/s), `landing`, `turning`,
+`interact`, plus `idle`, `walk`, `jump`, `fall`, `slide`, `crouch`. **145 tests across 13 files**, 33
+of them new. `npm run clip-plan` reports 12/12 and no longer lists any state as needing wiring.
+
+Coverage is still **1/10** until the twelve Mixamo files are downloaded, so state transitions are
+verified and distinct visual output is not.
+
 ## [0.23.0] - 2026-08-02 - The pipeline carries a real file
 
 ### Direction

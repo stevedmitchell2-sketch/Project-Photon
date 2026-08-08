@@ -52,8 +52,13 @@ describe('normaliseClipName', () => {
 
 describe('CLIP_CANDIDATES', () => {
   it('covers every state the movement mapper can produce', () => {
-    // These are the states `movementState()` in AssetAvatars returns. A state with
-    // no candidate list can never resolve, however the asset is named.
+    // The states `CharacterStateMapper` produces that are expected to resolve by *name*. A state
+    // with no candidate list can never resolve that way, however the asset is named.
+    //
+    // `sprint`, `landing`, `turning` and `interact` are deliberately absent: they resolve through
+    // the manifest's explicit `clips` map instead, because their Mixamo names either match nothing
+    // or — in `Fast Run`'s case — match the wrong state's list. Their coverage is enforced in
+    // clipCoverage.test.ts.
     for (const state of ['idle', 'walk', 'run', 'crouch', 'jump', 'fall', 'slide', 'fire', 'death']) {
       expect(CLIP_CANDIDATES[state], state).toBeDefined();
       expect(CLIP_CANDIDATES[state].length).toBeGreaterThan(0);

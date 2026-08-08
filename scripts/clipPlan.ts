@@ -52,8 +52,7 @@ const PLAN: PlannedClip[] = [
   { state: 'run', mixamo: 'Running',
     note: 'Standard run. Photon switches to this above 0.35 m/s.' },
   { state: 'sprint', mixamo: 'Fast Run',
-    note: 'Longer stride for the >6 m/s band. Resolves to the run candidates today, so it needs a state split to be distinct.',
-    needsStateWiring: true },
+    note: 'Longer stride for the sprint band. Driven by the sprint tier of the mapper, above the dead band centred between walkSpeed and sprintSpeed.' },
   { state: 'crouch', mixamo: 'Crouch Idle',
     note: 'Crouched hold. Photon crouch is a stance, not a movement, so the idle is the right pick.' },
   { state: 'slide', mixamo: 'Running Slide',
@@ -65,16 +64,13 @@ const PLAN: PlannedClip[] = [
   { state: 'fall', mixamo: 'Falling Idle',
     note: 'Airborne loop. The name the fall state failed to match before the candidate lists were corrected.' },
   { state: 'landing', mixamo: 'Hard Landing',
-    note: 'Impact absorb. No landing state exists in the mapper yet, so this needs wiring and a one-shot.',
-    needsStateWiring: true },
+    note: 'Impact absorb. Driven by the grounded-transition edge in the mapper and played held, not looped.' },
 
   // --- Presence ----------------------------------------------------------
   { state: 'turning', mixamo: 'Left Turn',
-    note: 'Turn in place. Needs a yaw-rate threshold in the state mapper; mirrored at runtime for right turns.',
-    needsStateWiring: true },
+    note: 'Turn in place. Driven by yaw rate against the replicated prevYaw of the actor. A separate Right Turn download is used automatically if present.' },
   { state: 'interact', mixamo: 'Button Pushing',
-    note: 'The service animation. A maintenance unit operating arena equipment, not a soldier reloading.',
-    needsStateWiring: true },
+    note: 'The service animation. Driven by triggerInteract(actorId), which plays a clip and carries no gameplay behaviour.' },
 
   // --- Already covered by the resolver, worth having ---------------------
   { state: 'death', mixamo: 'Falling Back Death',
@@ -168,14 +164,14 @@ function main(): void {
   if (needWiring.length) {
     console.log('');
     console.log('  STATE WIRING REQUIRED (renderer, not manifest)');
-    console.log('  `movementState()` does not produce these, so the clips will load and never play:');
+    console.log('  The state mapper does not produce these, so the clips will load and never play:');
     for (const c of needWiring) console.log(`    ${c.state.padEnd(10)} ${c.note}`);
   }
 
   // What the engine can actually drive today.
   console.log('');
   console.log('  GAMEPLAY STATES THE MAPPER PRODUCES TODAY');
-  const produced = ['idle', 'walk', 'run', 'crouch', 'jump', 'fall', 'slide', 'death'];
+  const produced = ['idle', 'walk', 'run', 'sprint', 'crouch', 'slide', 'jump', 'fall', 'landing', 'turning', 'interact', 'death'];
   for (const state of produced) {
     const planned = PLAN.find((p) => p.state === state);
     const status = planned

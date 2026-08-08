@@ -139,6 +139,12 @@ export class AssetAnimator {
     if (!next) return;
 
     const previous = this.current ? this.actions.get(this.current) : null;
+    // Restore looping. An action left in LoopOnce by `playHeld` would otherwise play once and clamp
+    // when a later state asks for it as a loop — which is only reachable if an asset maps a held
+    // state and a looping state onto the same clip, but that is exactly what the single-clip fallback
+    // does today.
+    next.setLoop(THREE.LoopRepeat, Infinity);
+    next.clampWhenFinished = false;
     if (previous && fade > 0) {
       next.reset();
       next.setEffectiveWeight(1);
@@ -177,6 +183,40 @@ export class AssetAnimator {
       }
     };
     this.mixer.addEventListener('finished', onFinished as never);
+  }
+
+  /**
+   * Plays a clip once and holds its final pose, restoring nothing.
+   *
+   * For a one-shot the *state machine* owns — a landing, a service interaction — where something
+   * else already knows how long the event lasts and what follows it.
+   *
+   * `playOnce` cannot do this job. It captures the state it interrupted and cross-fades back to it on
+   * the mixer's `finished` event, which is the right behaviour for a fire or a hit reaction fired out
+   * of band. Under a state mapper it is a race: the mapper asks for a locomotion state when the hold
+   * expires, then the pending `finished` event fires and yanks playback back to whatever was playing
+   * *before* the landing — a fall clip, on a character that is now standing.
+   *
+   * So this registers no listener. The mapper says when the event is over.
+   */
+  playHeld(name: string, fade = DEFAULT_FADE): void {
+    const next = this.actions.get(name);
+    if (!next) return;
+
+    // No `name === current` guard, unlike `play`. Asking for an event again means play it again, and
+    // a clamped one-shot that is already finished would otherwise silently do nothing.
+    const previous = this.current === name ? null : this.actions.get(this.current ?? '');
+    next.reset();
+    next.setLoop(THREE.LoopOnce, 1);
+    next.clampWhenFinished = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    if (previous && fade > 0) {
+      previous.crossFadeTo(next, fade, false);
+    } else {
+      for (const action of this.actions.values()) if (action !== next) action.setEffectiveWeight(0);
+    }
+    this.current = name;
   }
 
   /** Advance. Call once per rendered frame with the frame's delta in seconds. */
