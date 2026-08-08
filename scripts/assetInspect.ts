@@ -49,8 +49,12 @@ interface Gltf {
   }>;
   meshes?: Array<{ name?: string; primitives: Array<{ attributes: Record<string, number>; indices?: number; material?: number }> }>;
   materials?: Array<Record<string, unknown>>;
-  accessors?: Array<{ count: number; type: string; componentType: number; min?: number[]; max?: number[] }>;
-  bufferViews?: Array<{ byteOffset?: number; byteLength: number }>;
+  accessors?: Array<{
+    count: number; type: string; componentType: number;
+    min?: number[]; max?: number[];
+    bufferView?: number; byteOffset?: number; normalized?: boolean;
+  }>;
+  bufferViews?: Array<{ byteOffset?: number; byteLength: number; byteStride?: number }>;
   images?: Array<{ name?: string; mimeType?: string; bufferView?: number; uri?: string }>;
   textures?: Array<{ source?: number }>;
   skins?: Array<{ joints: number[]; skeleton?: number }>;
@@ -73,6 +77,56 @@ function readGltf(path: string): { json: Gltf; bin: Buffer } {
 }
 
 /** Pixel dimensions from a JPEG or PNG header, without decoding the image. */
+/**
+ * Decodes a VEC4 skin-weight accessor and reports how well-formed it is.
+ *
+ * The attribute simply *existing* is not the same as the weights being usable, and the difference is
+ * invisible until a character animates. Two failures worth catching:
+ *
+ * - **All-zero vertices.** A vertex with no influence is not carried by any bone. It stays at its
+ *   bind position while the rest of the mesh moves, which reads as a spike or a torn seam.
+ * - **Unnormalised sums.** Weights are meant to total 1. A vertex summing to 0.5 moves half as far as
+ *   the bone that owns it, so a limb visibly stretches rather than rotating.
+ *
+ * Both survive an export, load without complaint, and are only findable by looking at the numbers.
+ */
+function weightHealth(json: Gltf, bin: Buffer): { checked: number; unweighted: number; offSum: number; worst: number } | null {
+  const result = { checked: 0, unweighted: 0, offSum: 0, worst: 1 };
+  for (const mesh of json.meshes ?? []) {
+    for (const prim of mesh.primitives) {
+      const index = prim.attributes.WEIGHTS_0;
+      if (index === undefined) continue;
+      const accessor = json.accessors?.[index];
+      if (!accessor || accessor.type !== 'VEC4' || accessor.bufferView === undefined) continue;
+      const view = json.bufferViews?.[accessor.bufferView];
+      if (!view) continue;
+
+      // 5126 float, 5121 unsigned byte, 5123 unsigned short — the three glTF permits for weights.
+      const width = accessor.componentType === 5126 ? 4 : accessor.componentType === 5123 ? 2 : 1;
+      const scale = accessor.componentType === 5126 ? 1 : accessor.componentType === 5123 ? 65535 : 255;
+      const stride = view.byteStride ?? width * 4;
+      const base = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+      if (base + stride * (accessor.count - 1) + width * 4 > bin.length) continue;
+
+      for (let v = 0; v < accessor.count; v++) {
+        let sum = 0;
+        for (let c = 0; c < 4; c++) {
+          const at = base + v * stride + c * width;
+          const raw =
+            accessor.componentType === 5126 ? bin.readFloatLE(at)
+            : accessor.componentType === 5123 ? bin.readUInt16LE(at)
+            : bin.readUInt8(at);
+          sum += raw / scale;
+        }
+        result.checked++;
+        if (sum === 0) result.unweighted++;
+        else if (Math.abs(sum - 1) > 0.02) { result.offSum++; result.worst = Math.min(result.worst, sum); }
+      }
+    }
+  }
+  return result.checked ? result : null;
+}
+
 function imageSize(data: Buffer): { w: number; h: number } | null {
   if (data.length > 24 && data.readUInt32BE(0) === 0x89504e47) {
     return { w: data.readUInt32BE(16), h: data.readUInt32BE(20) };
@@ -118,7 +172,7 @@ interface Line {
   text: string;
 }
 
-function inspect(path: string, kindOverride?: AssetKind): { lines: Line[]; blocked: boolean } {
+function inspect(path: string, kindOverride?: AssetKind, expectClips?: number): { lines: Line[]; blocked: boolean } {
   const { json, bin } = readGltf(path);
   const lines: Line[] = [];
   const add = (level: Line['level'], text: string) => lines.push({ level, text });
@@ -159,11 +213,36 @@ function inspect(path: string, kindOverride?: AssetKind): { lines: Line[]; block
     }
   }
 
+  // Weight *validity*, not just presence. The attribute existing says nothing about whether every
+  // vertex is actually carried by a bone — see weightHealth.
+  const weights = weightHealth(json, bin);
+  if (skins.length > 0) {
+    if (!weights) {
+      add('warn', 'skin weights could not be decoded — cannot confirm every vertex is bound.');
+    } else if (weights.unweighted > 0) {
+      add('fail', `${weights.unweighted.toLocaleString()} of ${weights.checked.toLocaleString()} vertices have zero total weight — they will stay at the bind pose while the mesh animates.`);
+      blocked = true;
+    } else if (weights.offSum > 0) {
+      add('warn', `${weights.offSum.toLocaleString()} vertices have weights that do not sum to 1 (lowest ${weights.worst.toFixed(3)}) — those areas will under-follow their bones.`);
+    } else {
+      add('ok', `weights valid: all ${weights.checked.toLocaleString()} vertices bound and normalised.`);
+    }
+  }
+
   if (animations.length === 0) {
     add('fail', 'no animation clips.');
     if (kind === 'character') blocked = true;
   } else {
     add('ok', `${animations.length} clip(s): ${animations.map((a) => a.name ?? '(unnamed)').join(', ')}`);
+  }
+  if (expectClips !== undefined) {
+    // An explicit count, because "some clips arrived" is how a partial merge passes review. The
+    // animation pack is twelve files and a merge that dropped four still loads and still animates.
+    add(
+      animations.length === expectClips ? 'ok' : 'fail',
+      `expected ${expectClips} clip(s), found ${animations.length}.`,
+    );
+    if (animations.length !== expectClips) blocked = true;
   }
 
   // --- Geometry -------------------------------------------------------------
@@ -275,6 +354,21 @@ function inspect(path: string, kindOverride?: AssetKind): { lines: Line[]; block
   );
   add(pbr ? 'ok' : 'warn', pbr ? 'real PBR maps present (base colour, metal-rough, normal).' : 'no PBR maps — flat colours only.');
 
+  // Occlusion, checked separately and by name in the material rather than by an image in the file.
+  // AO has been silently lost on this asset once already: glTF cannot represent a Mix graph, so a
+  // baked AO wired into Base Color exported as a *baseColorTexture* instead — which destroyed the
+  // three zone colours and left an image called `..._AO` sitting in the file looking correct. The
+  // only reliable signal is an `occlusionTexture` on a material.
+  const occluded = (json.materials ?? []).filter((m) => 'occlusionTexture' in m).length;
+  const aoImage = (json.images ?? []).some((i) => /(^|[_\-\s])ao($|[_\-\s.])|occlusion/i.test(i.name ?? ''));
+  if (occluded > 0) {
+    add('ok', `occlusionTexture wired on ${occluded} material(s).`);
+  } else if (aoImage) {
+    add('fail', 'an AO image is in the file but no material has an occlusionTexture — the bake did not survive export. Route it through the glTF Material Output node group, not a Mix into Base Color.');
+  } else {
+    add('warn', 'no ambient occlusion map.');
+  }
+
   // --- Photon contract ------------------------------------------------------
   add('info', '');
   add('info', 'PHOTON CONTRACT');
@@ -311,14 +405,16 @@ function main(): void {
   const args = process.argv.slice(2);
   const path = args.find((a) => !a.startsWith('--'));
   if (!path) {
-    console.error('usage: npm run asset-inspect -- <file.glb> [--kind character|weapon|module|prop]');
+    console.error('usage: npm run asset-inspect -- <file.glb> [--kind character|weapon|module|prop] [--expect-clips N]');
     process.exitCode = 1;
     return;
   }
   const kindIndex = args.indexOf('--kind');
   const kind = kindIndex >= 0 ? (args[kindIndex + 1] as AssetKind) : undefined;
+  const clipIndex = args.indexOf('--expect-clips');
+  const expectClips = clipIndex >= 0 ? Number(args[clipIndex + 1]) : undefined;
 
-  const { lines, blocked } = inspect(path, kind);
+  const { lines, blocked } = inspect(path, kind, expectClips);
   const mark: Record<Line['level'], string> = { ok: '  ok  ', warn: ' warn ', fail: ' FAIL ', info: '      ' };
 
   console.log('');

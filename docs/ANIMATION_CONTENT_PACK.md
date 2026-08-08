@@ -143,6 +143,45 @@ now; distinct visual output is not, and will not be until the twelve files are i
 
 ---
 
+## Acceptance gate
+
+One command answers all seven acceptance criteria. Run it on the GLB that comes out of
+`photon_export.py`:
+
+```bash
+npm run asset-inspect -- public/assets/characters/PhotonServiceUnit_v01.glb --kind character --expect-clips 12
+```
+
+| Criterion | Inspector line | Status against today's file |
+|---|---|---|
+| 49 joints | `1 skin(s), 49 joints.` | ok |
+| valid weights | `weights valid: all 114,768 vertices bound and normalised.` | ok |
+| original materials | `4 material(s)` | ok |
+| normal map | `real PBR maps present` | ok |
+| AO map | `occlusionTexture wired on 4 material(s).` | ok |
+| 4 sockets | `sockets: weapon_left, helmet, weapon_right, backpack` | ok |
+| 12 clips | `expected 12 clip(s), found 1.` | **FAIL — the only outstanding item** |
+
+Three of those checks were added for this gate, and each one exists because the corresponding
+failure has already happened on this asset and passed unnoticed:
+
+- **Weight validity, not presence.** `WEIGHTS_0` existing says nothing about whether every vertex is
+  carried by a bone. An unweighted vertex stays at the bind pose while the mesh moves — a spike or a
+  torn seam. Weights that do not sum to 1 make a limb stretch instead of rotate.
+- **`occlusionTexture`, not an image named `_AO`.** glTF cannot represent a Mix graph. A baked AO
+  wired into Base Color exported as a *baseColorTexture*, which destroyed all three zone colours and
+  left an image called `PHOTON_Robot_AO` sitting in the file looking perfectly correct. The image is
+  not the signal; the material slot is.
+- **An exact clip count.** "Some clips arrived" is how a partial merge passes review. A merge that
+  dropped four of the twelve still loads and still animates.
+
+The two remaining `FAIL` lines on this asset — 60,928 triangles against an 18,000 budget and 42.7 MB
+of texture memory against 10 MB — are known, measured, and deliberately accepted:
+`CHARACTER_OPTIMIZATION_PLAN.md` records that GPU cost was flat across 1 to 16 robots, so LODs were
+declined on evidence. They are not blockers for this task.
+
+---
+
 ## Sequence
 
 1. **Download the twelve clips** with the settings above.
