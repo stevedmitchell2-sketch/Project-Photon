@@ -49,6 +49,14 @@ import os
 
 #: Folder holding the downloaded .fbx files. Leave empty to look for a "clips"
 #: folder next to the .blend.
+#:
+#: On Windows this MUST be a raw string or use forward slashes. A plain
+#: "C:\Users\..." fails to parse before Blender ever runs the script, because
+#: Python reads the \U of \Users as the start of a unicode escape:
+#:
+#:     CLIP_DIR = r"C:\Users\You\Documents\ProjectPhoton\Clips"    # correct
+#:     CLIP_DIR = "C:/Users/You/Documents/ProjectPhoton/Clips"     # also correct
+#:     CLIP_DIR = "C:\Users\You\Documents\ProjectPhoton\Clips"     # SyntaxError
 CLIP_DIR = ""
 
 #: Substring identifying the armature to receive the clips. The robot's armature
