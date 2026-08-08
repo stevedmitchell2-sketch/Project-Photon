@@ -1,5 +1,6 @@
 {
-  "note": "Structural fingerprint of the Photon character. Regenerate deliberately with `npm run character-baseline -- --write`; a diff here is a rig change and should be reviewed.",
+  "note": "Structural fingerprint of a Photon character. Regenerate deliberately with `npm run character-baseline -- <file.glb> --write`; a diff here is a rig change and should be reviewed rather than accepted.",
+  "asset": "PhotonServiceUnit_v01.glb",
   "jointCount": 49,
   "joints": [
     "mixamorig:Hips",

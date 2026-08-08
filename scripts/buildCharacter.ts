@@ -1,13 +1,13 @@
 import { spawnSync } from 'child_process';
 import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { dirname, resolve, join } from 'path';
 
 /**
  * The character pipeline, end to end.
  *
  *     npm run build-character
- *     npm run build-character -- --blend "C:/path/to/file.blend"
+ *     npm run build-character -- --blend "C:/path/to/HeroAthlete.blend" --out HeroAthlete_v01.glb
  *     npm run build-character -- --promote      # replace the live asset on success
  *
  * Drops Mixamo FBX files into `assets/source/mixamo/`, and this does the rest: prunes stray
@@ -36,8 +36,9 @@ import { dirname, resolve } from 'path';
 // The project is ESM, so `__dirname` does not exist. Derived from import.meta instead.
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLIPS = 'assets/source/mixamo';
-const STAGE = 'assets/source/.build/PhotonServiceUnit_v01.glb';
-const LIVE = 'public/assets/characters/PhotonServiceUnit_v01.glb';
+const BUILD_DIR = 'assets/source/.build';
+const LIVE_DIR = 'public/assets/characters';
+const DEFAULT_OUT = 'PhotonServiceUnit_v01.glb';
 const BUILD_SCRIPT = 'tools/blender/photon_build_character.py';
 
 /**
@@ -115,6 +116,12 @@ function run(label: string, command: string, args: string[]): void {
 function main(): void {
   const blend = arg('blend') ?? DEFAULT_BLEND;
   const promote = process.argv.includes('--promote');
+  // `--out` names the GLB, and its stem keys the baseline. A second character is a second .blend and
+  // a second output file; nothing else about the pipeline changes.
+  const outFile = arg('out') ?? DEFAULT_OUT;
+  const STAGE = join(BUILD_DIR, outFile);
+  const LIVE = join(LIVE_DIR, outFile);
+  const baselineId = outFile.replace(/\.glb$/i, '');
 
   console.log('');
   console.log('='.repeat(76));
@@ -135,6 +142,7 @@ function main(): void {
     die(`no .fbx files in ${CLIPS}\n      See ${CLIPS}/README.md for the download list and settings.`);
   }
   console.log(`  clips     ${fbx.length} FBX in ${CLIPS}`);
+  console.log(`  output    ${STAGE}  (baseline id "${baselineId}")`);
 
   // Cheapest check first, and the one that catches a typo before Blender spends a minute on it.
   heading('Resolve clip filenames against the engine');
@@ -171,7 +179,14 @@ function main(): void {
   ]);
 
   heading('Validate: rig fingerprint against the recorded baseline');
-  runScript('character-baseline', ['scripts/characterBaseline.ts', STAGE]);
+  // `--init` records a fingerprint the first time a given asset is built and compares on every build
+  // after. Without it a new character cannot pass its own first build — there is nothing to compare
+  // against — and requiring a manual `--write` first would mean the usual response to a red build was
+  // to re-record the baseline, which defeats the check.
+  //
+  // `--id` keys the baseline to the asset rather than to the pipeline. The athlete's Mixamo auto-rig
+  // has 57 bones against the Service Unit's 49, and both are correct.
+  runScript('character-baseline', ['scripts/characterBaseline.ts', STAGE, '--id', baselineId, '--init']);
 
   heading('Validate: skeletal poses');
   runScript('pose-check', ['scripts/poseCheck.ts', STAGE, '--self-test']);

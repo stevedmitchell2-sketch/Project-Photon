@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { basename, join } from 'path';
 
 /**
  * The character asset's structural fingerprint.
@@ -9,8 +10,9 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
  * material zone was silently swapped — all of which keep the count and break the engine, because the
  * engine binds by name.
  *
- *     npm run character-baseline -- --write      # record the current asset as correct
- *     npm run character-baseline                 # compare the asset against the record
+ *     npm run character-baseline -- <file.glb> --write   # record it as correct
+ *     npm run character-baseline -- <file.glb>           # compare against the record
+ *     npm run character-baseline -- <file.glb> --init    # record only if none exists
  *
  * The baseline is committed. It is small, it is text, and a diff on it is a review of exactly what
  * changed about the rig — which is the thing nobody would otherwise notice until a socket stopped
@@ -18,11 +20,26 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
  */
 
 const ASSET = 'public/assets/characters/PhotonServiceUnit_v01.glb';
-const BASELINE = 'assets/character.baseline.json';
+const BASELINE_DIR = 'assets/baselines';
+
+/**
+ * Baseline path for an asset. `--id` overrides; otherwise the filename is the key.
+ *
+ * One baseline per asset, because a second character is not a variation on the first. The athlete's
+ * Mixamo auto-rig has **57** bones where the Service Unit has 49 — the eight extras are ring-finger
+ * joints, and all 49 the clips address are present. Checking the athlete against the Service Unit's
+ * fingerprint would fail on a difference that is not an error, and a check that fails when nothing is
+ * wrong stops being read.
+ */
+function baselinePath(assetPath: string, id?: string): string {
+  return join(BASELINE_DIR, `${id ?? basename(assetPath).replace(/\.glb$/i, '')}.json`);
+}
 
 interface Baseline {
   /** What this file is, for anyone who opens it without context. */
   note: string;
+  /** Which asset this fingerprint belongs to. */
+  asset: string;
   jointCount: number;
   /** Every joint name, in skin order. Order matters: clips bind to it. */
   joints: string[];
@@ -54,8 +71,10 @@ function fingerprint(path: string): Baseline {
 
   return {
     note:
-      'Structural fingerprint of the Photon character. Regenerate deliberately with ' +
-      '`npm run character-baseline -- --write`; a diff here is a rig change and should be reviewed.',
+      'Structural fingerprint of a Photon character. Regenerate deliberately with ' +
+      '`npm run character-baseline -- <file.glb> --write`; a diff here is a rig change and ' +
+      'should be reviewed rather than accepted.',
+    asset: basename(path),
     jointCount: skin.joints.length,
     joints: skin.joints.map((j: number) => json.nodes[j].name ?? ''),
     sockets: (json.nodes as Array<{ name?: string }>)
@@ -115,8 +134,20 @@ function compare(current: Baseline, recorded: Baseline): string[] {
 }
 
 function main(): void {
-  const write = process.argv.includes('--write');
-  const path = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? ASSET;
+  const argv = process.argv.slice(2);
+  const write = argv.includes('--write');
+  /**
+   * `--init` records a baseline when none exists and compares when one does.
+   *
+   * It lets a brand-new character go through the pipeline without a chicken-and-egg step, while an
+   * established one still cannot be quietly re-recorded to make a failure go away — that needs
+   * `--write`, which is a deliberate act with a diff to review.
+   */
+  const init = argv.includes('--init');
+  const idIndex = argv.indexOf('--id');
+  const id = idIndex >= 0 ? argv[idIndex + 1] : undefined;
+  const path = argv.filter((a) => !a.startsWith('--') && a !== id)[0] ?? ASSET;
+  const baseline = baselinePath(path, id);
 
   if (!existsSync(path)) {
     console.error(`\n  no asset at ${path}\n`);
@@ -125,35 +156,36 @@ function main(): void {
   }
 
   const current = fingerprint(path);
+  const summary =
+    `${current.jointCount} joints · ${current.sockets.length} sockets · ` +
+    `${current.materials.length} materials · ${current.images.length} textures · ` +
+    `${current.clips.length} clips · ${current.triangles.toLocaleString()} tris`;
 
-  if (write) {
-    writeFileSync(BASELINE, JSON.stringify(current, null, 2) + '\n');
+  if (write || (init && !existsSync(baseline))) {
+    mkdirSync(BASELINE_DIR, { recursive: true });
+    writeFileSync(baseline, JSON.stringify(current, null, 2) + '\n');
     console.log('');
-    console.log(`  recorded ${BASELINE}`);
-    console.log(`    ${current.jointCount} joints · ${current.sockets.length} sockets · ` +
-      `${current.materials.length} materials · ${current.images.length} textures · ` +
-      `${current.clips.length} clips · ${current.triangles.toLocaleString()} tris`);
+    console.log(`  recorded ${baseline}`);
+    console.log(`    ${summary}`);
     console.log('');
     return;
   }
 
-  if (!existsSync(BASELINE)) {
-    console.error(`\n  no baseline at ${BASELINE}. Record one with:`);
-    console.error('    npm run character-baseline -- --write\n');
+  if (!existsSync(baseline)) {
+    console.error(`\n  no baseline at ${baseline}. Record one with:`);
+    console.error(`    npm run character-baseline -- ${path} --write\n`);
     process.exitCode = 1;
     return;
   }
 
-  const recorded = JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline;
+  const recorded = JSON.parse(readFileSync(baseline, 'utf8')) as Baseline;
   const problems = compare(current, recorded);
 
   console.log('');
   console.log('  ' + '='.repeat(70));
-  console.log('  CHARACTER BASELINE');
+  console.log(`  CHARACTER BASELINE — ${basename(path)}`);
   console.log('  ' + '='.repeat(70));
-  console.log(`  ${current.jointCount} joints · ${current.sockets.length} sockets · ` +
-    `${current.materials.length} materials · ${current.images.length} textures · ` +
-    `${current.clips.length} clips · ${current.triangles.toLocaleString()} tris`);
+  console.log(`  ${summary}`);
   console.log('');
   if (problems.length === 0) {
     console.log('  ok  structurally identical to the recorded baseline.');
@@ -161,7 +193,7 @@ function main(): void {
     for (const p of problems) console.log(`  FAIL  ${p}`);
     console.log('');
     console.log('  If a change was intended, re-record deliberately:');
-    console.log('    npm run character-baseline -- --write');
+    console.log(`    npm run character-baseline -- ${path} --write`);
     process.exitCode = 1;
   }
   console.log('');
