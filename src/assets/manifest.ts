@@ -166,7 +166,7 @@ export const ASSET_MANIFEST: AssetEntry[] = [
       // never resolved.
       //
       // Clips whose Mixamo names already match a candidate — Breathing Idle,
-      // Walking, Running, Crouch Idle, Jumping Up, Falling Idle, Running Slide,
+      // Walking, Running, Crouching Idle, Jumping Up, Falling Idle, Running Slide,
       // Falling Back Death — are deliberately absent. They resolve without help,
       // and an alias for them would be a second place to keep the same fact.
 

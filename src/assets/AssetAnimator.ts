@@ -276,7 +276,7 @@ export const CLIP_CANDIDATES: Record<string, readonly string[]> = {
   idle: ['idle', 'idle_loop', 'stand', 'standing', 'breathing_idle', 'neutral_idle', 'happy_idle'],
   walk: ['walk', 'walking', 'walk_forward', 'locomotion_walk', 'standard_walk'],
   run: ['run', 'running', 'run_forward', 'sprint', 'sprinting', 'fast_run', 'jog_forward', 'locomotion_run'],
-  crouch: ['crouch', 'crouching', 'crouch_idle', 'crouched_walking', 'crouch_walk'],
+  crouch: ['crouch', 'crouching', 'crouching_idle', 'crouch_idle', 'crouched_walking', 'crouch_walk'],
   jump: ['jump', 'jumping', 'jumping_up', 'jump_start', 'jump_up'],
   fall: ['fall', 'falling', 'falling_idle', 'airborne', 'fall_loop', 'fall_a_loop'],
   slide: ['slide', 'sliding', 'running_slide', 'slide_forward'],

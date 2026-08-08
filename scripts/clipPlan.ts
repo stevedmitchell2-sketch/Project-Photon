@@ -1,3 +1,4 @@
+import { readdirSync } from 'fs';
 import { CLIP_CANDIDATES, normaliseClipName } from '../src/assets/AssetAnimator';
 import { ASSET_MANIFEST } from '../src/assets/manifest';
 
@@ -10,6 +11,7 @@ import { ASSET_MANIFEST } from '../src/assets/manifest';
  *
  *   npm run clip-plan
  *   npm run clip-plan -- --asset hero_robot
+ *   npm run clip-plan -- --folder "C:/path/to/Clips"     # check the real downloads
  *
  * ## Why this exists
  *
@@ -20,6 +22,16 @@ import { ASSET_MANIFEST } from '../src/assets/manifest';
  * switched, and the character kept playing whatever it was already playing.
  *
  * Guessing at names is the failure mode. This makes the guess checkable.
+ *
+ * ## Why --folder exists
+ *
+ * Checking the *plan* only proves the plan is self-consistent. It cannot catch the plan being wrong
+ * about what Mixamo calls something, and it was: the pack asked for `Crouch Idle` for a whole pass
+ * and the real clip is **`Crouching Idle`**, which resolved to nothing. Twelve files were downloaded
+ * before anyone found out.
+ *
+ * `--folder` resolves the filenames actually sitting on disk. It is the same check one step later,
+ * against reality instead of intent, and it costs a second before an hour in Blender.
  */
 
 /**
@@ -53,8 +65,8 @@ const PLAN: PlannedClip[] = [
     note: 'Standard run. Photon switches to this above 0.35 m/s.' },
   { state: 'sprint', mixamo: 'Fast Run',
     note: 'Longer stride for the sprint band. Driven by the sprint tier of the mapper, above the dead band centred between walkSpeed and sprintSpeed.' },
-  { state: 'crouch', mixamo: 'Crouch Idle',
-    note: 'Crouched hold. Photon crouch is a stance, not a movement, so the idle is the right pick.' },
+  { state: 'crouch', mixamo: 'Crouching Idle',
+    note: 'Crouched hold. Photon crouch is a stance, not a movement, so the idle is the right pick. Named Crouching Idle, not Crouch Idle — checked against the real download.' },
   { state: 'slide', mixamo: 'Running Slide',
     note: 'Photon has a real slide stance and the mapper produces it. Missing from the first draft of this plan, which the checker caught.' },
 
@@ -107,11 +119,90 @@ function resolves(mixamoName: string, state: string, aliases: Record<string, str
   return { ok: false, via: 'no match — needs a manifest alias', normalised };
 }
 
+/** Resolve the real downloaded filenames. Catches a plan that is wrong about Mixamo's naming. */
+function checkFolder(folder: string, aliases: Record<string, string>): void {
+  let files: string[];
+  try {
+    files = readdirSync(folder).filter((f) => /\.fbx$/i.test(f)).sort();
+  } catch {
+    console.log(`  cannot read ${folder}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log('');
+  console.log('='.repeat(88));
+  console.log(`  DOWNLOADED CLIPS — ${folder}`);
+  console.log('='.repeat(88));
+  if (files.length === 0) {
+    console.log('  no .fbx files here.');
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`  ${files.length} file(s). Resolving each filename the way the engine will.`);
+  console.log('');
+  console.log(`  ${'FILE'.padEnd(28)} ${'NORMALISED'.padEnd(22)} RESOLVES TO`);
+  console.log('  ' + '-'.repeat(84));
+
+  const unresolved: string[] = [];
+  const covered = new Set<string>();
+  for (const file of files) {
+    // Strip Mixamo's character prefix and the browser's duplicate suffix, exactly as
+    // photon_import_clips.py does, so this reports what the importer will name the action.
+    let name = file.replace(/\.fbx$/i, '');
+    if (name.includes('@')) name = name.split('@').slice(-1)[0];
+    name = name.replace(/ \(\d+\)$/, '').trim();
+
+    const normalised = normaliseClipName(name);
+    let via = '';
+    for (const [state, clip] of Object.entries(aliases)) {
+      if (normaliseClipName(clip) === normalised) via = `${state}  (manifest alias)`;
+    }
+    if (!via) {
+      for (const [state, list] of Object.entries(CLIP_CANDIDATES)) {
+        if (list.some((c) => normaliseClipName(c) === normalised)) via = `${state}  (candidate list)`;
+      }
+    }
+    if (via) covered.add(via.split(' ')[0]);
+    else unresolved.push(name);
+    console.log(`  ${via ? ' ok ' : 'FAIL'} ${name.padEnd(23)} ${normalised.padEnd(22)} ${via || 'NOTHING — the state will never switch to it'}`);
+  }
+
+  console.log('  ' + '-'.repeat(84));
+  console.log(`  ${files.length - unresolved.length}/${files.length} resolve.`);
+
+  const missing = PLAN.map((p) => p.state).filter((state) => !covered.has(state));
+  if (missing.length) {
+    console.log('');
+    console.log('  STATES WITH NO FILE ON DISK');
+    for (const state of missing) {
+      const planned = PLAN.find((p) => p.state === state);
+      console.log(`    ${state.padEnd(10)} expects "${planned?.mixamo}"`);
+    }
+  }
+  if (unresolved.length) {
+    console.log('');
+    console.log('  UNRESOLVED FILENAMES');
+    console.log('  Either the download is named differently than the plan expects, or the plan is');
+    console.log('  wrong about what Mixamo calls it. Check Mixamo before renaming the file — the');
+    console.log('  candidate list is meant to carry the real name.');
+    for (const name of unresolved) console.log(`    ${name}`);
+    process.exitCode = 1;
+  }
+  console.log('');
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
   const assetId = argv.includes('--asset') ? argv[argv.indexOf('--asset') + 1] : 'hero_robot';
   const entry = ASSET_MANIFEST.find((e) => e.id === assetId);
   const aliases = entry?.clips ?? {};
+
+  const folderIndex = argv.indexOf('--folder');
+  if (folderIndex >= 0) {
+    checkFolder(argv[folderIndex + 1], aliases);
+    return;
+  }
 
   console.log('');
   console.log('='.repeat(88));

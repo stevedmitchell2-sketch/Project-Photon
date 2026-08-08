@@ -22,7 +22,7 @@ All twelve were checked against the live resolver before this list was written.
 | **Walking** | `walk` | candidates | Straight forward walk |
 | **Running** | `run` | candidates | Standard run; Photon switches above 0.35 m/s |
 | **Fast Run** | `sprint` | **manifest alias** | Longer stride for the >6 m/s band |
-| **Crouch Idle** | `crouch` | candidates | Photon crouch is a stance, not a movement |
+| **Crouching Idle** | `crouch` | candidates | Photon crouch is a stance, not a movement |
 | **Running Slide** | `slide` | candidates | Photon has a real slide stance |
 | **Jumping Up** | `jump` | candidates | Launch only — `Jump` bundles a landing that would fight the fall state |
 | **Falling Idle** | `fall` | candidates | Airborne loop |
@@ -93,7 +93,7 @@ clips: {
 ```
 
 **Eight of the twelve are deliberately absent.** Breathing Idle, Walking, Running,
-Crouch Idle, Jumping Up, Falling Idle, Running Slide and Falling Back Death all
+Crouching Idle, Jumping Up, Falling Idle, Running Slide and Falling Back Death all
 resolve on their own. An alias for a name that already matches is a second place to
 keep the same fact, and the two drift. A test enforces this: any redundant alias
 fails the build.

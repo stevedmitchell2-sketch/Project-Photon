@@ -72,7 +72,7 @@ TARGET_ARMATURE_HINT = ""
 #: verbatim — these are what the engine matches on.
 EXPECTED = (
     "Breathing Idle", "Walking", "Running", "Fast Run",
-    "Crouch Idle", "Running Slide",
+    "Crouching Idle", "Running Slide",
     "Jumping Up", "Falling Idle", "Hard Landing",
     "Left Turn", "Button Pushing", "Falling Back Death",
 )

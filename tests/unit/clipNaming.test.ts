@@ -81,7 +81,11 @@ describe('CLIP_CANDIDATES', () => {
       ['Armature|Idle|Layer0', 'idle'],
       ['Armature|Walking|Layer0', 'walk'],
       ['Armature|Running|Layer0', 'run'],
-      ['mixamorig:Crouch Idle', 'crouch'],
+      // Mixamo's clip is 'Crouching Idle'. The pack said 'Crouch Idle' for a whole pass and
+      // the candidate list had `crouching` and `crouch_idle` but not `crouching_idle`, so the
+      // real download resolved to nothing — the same miss as 'Falling Idle' before it.
+      ['mixamorig:Crouching Idle', 'crouch'],
+      ['Armature|Crouch Idle|Layer0', 'crouch'],
       ['Armature|Falling Idle|Layer0', 'fall'],
     ];
     for (const [exported, state] of real) {

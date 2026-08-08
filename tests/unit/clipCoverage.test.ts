@@ -20,7 +20,7 @@ const CONTENT_PACK: ReadonlyArray<readonly [string, string]> = [
   ['Walking', 'walk'],
   ['Running', 'run'],
   ['Fast Run', 'sprint'],
-  ['Crouch Idle', 'crouch'],
+  ['Crouching Idle', 'crouch'],
   ['Running Slide', 'slide'],
   ['Jumping Up', 'jump'],
   ['Falling Idle', 'fall'],
