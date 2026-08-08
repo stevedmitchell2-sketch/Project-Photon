@@ -29,7 +29,8 @@
     "make-reference-assets": "tsx scripts/makeReferenceAssets.ts",
     "asset-inspect": "tsx scripts/assetInspect.ts",
     "clip-plan": "tsx scripts/clipPlan.ts",
-    "asset-audit": "tsx scripts/assetAudit.ts"
+    "asset-audit": "tsx scripts/assetAudit.ts",
+    "pose-check": "tsx scripts/poseCheck.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
