@@ -32,7 +32,8 @@
     "asset-audit": "tsx scripts/assetAudit.ts",
     "pose-check": "tsx scripts/poseCheck.ts",
     "character-baseline": "tsx scripts/characterBaseline.ts",
-    "build-character": "tsx scripts/buildCharacter.ts"
+    "build-character": "tsx scripts/buildCharacter.ts",
+    "to-fbx": "tsx scripts/toFbx.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
