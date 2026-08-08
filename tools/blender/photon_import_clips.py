@@ -161,20 +161,68 @@ def resolve_clip_dir():
     return folder if os.path.isdir(folder) else None
 
 
-def find_target_armature():
-    """The armature the clips are for.
+def deforming_armatures():
+    """Armatures that actually deform a mesh, via an Armature modifier.
 
-    Picked by object type rather than by name, because the name has changed twice
-    across this asset's history and a hard-coded one would break silently.
+    This is the only definition that matters. A clip stashed on an armature that
+    deforms nothing exports as a perfectly valid glTF animation targeting a skeleton
+    no mesh is bound to — it loads, it validates, and the character never moves.
     """
-    armatures = [o for o in bpy.data.objects if o.type == "ARMATURE"]
+    found = []
+    for obj in bpy.data.objects:
+        if obj.type != "MESH":
+            continue
+        for mod in obj.modifiers:
+            if mod.type == "ARMATURE" and mod.object and mod.object not in found:
+                found.append(mod.object)
+    return found
+
+
+def find_target_armature():
+    """The armature that deforms the robot mesh.
+
+    ## Why this is not simply "the first armature"
+
+    It was, and that shipped eleven clips onto the wrong skeleton.
+
+    The first run of this script crashed on `Action.fcurves` *before* reaching the
+    cleanup that deletes the armature each FBX import brings in. So the .blend was
+    left with two 49-bone skeletons: `Photon Robot Armature`, which deforms the
+    mesh, and a stray `Armature`, which deforms nothing. `armatures[0]` picked the
+    stray, every clip was stashed on it, and the export was flawless — 98 joints,
+    2 skins, 12 named clips, valid weights, every file-level check green. The robot
+    simply would not have animated.
+
+    So: prefer an armature with a mesh actually bound to it, and refuse to guess
+    when the answer is ambiguous. A loud stop costs a minute; the silent version
+    cost a full download, import and export cycle.
+    """
+    deforming = deforming_armatures()
     if TARGET_ARMATURE_HINT:
-        armatures = [o for o in armatures if TARGET_ARMATURE_HINT.lower() in o.name.lower()]
+        hinted = [o for o in deforming or bpy.data.objects
+                  if o.type == "ARMATURE" and TARGET_ARMATURE_HINT.lower() in o.name.lower()]
+        return hinted[0] if hinted else None
+
+    if len(deforming) == 1:
+        return deforming[0]
+    if len(deforming) > 1:
+        print(f"  STOP: {len(deforming)} armatures deform a mesh: "
+              f"{', '.join(o.name for o in deforming)}")
+        print("        set TARGET_ARMATURE_HINT to the right one.")
+        return None
+
+    # Nothing is bound. Fall back, but say so — this is how the wrong pick happened.
+    armatures = [o for o in bpy.data.objects if o.type == "ARMATURE"]
     if not armatures:
         return None
     if len(armatures) > 1:
-        print(f"  note: {len(armatures)} armatures in the file; using '{armatures[0].name}'")
-        print("        set TARGET_ARMATURE_HINT if that is the wrong one")
+        print(f"  STOP: {len(armatures)} armatures in the file and none deform a mesh:")
+        for o in armatures:
+            print(f"          {o.name}")
+        print("        Delete the strays, or set TARGET_ARMATURE_HINT. Refusing to guess —")
+        print("        a clip stashed on the wrong skeleton exports clean and never plays.")
+        return None
+    print(f"  note: '{armatures[0].name}' deforms no mesh; using it anyway as it is the only one.")
     return armatures[0]
 
 
@@ -202,10 +250,20 @@ def import_clip(path, target):
     # stashes that as a thirteenth track — a clip name that resolves to nothing.
     existing = bpy.data.actions.get(name)
     stashed = already_stashed(target, name)
-    if existing and stashed and not REPLACE_EXISTING:
+    if existing and not REPLACE_EXISTING:
+        if not stashed:
+            # The action is in the file but not on *this* armature — which is exactly the
+            # state left behind when the clips were stashed on the wrong skeleton. Re-stash
+            # rather than re-import: an action's fcurves address bones by name, so it is
+            # already correct, and re-importing would find the name taken and create
+            # `Fast Run.001` instead.
+            stash(target, existing)
+            note = "re-stashed onto " + target.name
+        else:
+            note = "already present"
         return {"file": os.path.basename(path), "clip": name, "ok": True, "skipped": True,
                 "frames": clip_frames(existing), "channels": action_channel_count(existing),
-                "note": "already present"}
+                "note": note}
     if REPLACE_EXISTING:
         drop_clip(target, name)
 
@@ -308,7 +366,7 @@ def main():
         channels = r.get("channels")
         cells = f"{(frames if frames is not None else '-'):>7} {(channels if channels is not None else '-'):>9}"
         if r["ok"]:
-            state = "already in file" if r.get("skipped") else "stashed"
+            state = r.get("note") or "stashed" if r.get("skipped") else "stashed"
             print(f"  {r['clip']:<24} {cells}  {state}")
         else:
             print(f"  {r['clip']:<24} {cells}  SKIPPED: {r['note']}")

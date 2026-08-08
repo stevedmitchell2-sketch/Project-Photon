@@ -104,8 +104,6 @@ describe('animation content pack', () => {
   it('points every alias at a clip the pack actually includes', () => {
     // An alias for a clip nobody is going to download resolves to nothing.
     const packNames = new Set(CONTENT_PACK.map(([clip]) => normaliseClipName(clip)));
-    // `mixamo.com` is the clip already shipping with the asset, not part of the pack.
-    packNames.add(normaliseClipName('mixamo.com'));
     const dangling = Object.entries(robot?.clips ?? {})
       .filter(([, clip]) => !packNames.has(normaliseClipName(clip)))
       .map(([state, clip]) => `${state}: ${clip}`);

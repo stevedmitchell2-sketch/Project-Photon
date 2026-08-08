@@ -153,9 +153,12 @@ export const ASSET_MANIFEST: AssetEntry[] = [
      * Add entries here as named clips are imported.
      */
     clips: {
-      // The clip that ships with the asset today. Carries no name information, so
-      // only an explicit alias can tell the engine what it is.
-      idle: 'mixamo.com',
+      // `idle: 'mixamo.com'` lived here while that was the asset's only clip. It has
+      // to go now the pack has landed: an alias is tier 1 of the resolver and beats
+      // every candidate list, so it would have held `idle` on the nameless original
+      // and `Breathing Idle` — downloaded specifically for this state — would never
+      // have played. An alias for a clip that has been superseded is worse than no
+      // alias, because it keeps working.
 
       // --- The animation content pack -----------------------------------------
       //
