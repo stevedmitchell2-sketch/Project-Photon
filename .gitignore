@@ -49,3 +49,27 @@ replays/
 # Local editor/agent config
 .claude/
 public/assets/
+
+# --- Asset generation tooling -------------------------------------------------
+# Tripo CLI. The API key lives in ~/.tripo (outside the repo) and must stay there;
+# `.tripo/context.json` is written into whatever directory the CLI runs from and
+# carries task history, so it is ignored rather than trusted to be harmless.
+.tripo/
+tripo-out/
+
+# Raw generation and download sources: ~50 MB per Tripo mesh, and Mixamo FBX files.
+# These are inputs to the asset pipeline, not deliverables, and the repository has
+# never held binaries.
+#
+# Written to ignore the *contents* rather than the directories, so a fresh clone still
+# gets the folders the pipeline expects to find. `assets/source/` alone would exclude
+# the directory itself, and git does not descend into an excluded directory — the
+# .gitkeep negation below would never be reached.
+assets/source/*
+!assets/source/mixamo/
+!assets/source/tripo/
+assets/source/mixamo/*
+!assets/source/mixamo/.gitkeep
+!assets/source/mixamo/README.md
+assets/source/tripo/*
+!assets/source/tripo/.gitkeep
