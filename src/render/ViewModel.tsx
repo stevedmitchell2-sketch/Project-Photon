@@ -283,9 +283,24 @@ export function ViewModel({ colorblind }: Props) {
   // sway, kick, ADS blend, charge rails, core pulse, muzzle light — is unchanged and drives it
   // through the same name-addressed parts.
   if (imported) {
+    /**
+     * The manifest's `yawOffset` has to be applied here too.
+     *
+     * `AssetAvatars` folds it into the avatar root, so a third-person weapon points the right way
+     * and this branch looked correct by association. It is not: the imported PH-6 is authored with
+     * its long axis on **X**, the engine points weapons down **-Z**, and without the quarter turn
+     * the rifle renders broadside across the middle of the screen with the muzzle aimed at the
+     * player's right ear.
+     *
+     * Read from the entry rather than hard-coded, so an asset re-exported in the correct
+     * orientation just sets `yawOffset: 0` and this keeps working.
+     */
+    const yaw = imported.entry.yawOffset ?? 0;
     return (
       <group ref={root} scale={VIEW_MODEL_SCALE}>
-        <primitive object={imported.scene} />
+        <group rotation={[0, yaw, 0]}>
+          <primitive object={imported.scene} />
+        </group>
         <pointLight ref={muzzle} color={glow} intensity={0} distance={5} decay={2} />
       </group>
     );
