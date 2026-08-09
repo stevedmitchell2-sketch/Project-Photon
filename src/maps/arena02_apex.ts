@@ -1406,10 +1406,22 @@ export const ARENA_02_APEX: ArenaDefinition = {
     // says 2600, which blew the whole building to white under bloom and cost the arena every bit of
     // the contrast Sprint 14 bought. The style guide has said since M1 that contrast comes from lit
     // regions against unlit ones, not from raising the floor under everything.
-    { p: [-14, TRUSS_Y - 3, -14], color: 0xa8ccff, intensity: 1250, distance: 60 },
-    { p: [14, TRUSS_Y - 3, 14], color: 0xa8ccff, intensity: 1250, distance: 60 },
-    { p: [-14, TRUSS_Y - 3, 14], color: 0xa8ccff, intensity: 1250, distance: 60 },
-    { p: [14, TRUSS_Y - 3, -14], color: 0xa8ccff, intensity: 1250, distance: 60 },
+    // 1250 -> 250. Four lights at 1250 with a 60 m radius overlapped across the whole 60x60 play
+    // space, so every surface received strong light from four directions at once and nothing had a
+    // lit and unlit side. That is what made dark slate albedos (#3f4a5b, luminance 0.286) render as
+    // pale white-blue, and it survived both environment-fill reductions because it is not fill —
+    // it is four very bright lamps.
+    //
+    // Attributed by controlled A/B in one live session, no reload: 1250 / 600 / 250 at an identical
+    // rAF-pinned camera (captures 60-62, drift 0.7-3.0 mm against a 15 mm guard). At 250 the pillars
+    // read as dark volumes with real separation, the landmark becomes the dominant focal point
+    // instead of competing with an evenly lit room, and foreground/midground/background finally
+    // separate. The landmark was not touched: its emissive and bloom carry its brightness, which is
+    // exactly the separation of visual energy from physical illumination this was aiming for.
+    { p: [-14, TRUSS_Y - 3, -14], color: 0xa8ccff, intensity: 250, distance: 60 },
+    { p: [14, TRUSS_Y - 3, 14], color: 0xa8ccff, intensity: 250, distance: 60 },
+    { p: [-14, TRUSS_Y - 3, 14], color: 0xa8ccff, intensity: 250, distance: 60 },
+    { p: [14, TRUSS_Y - 3, -14], color: 0xa8ccff, intensity: 250, distance: 60 },
     // The atrium: a bright column of light on the axis, which is what makes the middle the brightest
     // thing in the building and therefore the place the eye goes.
     { p: [0, 14.0, 0], color: 0x8fefff, intensity: 900, distance: 44 },
