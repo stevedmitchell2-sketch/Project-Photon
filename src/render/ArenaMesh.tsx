@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { BuiltArena } from '@/maps/MapBuilder';
-import { photonMaterial, SURFACE_SUBSTANCE } from './materials/PhotonMaterials';
+import { photonMaterial, SURFACE_SUBSTANCE, type Substance } from './materials/PhotonMaterials';
 
 /**
  * The entire arena as one InstancedMesh per material batch.
@@ -11,6 +11,41 @@ import { photonMaterial, SURFACE_SUBSTANCE } from './materials/PhotonMaterials';
  * written once on mount because static geometry never moves — only the LED panels animate, and
  * they do it through a material uniform rather than by touching the instance buffer.
  */
+
+/**
+ * Physical size of one texture tile, in metres, per substance.
+ *
+ * ## The defect these fix
+ *
+ * Every brush is the same `BoxGeometry(1, 1, 1)` scaled per instance, and `BoxGeometry` UVs are 0–1
+ * per face. Instance scaling changes the geometry's size and never touches its UVs, so **every face
+ * shows exactly `repeat` tiles whatever its physical dimensions**. A 9 m wall and a 1 m barrier get
+ * the same number of tiles — which made a panel seam 2.25 m wide on the wall and 0.25 m on the
+ * barrier, a 9x inconsistency, with the large surfaces reduced to a gentle undulation no lighting
+ * could reveal.
+ *
+ * That is the reason the arena reads as extruded boxes despite having roughness and normal maps: the
+ * detail is the wrong physical size, and the error scales with how big the surface is.
+ *
+ * Tiles are therefore specified in metres and converted to a per-instance UV multiplier below.
+ */
+const METRES_PER_TILE: Partial<Record<Substance, number>> = {
+  compositePolymer: 0.5,   // panel seams
+  brushedAluminium: 0.1,
+  titanium: 0.1,
+  carbonFibre: 0.15,
+  antiSlipFloor: 0.15,
+  competitionFloor: 0.15,
+  hexPanel: 0.35,
+};
+
+/**
+ * Brush kinds using world-scaled UVs.
+ *
+ * Deliberately one kind for now. The change is proven on walls — the surfaces where the error was
+ * largest and most visible — and captured before it goes anywhere near the rest of the arena.
+ */
+const WORLD_UV_KINDS = new Set(['wall']);
 
 interface Props {
   arena: BuiltArena;
@@ -66,6 +101,67 @@ function Batch({ batch, shadows }: { batch: BuiltArena['batches'][number]; shado
   }, [material, batch.color, batch.glow]);
 
   const geometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
+
+  /**
+   * Rewrites the batch's UVs to a fixed physical density, per instance.
+   *
+   * The scale cannot be baked into the geometry: instances in one batch have different dimensions
+   * and they share a single `BoxGeometry`, so baking would mean one geometry per brush and the loss
+   * of the instancing this renderer is built on. Instead each instance carries a `vec2` multiplier
+   * and the vertex shader applies it — one attribute, one program, batching untouched.
+   *
+   * `customProgramCacheKey` matters as much as the patch. Without it three.js hashes the compiled
+   * program by material identity and can build a separate program per batch, which is precisely the
+   * draw-call explosion this design exists to avoid.
+   *
+   * ## The two-axis simplification
+   *
+   * A box has three differently sized face pairs and a `vec2` can only be correct for one of them.
+   * X and Y are used, which is right for the large vertical faces of a wall — the surfaces that
+   * carry the read — and mildly wrong on its ends and top cap. Those are narrow, usually against
+   * other geometry, and the cheap version is worth proving before a face-normal-aware variant is
+   * written. If the ends visibly fail in the capture, that is the escalation.
+   */
+  const worldUv = WORLD_UV_KINDS.has(batch.kind);
+  const metresPerTile = METRES_PER_TILE[SURFACE_SUBSTANCE[batch.kind]];
+
+  useEffect(() => {
+    if (!worldUv || !metresPerTile) return;
+    const count = batch.instances.length;
+    const scales = new Float32Array(count * 2);
+    // The textures already carry their own `repeat` — `finish()` sets it when the canvas is built,
+    // and three.js applies it in the UV transform before this multiplier lands. Ignoring it stacks
+    // the two: a 25 m wall at 0.5 m/tile became 50 tiles, then the texture's own repeat of 4 turned
+    // that into 200, or 12.5 cm per tile. The first capture showed exactly that — a dense dimple
+    // pattern like perforated metal rather than architectural panels. Divide it back out.
+    const baked = material.roughnessMap?.repeat.x || material.normalMap?.repeat.x || 1;
+    for (let i = 0; i < count; i++) {
+      // Instance scale is the brush's size in metres, so tiles = size / metres-per-tile.
+      scales[i * 2] = Math.max(0.01, batch.instances[i].scale[0]) / metresPerTile / baked;
+      scales[i * 2 + 1] = Math.max(0.01, batch.instances[i].scale[1]) / metresPerTile / baked;
+    }
+    geometry.setAttribute('aUvScale', new THREE.InstancedBufferAttribute(scales, 2));
+
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader =
+        'attribute vec2 aUvScale;\n' +
+        shader.vertexShader.replace(
+          '#include <uv_vertex>',
+          `#include <uv_vertex>
+          #ifdef USE_MAP
+            vMapUv *= aUvScale;
+          #endif
+          #ifdef USE_NORMALMAP
+            vNormalMapUv *= aUvScale;
+          #endif
+          #ifdef USE_ROUGHNESSMAP
+            vRoughnessMapUv *= aUvScale;
+          #endif`,
+        );
+    };
+    material.customProgramCacheKey = () => 'photon-world-uv';
+    material.needsUpdate = true;
+  }, [worldUv, metresPerTile, batch, geometry, material]);
 
   useEffect(() => {
     const mesh = meshRef.current;
