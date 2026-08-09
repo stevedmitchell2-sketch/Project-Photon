@@ -38,9 +38,23 @@ export function RendererStats() {
   const gpu = useRef<GpuTimer | null>(null);
 
   useEffect(() => {
-    game.renderer = { gl, scene, camera };
+    const handle = { gl, scene, camera };
+    game.renderer = handle;
     return () => {
-      game.renderer = null;
+      /**
+       * Clear only if this effect still owns the handle.
+       *
+       * The unconditional `game.renderer = null` here made scene access a coin flip. React runs the
+       * previous effect's cleanup *after* the next effect's setup on a re-run — StrictMode's
+       * double-invoke in dev, and every HMR remount of the render tree — so the stale cleanup was
+       * nulling a handle that had just been set by a live component.
+       *
+       * That is why diagnostics could read the 19-light array and drive the FOV ladder in one
+       * session and find `renderer: null` in the next, with nothing having changed. Every visual
+       * measurement in this project depends on reaching the scene, so an intermittently null handle
+       * blocked the whole workstream.
+       */
+      if (game.renderer === handle) game.renderer = null;
     };
   }, [game, gl, scene, camera]);
 
