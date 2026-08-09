@@ -29,7 +29,18 @@ export const LIGHTING = {
   hemisphereIntensity: 0.14,
 
   /** Image-based lighting. Required for metallic surfaces to render as anything but black. */
-  environmentIntensity: 0.6,
+  /**
+   * Phase 3C experiment: 0.6 -> 0.25.
+   *
+   * An environment map is omnidirectional fill. At 0.6 against a key of 1.55 it was supplying a
+   * large fraction of every surface's light from every direction at once, which is precisely what
+   * flattens form: a normal map perturbs how a surface faces, and that only shows when light has a
+   * direction to come from. The pale, uniformly lit competition floor is the clearest symptom.
+   *
+   * Lowered before adding a single new light, because compensating for over-fill by adding fixtures
+   * would bake the flatness in and cost fragment time on a frame that is already fragment-bound.
+   */
+  environmentIntensity: 0.25,
   environmentIntensityPerformance: 0.45,
 
   /** ACES rolls midtones down hard; above 1 keeps mid-dark surfaces off the floor of the curve. */
