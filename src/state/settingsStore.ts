@@ -103,6 +103,28 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'photon.settings.v1',
+      /**
+       * Bumped to 2 to retire a persisted FOV that was a bug rather than a preference.
+       *
+       * v1 shipped `fov: 95` believing it was horizontal. `PerspectiveCamera.fov` is **vertical**, so
+       * at the game's 1.6 aspect that is 120 degrees horizontal — far outside the 100-110 a console
+       * shooter sits at, and the reason the view model read as a toy stuck to the camera.
+       *
+       * `merge` below deliberately lets a persisted value win over a new default, which is correct
+       * for a preference and wrong for a mistake: changing the default alone left every existing
+       * session on 120. So the migration drops *only* `graphics.fov` and leaves every other stored
+       * preference intact, letting the corrected default apply once.
+       *
+       * Anyone who genuinely wants a wide FOV can set it again; nobody chose 120 on purpose.
+       */
+      version: 2,
+      migrate: (persisted, fromVersion) => {
+        const p = persisted as Partial<SettingsState> | undefined;
+        if (!p || fromVersion >= 2 || !p.graphics) return p as SettingsState;
+        const graphics = { ...p.graphics };
+        delete (graphics as Partial<GraphicsSettings>).fov;
+        return { ...p, graphics } as SettingsState;
+      },
       // Merge rather than replace so new settings added in a patch get their defaults.
       merge: (persisted, current) => {
         const p = persisted as Partial<SettingsState> | undefined;
