@@ -39,6 +39,27 @@ import { photonTextures } from './PhotonTextures';
  * count — which is both a load-time cost and a per-frame state-change cost.
  */
 
+
+/**
+ * ## Normal maps (Batch 1 of the visual overhaul)
+ *
+ * Every roughness map above now has a matching normal map, derived from the same canvas by
+ * `heightToNormal`. This is the change that stops 915 brushes reading as cubes.
+ *
+ * Roughness varies how a surface *scatters* light; it never varies how the surface *faces*. A panel
+ * seam painted only into roughness has no shadow, no highlight break and no relief at a grazing
+ * angle — which is exactly the angle a player sees a wall from while running past it. The original
+ * pass chose roughness-only deliberately for fill rate, and that choice is the single largest reason
+ * the arena looks assembled rather than manufactured.
+ *
+ * `normalScale` is per-substance rather than global. Relief tuned to read on a wall at 20 m looks
+ * like corrugation on a handrail at arm's length, so brushed metal is held near 0.55 while a panel
+ * seam runs at 1.0.
+ *
+ * Cost is one texture fetch plus the tangent transform per fragment. On a fragment-bound frame that
+ * is not free, and it is measured rather than assumed.
+ */
+
 export type Substance =
   | 'brushedAluminium'
   | 'titanium'
@@ -90,6 +111,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().brushedMetal,
+        normalMap: textures().brushedMetalNormal,
+        normalScale: new THREE.Vector2(0.55, 0.55),
         roughness: 0.5,
         metalness: 0.46,
       }),
@@ -101,6 +124,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().brushedMetal,
+        normalMap: textures().brushedMetalNormal,
+        normalScale: new THREE.Vector2(0.55, 0.55),
         roughness: 0.62,
         metalness: 0.6,
       }),
@@ -112,6 +137,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().carbonWeave,
+        normalMap: textures().carbonWeaveNormal,
+        normalScale: new THREE.Vector2(0.85, 0.85),
         roughness: 0.6,
         metalness: 0.34,
       }),
@@ -123,6 +150,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().panelSeam,
+        normalMap: textures().panelSeamNormal,
+        normalScale: new THREE.Vector2(1.0, 1.0),
         roughness: 0.88,
         metalness: 0.16,
       }),
@@ -134,6 +163,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().antiSlip,
+        normalMap: textures().antiSlipNormal,
+        normalScale: new THREE.Vector2(0.7, 0.7),
         roughness: 0.95,
         metalness: 0,
       }),
@@ -145,6 +176,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().antiSlip,
+        normalMap: textures().antiSlipNormal,
+        normalScale: new THREE.Vector2(0.7, 0.7),
         bumpMap: textures().antiSlip,
         bumpScale: 0.015,
         roughness: 0.55,
@@ -158,6 +191,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().panelSeam,
+        normalMap: textures().panelSeamNormal,
+        normalScale: new THREE.Vector2(1.0, 1.0),
         roughness: 0.3,
         metalness: 0.64,
       }),
@@ -169,6 +204,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().hexPanel,
+        normalMap: textures().hexPanelNormal,
+        normalScale: new THREE.Vector2(0.9, 0.9),
         bumpMap: textures().hexPanel,
         bumpScale: 0.008,
         roughness: 0.4,
@@ -246,6 +283,8 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
       new THREE.MeshStandardMaterial({
         color: o.color,
         roughnessMap: textures().panelSeam,
+        normalMap: textures().panelSeamNormal,
+        normalScale: new THREE.Vector2(1.0, 1.0),
         roughness: 0.56,
         metalness: 0.42,
       }),

@@ -245,6 +245,72 @@ export function hexPanelRoughness(repeat = 6): THREE.CanvasTexture {
  * exists in some code paths and `document` is not available under Node — the headless simulation
  * and the dedicated server must never touch this module.
  */
+
+/**
+ * Derives a tangent-space normal map from one of the roughness canvases above.
+ *
+ * ## Why derive rather than author
+ *
+ * The roughness canvases already encode exactly the features that should have relief — panel seams,
+ * carbon weave, brushed grain — as luminance. Treating that luminance as a height field and taking
+ * its gradient produces a normal map **perfectly registered with the roughness**, on the same UVs,
+ * with no second texture to author, ship or keep in sync. A seam that goes rougher also goes deeper,
+ * which is what a real recessed seam does.
+ *
+ * ## Why this is the right first move for the arena
+ *
+ * The original material pass chose "roughness maps over full normal maps" deliberately, for fill
+ * rate. That choice is why 915 brushes read as cubes: roughness varies how light *scatters* but
+ * never how a surface *faces*, so a panel seam has no shadow, no highlight break, and no relief at
+ * grazing angles. It is the single largest reason the arena looks manufactured-from-boxes rather
+ * than manufactured.
+ *
+ * The cost is one extra texture fetch and the tangent-space transform per fragment — real on a
+ * fragment-bound frame, which is why it is measured after wiring rather than assumed cheap.
+ *
+ * Sobel rather than a naive forward difference: forward differences are one-sided and produce a
+ * directional bias that reads as lighting coming from a corner.
+ */
+export function heightToNormal(source: HTMLCanvasElement, strength = 1.6, repeat = 1): THREE.CanvasTexture {
+  const size = source.width;
+  const src = source.getContext('2d')!.getImageData(0, 0, size, size).data;
+  const { canvas, context } = makeCanvas();
+  const out = context.createImageData(size, size);
+
+  // Luminance as height. The canvases are greyscale already, so the red channel is enough.
+  const at = (x: number, y: number) => {
+    const wx = (x + size) % size;   // wrap: these textures tile
+    const wy = (y + size) % size;
+    return src[(wy * size + wx) * 4] / 255;
+  };
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const tl = at(x - 1, y - 1), t = at(x, y - 1), tr = at(x + 1, y - 1);
+      const l = at(x - 1, y), r = at(x + 1, y);
+      const bl = at(x - 1, y + 1), b = at(x, y + 1), br = at(x + 1, y + 1);
+      const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
+      const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
+      // Invert dx/dy so that *darker* (rougher, recessed) reads as lower.
+      let nx = -dx * strength;
+      let ny = -dy * strength;
+      const nz = 1;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len; ny /= len;
+      const i = (y * size + x) * 4;
+      out.data[i] = (nx * 0.5 + 0.5) * 255;
+      out.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+      out.data[i + 2] = (nz / len * 0.5 + 0.5) * 255;
+      out.data[i + 3] = 255;
+    }
+  }
+  context.putImageData(out, 0, 0);
+  const texture = finish(canvas, repeat);
+  // A normal map is data, not colour. Left in sRGB it decodes wrong and the relief inverts subtly.
+  texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
 let cache: PhotonTextureSet | null = null;
 
 export interface PhotonTextureSet {
@@ -253,16 +319,30 @@ export interface PhotonTextureSet {
   antiSlip: THREE.CanvasTexture;
   panelSeam: THREE.CanvasTexture;
   hexPanel: THREE.CanvasTexture;
+  /** Normals derived from the roughness canvases above, same UVs, same features. */
+  brushedMetalNormal: THREE.CanvasTexture;
+  carbonWeaveNormal: THREE.CanvasTexture;
+  panelSeamNormal: THREE.CanvasTexture;
+  hexPanelNormal: THREE.CanvasTexture;
+  antiSlipNormal: THREE.CanvasTexture;
 }
 
 export function photonTextures(): PhotonTextureSet {
   if (cache) return cache;
+  const brushedMetal = brushedMetalRoughness();
+  const carbonWeave = carbonWeaveRoughness();
+  const antiSlip = antiSlipRoughness();
+  const panelSeam = panelSeamRoughness();
+  const hexPanel = hexPanelRoughness();
   cache = {
-    brushedMetal: brushedMetalRoughness(),
-    carbonWeave: carbonWeaveRoughness(),
-    antiSlip: antiSlipRoughness(),
-    panelSeam: panelSeamRoughness(),
-    hexPanel: hexPanelRoughness(),
+    brushedMetal, carbonWeave, antiSlip, panelSeam, hexPanel,
+    // Strengths are per-feature, not global. A panel seam is a real recess and wants depth; a
+    // brushed grain is microscopic and wants almost none, or the metal looks corrugated.
+    brushedMetalNormal: heightToNormal(brushedMetal.image as HTMLCanvasElement, 0.6, 3),
+    carbonWeaveNormal: heightToNormal(carbonWeave.image as HTMLCanvasElement, 1.1, 8),
+    panelSeamNormal: heightToNormal(panelSeam.image as HTMLCanvasElement, 2.4, 4),
+    hexPanelNormal: heightToNormal(hexPanel.image as HTMLCanvasElement, 1.8, 6),
+    antiSlipNormal: heightToNormal(antiSlip.image as HTMLCanvasElement, 1.4, 10),
   };
   return cache;
 }
