@@ -217,6 +217,44 @@ export class Game {
           options = {},
         ) => module.probeArenaLighting(this.arena, position, yaw, pitch, options);
       });
+      /**
+       * Frame capture, for judging visual work on the rendered image.
+       *
+       * `__PHOTON__.capture('name')` writes `captures/name.png` at the canvas's real backing-store
+       * resolution — 1600x1000 here — and returns the size. This exists because the browser pane
+       * composites the whole page at roughly 175x105 whatever the canvas is, so a screenshot of the
+       * pane cannot resolve a panel seam, a normal-map relief or a bloom threshold. The backing store
+       * has the pixels; the compositor is the only thing throwing them away.
+       *
+       * Requires `preserveDrawingBuffer` (dev only, set in GameCanvas): without it WebGL discards the
+       * buffer after compositing and `toDataURL` returns a blank frame from outside the render
+       * callback.
+       *
+       * `settleFrames` exists because a camera move takes effect on the *next* rendered frame, and
+       * post-processing history (bloom, TAA-style accumulation) needs a few more to stabilise. A
+       * capture taken immediately after moving shows the previous viewpoint.
+       */
+      (handle.__PHOTON__ as unknown as { capture?: unknown }).capture = async (
+        name: string,
+        settleFrames = 8,
+      ) => {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) return { ok: false, error: 'no canvas' };
+        await new Promise<void>((done) => {
+          let left = settleFrames;
+          const step = () => (left-- > 0 ? requestAnimationFrame(step) : done());
+          requestAnimationFrame(step);
+        });
+        const dataUrl = canvas.toDataURL('image/png');
+        const response = await fetch('/__capture', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, dataUrl }),
+        });
+        const result = await response.json();
+        return { ...result, width: canvas.width, height: canvas.height };
+      };
+
       // Animation states, for verifying the state mapper against a live match.
       //
       // Worth a dev hook rather than a console session of guesswork: the four states added in the

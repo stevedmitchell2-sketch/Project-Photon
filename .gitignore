@@ -73,3 +73,4 @@ assets/source/mixamo/*
 !assets/source/mixamo/README.md
 assets/source/tripo/*
 !assets/source/tripo/.gitkeep
+captures/
