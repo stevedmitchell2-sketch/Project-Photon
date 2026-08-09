@@ -33,7 +33,8 @@
     "pose-check": "tsx scripts/poseCheck.ts",
     "character-baseline": "tsx scripts/characterBaseline.ts",
     "build-character": "tsx scripts/buildCharacter.ts",
-    "to-fbx": "tsx scripts/toFbx.ts"
+    "to-fbx": "tsx scripts/toFbx.ts",
+    "setup-character": "tsx scripts/setupCharacter.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
