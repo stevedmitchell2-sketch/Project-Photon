@@ -86,7 +86,20 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<GraphicsSettings>> =
 
 export const defaultGraphicsSettings = (): GraphicsSettings => ({
   preset: 'balanced',
-  fov: 95,
+  /**
+   * Vertical FOV. three.js `PerspectiveCamera.fov` is vertical, which is the fact this was set
+   * without: at the 1.6 aspect the game runs at, 95 vertical is **120 degrees horizontal**. Modern
+   * console shooters sit near 100-110, and 120 is what made the weapon read as a toy stuck to the
+   * camera — an extreme FOV shrinks the view model and stretches perspective at the same time.
+   *
+   * 75 vertical is ~102 horizontal. Measured by guarded A/B at an identical rAF-pinned camera
+   * (captures 70 at 95, 72 at 75): the rifle gains real presence in the lower right, the arena reads
+   * with depth instead of fisheye stretch, and the central landmark holds the frame.
+   *
+   * The 80 arm was withheld by the capture guard at 18.7 mm drift against a 15 mm tolerance, so
+   * ~107 horizontal is untested and may yet be the better landing point.
+   */
+  fov: 75,
   renderScale: 1,
   bloom: true,
   // Must match the `balanced` preset — this is the value a fresh install starts on.
