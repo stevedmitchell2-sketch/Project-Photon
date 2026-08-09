@@ -342,7 +342,11 @@ export function photonTextures(): PhotonTextureSet {
     carbonWeaveNormal: heightToNormal(carbonWeave.image as HTMLCanvasElement, 1.1, 8),
     panelSeamNormal: heightToNormal(panelSeam.image as HTMLCanvasElement, 2.4, 4),
     hexPanelNormal: heightToNormal(hexPanel.image as HTMLCanvasElement, 1.8, 6),
-    antiSlipNormal: heightToNormal(antiSlip.image as HTMLCanvasElement, 1.4, 10),
+    // Anti-slip at 1.4 embossed a stipple that reads as a field of raised dots across the 84x84 m
+    // competition floor at gameplay distance — raycast-confirmed as the surface under the crosshair.
+    // Anti-slip is a *roughness* property: it changes how light scatters off a gritty surface, not
+    // how the surface faces. 0.30 keeps a trace of tooth without the embossing.
+    antiSlipNormal: heightToNormal(antiSlip.image as HTMLCanvasElement, 0.3, 10),
   };
   return cache;
 }
