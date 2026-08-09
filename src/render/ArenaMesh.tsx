@@ -31,13 +31,21 @@ import { worldUvStore } from './worldUvStore';
  * Tiles are therefore specified in metres and converted to a per-instance UV multiplier below.
  */
 const METRES_PER_TILE: Partial<Record<Substance, number>> = {
-  compositePolymer: 0.5,   // panel seams
-  brushedAluminium: 0.1,
-  titanium: 0.1,
-  carbonFibre: 0.15,
-  antiSlipFloor: 0.15,
-  competitionFloor: 0.15,
-  hexPanel: 0.35,
+  compositePolymer: 0.5,   // panel seams — validated on a 1.9 x 5 m interior panel (capture 13)
+  // Brushed metal started at 0.1 m and was rejected at gameplay distance (capture 22): a 2048 grain
+  // tiled every 10 cm across a 26 m pillar is finer than a screen pixel at that range, so it aliases
+  // into a regular dot pattern and reads as perforated sheet — the exact artefact the brief rules
+  // out. The close-up A/B missed it because those pillars were dark and small in frame; the defect
+  // only appears where pillars are bright and dominant, which is most of the arena.
+  //
+  // Physical grain size is not the target here. What matters is that the tile stays above the
+  // sampling limit at the distances players actually stand.
+  brushedAluminium: 0.5,
+  titanium: 0.5,
+  carbonFibre: 0.35,
+  antiSlipFloor: 0.3,
+  competitionFloor: 0.3,
+  hexPanel: 0.5,
 };
 
 
