@@ -99,7 +99,14 @@ function Batch({ batch, shadows }: { batch: BuiltArena['batches'][number]; shado
       material.emissive = new THREE.Color(batch.color);
       material.emissiveIntensity = batch.glow;
     }
-    material.envMapIntensity = 0.8;
+    // Per-material environment fill, and the reason lowering LIGHTING.environmentIntensity did not
+    // change the near floor: this is a *second* omnidirectional knob applied to all 32 batches, and
+    // at 0.8 it dominated. The arena's declared albedos are dark slate — #3f4a5b at luminance 0.286
+    // for catwalks, #4a5666 at 0.332 for walls and pillars — yet they rendered pale white-blue,
+    // which only happens when fill is overwhelming the diffuse term.
+    //
+    // 0.3 lets the key light define form again. Tuned with the scene-level value, not instead of it.
+    material.envMapIntensity = 0.3;
   }, [material, batch.color, batch.glow]);
 
   const geometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
