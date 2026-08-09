@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { BuiltArena } from '@/maps/MapBuilder';
 import { photonMaterial, SURFACE_SUBSTANCE, type Substance } from './materials/PhotonMaterials';
+import { worldUvStore } from './worldUvStore';
 
 /**
  * The entire arena as one InstancedMesh per material batch.
@@ -39,13 +40,6 @@ const METRES_PER_TILE: Partial<Record<Substance, number>> = {
   hexPanel: 0.35,
 };
 
-/**
- * Brush kinds using world-scaled UVs.
- *
- * Deliberately one kind for now. The change is proven on walls — the surfaces where the error was
- * largest and most visible — and captured before it goes anywhere near the rest of the arena.
- */
-const WORLD_UV_KINDS = new Set(['wall']);
 
 interface Props {
   arena: BuiltArena;
@@ -122,11 +116,24 @@ function Batch({ batch, shadows }: { batch: BuiltArena['batches'][number]; shado
    * other geometry, and the cheap version is worth proving before a face-normal-aware variant is
    * written. If the ends visibly fail in the capture, that is the escalation.
    */
-  const worldUv = WORLD_UV_KINDS.has(batch.kind);
+  // Re-runs the effect below whenever the dev handle flips the set, so an A/B never needs a reload.
+  const uvVersion = useSyncExternalStore(worldUvStore.subscribe, worldUvStore.getSnapshot, worldUvStore.getSnapshot);
+  const worldUv = worldUvStore.has(batch.kind);
   const metresPerTile = METRES_PER_TILE[SURFACE_SUBSTANCE[batch.kind]];
 
   useEffect(() => {
-    if (!worldUv || !metresPerTile) return;
+    // Teardown matters as much as setup. Without restoring the material, condition B of the A/B
+    // would still be running the patched shader and the comparison would measure nothing.
+    const restore = () => {
+      geometry.deleteAttribute('aUvScale');
+      material.onBeforeCompile = () => {};
+      material.customProgramCacheKey = () => '';
+      material.needsUpdate = true;
+    };
+    if (!worldUv || !metresPerTile) {
+      restore();
+      return;
+    }
     const count = batch.instances.length;
     const scales = new Float32Array(count * 2);
     // The textures already carry their own `repeat` — `finish()` sets it when the canvas is built,
@@ -161,7 +168,8 @@ function Batch({ batch, shadows }: { batch: BuiltArena['batches'][number]; shado
     };
     material.customProgramCacheKey = () => 'photon-world-uv';
     material.needsUpdate = true;
-  }, [worldUv, metresPerTile, batch, geometry, material]);
+    return restore;
+  }, [worldUv, metresPerTile, batch, geometry, material, uvVersion]);
 
   useEffect(() => {
     const mesh = meshRef.current;

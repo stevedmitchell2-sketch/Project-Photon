@@ -255,6 +255,14 @@ export class Game {
         return { ...result, width: canvas.width, height: canvas.height };
       };
 
+      // World-UV A/B switch. Flipping the set live is what makes the two arms share one scene.
+      void import('@/render/worldUvStore').then((module) => {
+        (handle.__PHOTON__ as unknown as { worldUv?: unknown }).worldUv = {
+          list: () => module.worldUvStore.list(),
+          set: (kinds: string[]) => module.worldUvStore.set(kinds),
+        };
+      });
+
       // Animation states, for verifying the state mapper against a live match.
       //
       // Worth a dev hook rather than a console session of guesswork: the four states added in the
