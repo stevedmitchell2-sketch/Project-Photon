@@ -136,17 +136,38 @@ ACCENT_BONES = {
 # so this is ten narrow bands on a humanoid — roughly what a premium sports
 # product carries — and nothing on the hands, feet or back.
 
+#: Band half-widths as a **fraction of model height**, not of bone length.
+#:
+#: This was the second attempt. The first expressed the half-width as a fraction along the
+#: bone, which sounds equivalent and is not: a 0.045 fraction of a 0.15 m upper arm is a
+#: **7 mm** stripe. On the Service Unit's 31,011-face mesh that landed on a face or two; on
+#: the athlete's 12,101 faces it fell between faces entirely and ten of ten bands captured
+#: nothing. The character had no team colour and the stage still reported success.
+#:
+#: Fraction of height is independent of both proportion and density. 0.020 is ~2 cm on the
+#: authored 0.98 m mesh and ~3.9 cm on the 1.93 m character it becomes — a legible stripe at
+#: arena distance on any humanoid, whatever its face count.
+ENERGY_BAND_UNITS = "height_fraction"
+
+#: Widen a band that catches nothing, up to this many doublings. A band is a *design intent*;
+#: silently dropping it because the mesh is coarse is how the athlete ended up with 0.7%
+#: coverage. Capped so a band cannot grow into a painted limb.
+ENERGY_BAND_MAX_DOUBLINGS = 3
+
+#: Tuned by measurement, not by eye. The first pass at these widths gave **11.8%** of faces
+#: emissive, which is a lit-up character rather than a restrained one — the brief rules out
+#: neon twice. Halving lands near 6%, which reads as trim.
 ENERGY_BANDS = [
-    ("leftarm",      0.14, 0.045),   # shoulder ring
-    ("rightarm",     0.14, 0.045),
-    ("leftforearm",  0.55, 0.040),   # forearm strip
-    ("rightforearm", 0.55, 0.040),
-    ("spine2",       0.45, 0.055),   # chest bar
-    ("leftupleg",    0.22, 0.040),   # thigh ring
-    ("rightupleg",   0.22, 0.040),
-    ("leftleg",      0.50, 0.035),   # shin strip
-    ("rightleg",     0.50, 0.035),
-    ("head",         0.35, 0.060),   # visor band
+    ("leftarm",      0.14, 0.011),   # shoulder ring
+    ("rightarm",     0.14, 0.011),
+    ("leftforearm",  0.55, 0.010),   # forearm strip
+    ("rightforearm", 0.55, 0.010),
+    ("spine2",       0.45, 0.014),   # chest bar — the widest, it carries the read
+    ("leftupleg",    0.22, 0.011),   # thigh ring
+    ("rightupleg",   0.22, 0.011),
+    ("leftleg",      0.50, 0.009),   # shin strip
+    ("rightleg",     0.50, 0.009),
+    ("head",         0.35, 0.012),   # visor band
 ]
 
 
@@ -248,6 +269,21 @@ def dominant_bone_map(obj, armature):
 # =============================================================================
 #  MATERIALS
 # =============================================================================
+
+def world_height_of(obj):
+    """Height in world units, from the bounding box. Cheap and exact enough for a band width."""
+    zs = [(obj.matrix_world @ v.co).z for v in obj.data.vertices]
+    return (max(zs) - min(zs)) if zs else 1.0
+
+
+def bone_world_lengths(armature):
+    """Bone name (lowercased) -> length in world units."""
+    m = armature.matrix_world
+    out = {}
+    for bone in armature.data.bones:
+        out[bone.name.lower()] = ((m @ bone.tail_local) - (m @ bone.head_local)).length
+    return out
+
 
 def build_zone_material(name, spec):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
@@ -515,28 +551,53 @@ def stage_energy(game, armature):
         return
 
     dom = dominant_bone_map(game, armature)
-    assigned = 0
-    per_band = {}
+    height = world_height_of(game)
+    bone_lengths = bone_world_lengths(armature)
 
-    for poly in game.data.polygons:
-        entries = [dom.get(vi) for vi in poly.vertices]
-        if any(e is None for e in entries):
+    per_band = {}
+    widened = {}
+
+    for bone_hint, centre, half in ENERGY_BANDS:
+        # Convert a height fraction into a fraction along whichever bone this band rides.
+        # A band is a physical size; `t` is not, so the conversion has to happen per bone.
+        length = next((l for name, l in bone_lengths.items() if bone_hint in name), None)
+        if not length:
+            log(f"{bone_hint:<14} no such bone")
             continue
-        for bone_hint, centre, half in ENERGY_BANDS:
-            # Every vertex of the face must sit inside the band, so strips have
-            # clean edges instead of a ragged fringe of partially-inside faces.
-            if all(bone_hint in e[0] and abs(e[1] - centre) <= half for e in entries):
-                poly.material_index = slot
-                assigned += 1
-                per_band[bone_hint] = per_band.get(bone_hint, 0) + 1
+
+        for doubling in range(ENERGY_BAND_MAX_DOUBLINGS + 1):
+            half_world = half * height * (2 ** doubling)
+            half_t = half_world / length
+            hits = []
+            for poly in game.data.polygons:
+                entries = [dom.get(vi) for vi in poly.vertices]
+                if any(e is None for e in entries):
+                    continue
+                if not all(bone_hint in e[0] for e in entries):
+                    continue
+                # Face *centre*, not every vertex. Requiring all vertices inside makes coverage a
+                # function of face size, which is exactly the density dependence being removed: a
+                # coarse mesh gets a coarser band, not no band.
+                t_mid = sum(e[1] for e in entries) / len(entries)
+                if abs(t_mid - centre) <= half_t:
+                    hits.append(poly)
+            if hits or doubling == ENERGY_BAND_MAX_DOUBLINGS:
+                if doubling:
+                    widened[bone_hint] = doubling
+                for poly in hits:
+                    poly.material_index = slot
+                per_band[bone_hint] = len(hits)
                 break
 
+    assigned = sum(per_band.values())
     for hint, _c, _h in ENERGY_BANDS:
-        log(f"{hint:<14} {per_band.get(hint, 0):>6,} faces")
+        note = f"  (widened x{2 ** widened[hint]})" if hint in widened else ""
+        log(f"{hint:<14} {per_band.get(hint, 0):>6,} faces{note}")
     log(f"total {assigned:,} faces emissive "
         f"({assigned / max(len(game.data.polygons), 1) * 100:.1f}% of the model)")
-    if assigned == 0:
-        log("nothing matched — widen the half-widths in ENERGY_BANDS and re-run")
+    empty = [h for h, _c, _h in ENERGY_BANDS if not per_band.get(h)]
+    if empty:
+        log(f"NOT PLACED: {', '.join(empty)} — raise their half-widths in ENERGY_BANDS")
 
 
 def stage_sockets(armature):

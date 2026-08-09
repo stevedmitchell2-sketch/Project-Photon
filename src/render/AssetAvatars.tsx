@@ -44,12 +44,18 @@ const MAX_ASSET_AVATARS = 24;
 /**
  * The registry id of the character asset.
  *
- * `hero_robot` is the authored Photon Arena Service Unit. `hero_athlete` is the
- * generated reference character the pipeline was proven against — kept in the
- * registry because it is regenerable in one command and useful for testing this
- * path without the real asset present.
+ * `hero_athlete` is the Photon competitor and the one players wear. `hero_robot`, the Arena
+ * Service Unit, stays in the registry: it is a service robot rather than a competitor, and it is the
+ * asset every pipeline check was developed against.
+ *
+ * The athlete took over because it is better on every measurable axis — 12,101 triangles against the
+ * robot's 60,928 (the first character inside the 18,000 budget), 4.9 MB against 13.7, tangents
+ * present where the robot has none — and because a competitor is what the arena is for.
+ *
+ * Switching characters is one line here, which is the property the registry exists to provide: no
+ * code knows a filename, only an id.
  */
-export const CHARACTER_ASSET_ID = 'hero_robot';
+export const CHARACTER_ASSET_ID = 'hero_athlete';
 
 /**
  * Clip names that count as a purpose-built right turn.

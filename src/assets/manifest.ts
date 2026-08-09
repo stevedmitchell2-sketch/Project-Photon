@@ -258,17 +258,44 @@ export const ASSET_MANIFEST: AssetEntry[] = [
     ],
   },
   {
+    /**
+     * The Photon competitor. Built entirely by the pipeline rather than by hand.
+     *
+     * Tripo generation -> Tripo Smart Mesh remesh (12,101 tris) -> Mixamo auto-rig (57 joints) ->
+     * `npm run setup-character` -> `npm run build-character`. The first asset in the project whose
+     * whole path was scripted, and the first character *inside* its triangle budget: 12,101 against
+     * 18,000, where the Service Unit is 60,928.
+     *
+     * No `scale`. The armature is scaled to 1.93 m inside the .blend and the exported GLB measures
+     * **1.925 m**, so the correction the Service Unit needs in this manifest is already baked in here.
+     * Nothing to tune, and nothing to forget.
+     */
     id: 'hero_athlete',
     kind: 'character',
     file: 'HeroAthlete_v01.glb',
     format: 'glb',
-    description: 'Player character. Replaces the primitive avatar rig.',
+    description: 'Photon competitor. Ceramic armour over a graphite undersuit, cyan energy trim.',
+    /**
+     * Zones are `shell`/`joint`/`accent`/`trim`, not the `suit`/`armor`/`visor` this entry was
+     * written with before the asset existed.
+     *
+     * That guess would have matched nothing: `photon_robot_finish` assigns zones by *bone
+     * influence*, and it emits the Photon material language — the same four names as the Service
+     * Unit. A zone name in this manifest that no material carries is silent, because `applyZone`
+     * simply finds nothing to apply and the mesh keeps whatever it shipped with.
+     */
     zones: [
-      { zone: 'suit', substance: 'compositePolymer' },
-      { zone: 'armor', substance: 'carbonFibre' },
+      { zone: 'shell', substance: 'compositePolymer', useSourceMaterial: true },
+      { zone: 'joint', substance: 'carbonFibre', useSourceMaterial: true },
+      { zone: 'accent', substance: 'brushedAluminium', useSourceMaterial: true },
       { zone: 'trim', substance: 'ledStrip', teamColored: true },
-      { zone: 'visor', substance: 'energyEmitter', teamColored: true },
     ],
+    /** Matches the Service Unit, so the two characters share one material language. */
+    materialOverrides: {
+      MAT_joint: { color: 0x2f3742, metallic: 0.72, roughness: 0.42 },
+      MAT_accent: { color: 0x9aa4b4, metallic: 0.9, roughness: 0.22 },
+      MAT_shell: { color: 0xdfe4ea, metallic: 0.16, roughness: 0.33 },
+    },
   },
 
   // --- Phase 1: structural kit ---------------------------------------------
