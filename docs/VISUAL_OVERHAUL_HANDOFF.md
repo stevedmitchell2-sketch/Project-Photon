@@ -36,19 +36,47 @@ share one geometry, so baking means one geometry per brush and the end of instan
 
 ---
 
-## What is NOT established
+## Phase 1 — CLOSED, both halves passed
 
-**Whether the corrected density looks like architecture.** Every attempt to judge it failed on
-*surface selection*, never on the material:
+**Performance** (controlled A/B, same scene/camera/lighting/frame, 30 samples per arm):
 
-| Capture | Surface chosen | Why the test was invalid |
-|---|---|---|
-| 08 | `02_gameplay_mid` viewpoint | Walls occupy little of that frame |
-| 09 | Largest wall by area | Picked the 84x28 m outer shell at z=-42 — the darkest surface in the building. Unlit, so no relief could show |
-| 10 | Filter `sy>=3 && max(sx,sz)>=4` | Required tall **and** wide; interior walls are tall and thin, so it matched nothing and I wrongly concluded none existed |
+| | draws | programs | triangles | GPU ms | CPU ms |
+|---|---|---|---|---|---|
+| world UV on | 208 | 53 | 41,639 | 11.67-12.38 | 2.83-3.10 |
+| world UV off | 208 | 53 | 41,639 | 10.95-12.49 | 2.22-2.39 |
 
-**The 237 draws / 36 programs figure is NOT a confirmed regression.** It came from a different scene
-than the 212/32 reference. Do not act on it until a controlled A/B says otherwise.
+Draws and programs identical. The earlier "237 / 36" figure was a different scene and is
+**not** a regression. Batching and `customProgramCacheKey` confirmed working.
+
+**Visual** (captures 13 on / 14 off, 1.92 x 5 m interior composite panel, raycast-asserted at
+2.00 m and 68% frame fill):
+
+- **on** — ~15-18 panel courses up 5 m (~0.3 m spacing), and the foreground panel agrees with the
+  gallery walls behind it
+- **off** — ~7-8 coarse courses (~0.65 m), visibly stretched on the larger background surfaces
+
+That agreement between near and far surfaces is the whole point. Without world UVs, texture density
+is a function of brush size, so two surfaces disagree about how big a panel is.
+
+### Choosing the proof surface took five attempts, all my error
+
+Largest-area picked the unlit outer shell. `sy>=3 && max(sx,sz)>=4` matched nothing, because
+interior walls are tall and thin. Pillars are `brushedAluminium` — a fine grain, not the
+`compositePolymer` that carries seams. `face>=3` excluded every interior panel, which are 1.1-1.9 m
+wide. And the approach-side sign was inverted, putting the camera behind the wall.
+
+Dumping the actual instance data instead of guessing a sixth threshold is what ended it. The
+raycast assertion is what stopped four of those from being reported as results.
+
+### Open tuning candidate, not a blocker
+
+At ~0.3 m the courses read closer to masonry than to large composite panels. `compositePolymer` is
+at 0.5 m/tile; 0.6-0.75 would give fewer, larger panels. Judge it in the six-viewpoint pass.
+
+### Not yet done from Phase 2
+
+The six established viewpoints have **not** been re-captured since world UVs went in. Do that first
+next session — `captures/01-06` are still the pre-UV baseline.
 
 ---
 
