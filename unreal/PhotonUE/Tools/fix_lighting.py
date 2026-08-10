@@ -30,6 +30,11 @@ kill(unreal.DirectionalLight)
 kill(unreal.SkyLight)
 kill(unreal.SkyAtmosphere)
 kill(unreal.PointLight)
+_tc = unreal.load_class(None, "/Script/Photon.PhotonTarget")
+if _tc:
+    for _a in list(actors):
+        if _a.get_class() == _tc:
+            unreal.EditorLevelLibrary.destroy_actor(_a)
 
 sun = unreal.EditorLevelLibrary.spawn_actor_from_class(
     unreal.DirectionalLight, unreal.Vector(0, 0, 1500),
