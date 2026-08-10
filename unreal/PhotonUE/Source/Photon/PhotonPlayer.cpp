@@ -7,6 +7,10 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "PhotonCore.h"
+#include "PhotonWeapon.h"
+#include "TimerManager.h"
+#include "EngineUtils.h"
 
 // ---------------------------------------------------------------------------------------------
 // APhotonCharacter
@@ -29,6 +33,9 @@ APhotonCharacter::APhotonCharacter()
 
 	WeaponRoot = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponRoot"));
 	WeaponRoot->SetupAttachment(Camera);
+
+	Inventory = CreateDefaultSubobject<UPhotonInventoryComponent>(TEXT("Inventory"));
+	Health = CreateDefaultSubobject<UPhotonHealthComponent>(TEXT("Health"));
 
 	// The owning player must not see their own world mesh from the inside.
 	if (USkeletalMeshComponent* Body = GetMesh())
@@ -60,6 +67,13 @@ void APhotonCharacter::BeginPlay()
 	if (Camera)
 	{
 		Camera->SetRelativeLocation(FVector(0.f, 0.f, EyeHeight));
+	}
+	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonSelfTest")))
+	{
+		// Deferred a beat: the inventory builds its loadout in its own BeginPlay, and component and
+		// actor BeginPlay ordering is not guaranteed to favour us.
+		FTimerHandle H;
+		GetWorldTimerManager().SetTimer(H, this, &APhotonCharacter::RunSelfTest, 1.0f, false);
 	}
 }
 
@@ -98,6 +112,9 @@ void APhotonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	Bind("IA_CrouchSlide", ETriggerEvent::Started, &APhotonCharacter::OnCrouchToggle, this);
 	Bind("IA_Sprint", ETriggerEvent::Started, &APhotonCharacter::OnSprintStart, this);
 	Bind("IA_Sprint", ETriggerEvent::Completed, &APhotonCharacter::OnSprintStop, this);
+	Bind("IA_Fire", ETriggerEvent::Triggered, &APhotonCharacter::OnFire, this);
+	Bind("IA_WeaponSwitch", ETriggerEvent::Started, &APhotonCharacter::OnWeaponSwitch, this);
+	Bind("IA_WeaponSelect", ETriggerEvent::Started, &APhotonCharacter::OnWeaponSelect, this);
 
 	// Counted, not assumed. The first version logged "input bound" unconditionally and was reported as
 	// verified while all eight binds were failing.
@@ -144,6 +161,108 @@ void APhotonCharacter::OnLookStick(const FInputActionValue& Value)
 	const float Delta = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f;
 	AddControllerYawInput(Axis.X * GamepadLookRate * Delta);
 	AddControllerPitchInput(-Axis.Y * GamepadLookRate * Delta);
+}
+
+void APhotonCharacter::OnFire(const FInputActionValue&)
+{
+	if (!Inventory)
+	{
+		return;
+	}
+	if (APhotonWeapon* W = Inventory->GetActiveWeapon())
+	{
+		// TryFire enforces the weapon's own interval and returns false when refused, so holding the
+		// trigger cannot outrun the data asset.
+		W->TryFire(this);
+	}
+}
+
+void APhotonCharacter::OnWeaponSwitch(const FInputActionValue&)
+{
+	if (Inventory)
+	{
+		Inventory->EquipNext();
+	}
+}
+
+void APhotonCharacter::OnWeaponSelect(const FInputActionValue& Value)
+{
+	// One action carries both 1/2 and the D-pad. The axis value distinguishes them: negative selects
+	// the previous slot, positive the next, so the same action serves keys and a D-pad without a
+	// second input path.
+	if (!Inventory)
+	{
+		return;
+	}
+	const float Axis = Value.Get<float>();
+	if (Axis < 0.f)
+	{
+		const int32 Count = Inventory->Weapons.Num();
+		Inventory->EquipIndex(Count > 0 ? (Inventory->ActiveIndex + Count - 1) % Count : 0);
+	}
+	else
+	{
+		Inventory->EquipNext();
+	}
+}
+
+void APhotonCharacter::RunSelfTest()
+{
+	auto Check = [](const TCHAR* What, bool bOk)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST %s = %s"), What, bOk ? TEXT("PASS") : TEXT("FAIL"));
+		return bOk;
+	};
+
+	Check(TEXT("character_spawned"), true);
+	Check(TEXT("possessed_by_controller"), Cast<APhotonPlayerController>(GetController()) != nullptr);
+	Check(TEXT("enhanced_input_component"), Cast<UEnhancedInputComponent>(InputComponent) != nullptr);
+	Check(TEXT("inventory_exists"), Inventory != nullptr);
+	if (!Inventory)
+	{
+		return;
+	}
+	Check(TEXT("two_weapons_spawned"), Inventory->Weapons.Num() == 2);
+	Check(TEXT("ph6_active_initially"), Inventory->GetActiveWeaponId() == FName("photon_rifle"));
+
+	Check(TEXT("switch_to_ph9"), Inventory->EquipIndex(1) &&
+		Inventory->GetActiveWeaponId() == FName("ph9_smg"));
+	Check(TEXT("ph9_mesh_visible"), Inventory->GetActiveWeapon() &&
+		!Inventory->GetActiveWeapon()->IsHidden());
+	Check(TEXT("ph6_hidden_while_ph9_active"), Inventory->Weapons[0] &&
+		Inventory->Weapons[0]->IsHidden());
+
+	// Different data actually reaching the weapon is the point of the whole exercise.
+	APhotonWeapon* PH9 = Inventory->GetActiveWeapon();
+	APhotonWeapon* PH6 = Inventory->Weapons[0].Get();
+	const bool bDiffer = PH6 && PH9 && PH6->Data && PH9->Data &&
+		!FMath::IsNearlyEqual(PH6->Data->FireInterval, PH9->Data->FireInterval) &&
+		!FMath::IsNearlyEqual(PH6->Data->Damage, PH9->Data->Damage);
+	Check(TEXT("ph6_ph9_stats_differ"), bDiffer);
+	if (bDiffer)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST ph6 interval=%.3f dmg=%.1f | ph9 interval=%.3f dmg=%.1f"),
+			PH6->Data->FireInterval, PH6->Data->Damage, PH9->Data->FireInterval, PH9->Data->Damage);
+	}
+
+	const int32 Before = PH9 ? PH9->ShotsFired : -1;
+	Check(TEXT("fire_ph9_accepted"), PH9 && PH9->TryFire(this));
+	Check(TEXT("shot_counter_advanced"), PH9 && PH9->ShotsFired == Before + 1);
+	// Immediately again: must be refused by the weapon's own interval.
+	Check(TEXT("cooldown_refuses_second_shot"), PH9 && !PH9->TryFire(this));
+	Check(TEXT("cooldown_remaining_positive"), PH9 && PH9->GetCooldownRemaining() > 0.f);
+
+	Check(TEXT("switch_back_to_ph6"), Inventory->EquipIndex(0) &&
+		Inventory->GetActiveWeaponId() == FName("photon_rifle"));
+	Check(TEXT("fire_ph6_accepted"), PH6 && PH6->TryFire(this));
+
+	int32 Bolts = 0;
+	for (TActorIterator<APhotonProjectile> It(GetWorld()); It; ++It)
+	{
+		if (It->GetOwner() == this) { ++Bolts; }
+	}
+	Check(TEXT("projectiles_exist_owned_by_shooter"), Bolts >= 2);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST bolts_owned=%d"), Bolts);
 }
 
 void APhotonCharacter::OnJumpStart(const FInputActionValue&) { Jump(); }

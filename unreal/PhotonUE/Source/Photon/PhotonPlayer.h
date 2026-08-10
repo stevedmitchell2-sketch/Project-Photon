@@ -9,6 +9,8 @@
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
+class UPhotonInventoryComponent;
+class UPhotonHealthComponent;
 struct FInputActionValue;
 
 /**
@@ -55,7 +57,18 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<USceneComponent> WeaponRoot;
 
+	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonInventoryComponent> Inventory;
+	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonHealthComponent> Health;
+
 	bool IsSprinting() const { return bSprintHeld && !bIsCrouched; }
+
+	/**
+	 * Drives the Session B acceptance sequence and asserts on the resulting state at every step.
+	 *
+	 * Exists because the switching and firing paths cannot be exercised by hand from a headless run,
+	 * and "it compiled" is not evidence. Enabled with -PhotonSelfTest on the command line.
+	 */
+	void RunSelfTest();
 
 protected:
 	virtual void BeginPlay() override;
@@ -71,6 +84,9 @@ protected:
 	void OnCrouchToggle(const FInputActionValue& Value);
 	void OnSprintStart(const FInputActionValue& Value);
 	void OnSprintStop(const FInputActionValue& Value);
+	void OnFire(const FInputActionValue& Value);
+	void OnWeaponSwitch(const FInputActionValue& Value);
+	void OnWeaponSelect(const FInputActionValue& Value);
 
 	bool bSprintHeld = false;
 };
