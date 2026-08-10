@@ -186,6 +186,76 @@ public:
 	float ResolveDamage(float DistanceCm) const;
 };
 
+/** Data-driven grenade tuning — one asset per grenade type. */
+UCLASS(BlueprintType)
+class PHOTON_API UPhotonGrenadeData : public UPrimaryDataAsset
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditDefaultsOnly, Category = "Identity") FName GrenadeId;
+	UPROPERTY(EditDefaultsOnly, Category = "Identity") FText DisplayName;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Throw") float ThrowSpeed = 2200.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Throw") float ThrowUpwardBoost = 620.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Throw") float FuseTime = 2.0f;
+	UPROPERTY(EditDefaultsOnly, Category = "Throw") float Bounciness = 0.45f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Explosion") float ExplosionRadius = 450.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Explosion") float MaxDamage = 80.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Explosion") float MinDamageScale = 0.2f;
+
+	UFUNCTION(BlueprintCallable, Category = "Photon")
+	float ResolveExplosionDamage(float DistanceCm) const;
+};
+
+/**
+ * Thrown energy grenade — gravity, bounce, fuse, radial damage through UPhotonHealthComponent.
+ *
+ * Authority: fuse countdown and damage run on the server (HasAuthority). No client prediction yet.
+ */
+UCLASS()
+class PHOTON_API APhotonGrenade : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	APhotonGrenade();
+
+	void InitialiseFrom(const UPhotonGrenadeData* InData, EPhotonTeam InTeam, AController* InInstigator,
+		const FVector& InitialVelocity);
+
+	/** Apply radial damage and destroy. Server-authoritative. */
+	void Explode();
+
+	float GetSpeed() const;
+	float GetFuseTime() const { return Data ? Data->FuseTime : 0.f; }
+	EPhotonTeam GetTeam() const { return Team; }
+	bool HasExploded() const { return bExploded; }
+
+protected:
+	virtual void BeginPlay() override;
+
+	UFUNCTION()
+	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+		FVector NormalImpulse, const FHitResult& Hit);
+
+	void ArmFuse();
+
+	UPROPERTY(VisibleAnywhere) TObjectPtr<USphereComponent> Collision;
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UProjectileMovementComponent> Movement;
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> Glow;
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> ExplosionFlash;
+
+	UPROPERTY() TObjectPtr<const UPhotonGrenadeData> Data;
+	UPROPERTY(Replicated) EPhotonTeam Team = EPhotonTeam::None;
+	bool bExploded = false;
+	FTimerHandle FuseTimer;
+
+public:
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+};
+
 /**
  * A travelling energy bolt.
  *

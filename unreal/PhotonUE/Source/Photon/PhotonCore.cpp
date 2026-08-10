@@ -8,6 +8,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "EngineUtils.h"
 
 // UNVERIFIED: no C++ toolchain on this machine, so this has never been compiled.
 // See docs/UNREAL_STAGE0.md.
@@ -58,6 +59,169 @@ float UPhotonWeaponData::ResolveDamage(float DistanceCm) const
 	const float Span = FMath::Max(1.f, FalloffEnd - FalloffStart);
 	const float Alpha = (DistanceCm - FalloffStart) / Span;
 	return Damage * FMath::Lerp(1.f, MinDamageScale, Alpha);
+}
+
+float UPhotonGrenadeData::ResolveExplosionDamage(float DistanceCm) const
+{
+	if (DistanceCm >= ExplosionRadius)
+	{
+		return MaxDamage * MinDamageScale;
+	}
+	const float Alpha = DistanceCm / FMath::Max(1.f, ExplosionRadius);
+	return MaxDamage * FMath::Lerp(1.f, MinDamageScale, Alpha);
+}
+
+// ---------------------------------------------------------------------------------------------
+// APhotonGrenade
+// ---------------------------------------------------------------------------------------------
+
+APhotonGrenade::APhotonGrenade()
+{
+	bReplicates = true;
+	SetReplicateMovement(true);
+
+	Collision = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
+	Collision->InitSphereRadius(12.f);
+	Collision->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	Collision->SetNotifyRigidBodyCollision(true);
+	RootComponent = Collision;
+
+	Movement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));
+	Movement->SetUpdatedComponent(Collision);
+	Movement->bRotationFollowsVelocity = true;
+	Movement->ProjectileGravityScale = 1.f;
+	Movement->bShouldBounce = true;
+
+	Glow = CreateDefaultSubobject<UPointLightComponent>(TEXT("Glow"));
+	Glow->SetupAttachment(Collision);
+	Glow->SetIntensity(1800.f);
+	Glow->SetAttenuationRadius(220.f);
+	Glow->SetCastShadows(false);
+
+	ExplosionFlash = CreateDefaultSubobject<UPointLightComponent>(TEXT("ExplosionFlash"));
+	ExplosionFlash->SetupAttachment(Collision);
+	ExplosionFlash->SetIntensity(0.f);
+	ExplosionFlash->SetAttenuationRadius(600.f);
+	ExplosionFlash->SetCastShadows(false);
+	ExplosionFlash->SetVisibility(false);
+}
+
+void APhotonGrenade::InitialiseFrom(const UPhotonGrenadeData* InData, EPhotonTeam InTeam,
+	AController* InInstigator, const FVector& InitialVelocity)
+{
+	Data = InData;
+	Team = InTeam;
+	SetInstigator(InInstigator ? InInstigator->GetPawn() : nullptr);
+	if (!Data)
+	{
+		return;
+	}
+
+	const FLinearColor Colour = PhotonTeamColor(InTeam);
+	if (Glow)
+	{
+		Glow->SetLightColor(Colour);
+	}
+	Movement->ProjectileGravityScale = 1.f;
+	Movement->Bounciness = Data->Bounciness;
+	Movement->Friction = 0.4f;
+	Movement->Velocity = InitialVelocity;
+	Movement->UpdateComponentVelocity();
+
+	if (HasActorBegunPlay())
+	{
+		ArmFuse();
+	}
+}
+
+void APhotonGrenade::BeginPlay()
+{
+	Super::BeginPlay();
+	Collision->OnComponentHit.AddDynamic(this, &APhotonGrenade::OnHit);
+	if (Data)
+	{
+		ArmFuse();
+	}
+}
+
+void APhotonGrenade::ArmFuse()
+{
+	if (!Data || !GetWorld() || bExploded)
+	{
+		return;
+	}
+	GetWorldTimerManager().ClearTimer(FuseTimer);
+	GetWorldTimerManager().SetTimer(FuseTimer, this, &APhotonGrenade::Explode, Data->FuseTime, false);
+}
+
+void APhotonGrenade::OnHit(UPrimitiveComponent*, AActor* OtherActor, UPrimitiveComponent*, FVector,
+	const FHitResult&)
+{
+	if (OtherActor && OtherActor == GetOwner())
+	{
+		return;
+	}
+	// Bounce is handled by UProjectileMovementComponent; fuse keeps running.
+}
+
+void APhotonGrenade::Explode()
+{
+	if (bExploded || !GetWorld())
+	{
+		return;
+	}
+	bExploded = true;
+	GetWorldTimerManager().ClearTimer(FuseTimer);
+
+	if (HasAuthority() && Data)
+	{
+		for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+		{
+			AActor* Other = *It;
+			if (!Other || Other == this || Other == GetOwner())
+			{
+				continue;
+			}
+			const float Dist = FVector::Dist(GetActorLocation(), Other->GetActorLocation());
+			if (Dist > Data->ExplosionRadius)
+			{
+				continue;
+			}
+			if (UPhotonHealthComponent* Health = Other->FindComponentByClass<UPhotonHealthComponent>())
+			{
+				Health->ApplyPhotonDamage(
+					Data->ResolveExplosionDamage(Dist), Team, GetInstigatorController());
+			}
+		}
+	}
+
+	if (ExplosionFlash)
+	{
+		ExplosionFlash->SetVisibility(true);
+		ExplosionFlash->SetLightColor(PhotonTeamColor(Team));
+		ExplosionFlash->SetIntensity(45000.f);
+	}
+	if (Glow)
+	{
+		Glow->SetIntensity(0.f);
+	}
+	Movement->StopMovementImmediately();
+
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY grenade exploded team=%d radius=%.0f"),
+		static_cast<int32>(Team), Data ? Data->ExplosionRadius : 0.f);
+
+	SetLifeSpan(0.05f);
+}
+
+float APhotonGrenade::GetSpeed() const
+{
+	return Movement ? Movement->Velocity.Size() : 0.f;
+}
+
+void APhotonGrenade::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(APhotonGrenade, Team);
 }
 
 // ---------------------------------------------------------------------------------------------

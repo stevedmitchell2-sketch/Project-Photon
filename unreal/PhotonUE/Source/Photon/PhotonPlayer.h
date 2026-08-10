@@ -87,6 +87,7 @@ protected:
 	void OnFire(const FInputActionValue& Value);
 	void OnWeaponSwitch(const FInputActionValue& Value);
 	void OnWeaponSelect(const FInputActionValue& Value);
+	void OnGrenade(const FInputActionValue& Value);
 
 	bool bSprintHeld = false;
 };

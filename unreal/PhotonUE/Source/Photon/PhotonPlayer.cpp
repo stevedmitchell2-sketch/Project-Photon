@@ -116,6 +116,7 @@ void APhotonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	Bind("IA_Fire", ETriggerEvent::Triggered, &APhotonCharacter::OnFire, this);
 	Bind("IA_WeaponSwitch", ETriggerEvent::Started, &APhotonCharacter::OnWeaponSwitch, this);
 	Bind("IA_WeaponSelect", ETriggerEvent::Started, &APhotonCharacter::OnWeaponSelect, this);
+	Bind("IA_Grenade", ETriggerEvent::Started, &APhotonCharacter::OnGrenade, this);
 
 	// Counted, not assumed. The first version logged "input bound" unconditionally and was reported as
 	// verified while all eight binds were failing.
@@ -213,6 +214,49 @@ void APhotonCharacter::OnWeaponSelect(const FInputActionValue& Value)
 	{
 		Inventory->EquipNext();
 	}
+}
+
+void APhotonCharacter::OnGrenade(const FInputActionValue&)
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+	UPhotonGrenadeData* const GrenadeData = LoadObject<UPhotonGrenadeData>(nullptr,
+		TEXT("/Game/Photon/Weapons/DA_PhotonGrenade.DA_PhotonGrenade"));
+	if (!GrenadeData)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Photon] grenade data asset missing"));
+		return;
+	}
+
+	FVector EyeLoc;
+	FRotator EyeRot;
+	GetActorEyesViewPoint(EyeLoc, EyeRot);
+	const FVector Forward = EyeRot.Vector();
+	const FVector SpawnLoc = EyeLoc + Forward * 42.f;
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.Instigator = this;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	APhotonGrenade* Grenade = GetWorld()->SpawnActor<APhotonGrenade>(
+		APhotonGrenade::StaticClass(), SpawnLoc, EyeRot, Params);
+	if (!Grenade)
+	{
+		return;
+	}
+
+	EPhotonTeam ThrowTeam = EPhotonTeam::None;
+	if (Health)
+	{
+		ThrowTeam = Health->Team;
+	}
+	const FVector Velocity = Forward * GrenadeData->ThrowSpeed + FVector(0.f, 0.f, 1.f) * GrenadeData->ThrowUpwardBoost;
+	Grenade->InitialiseFrom(GrenadeData, ThrowTeam, GetController(), Velocity);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY grenade thrown speed=%.0f fuse=%.2f"),
+		Grenade->GetSpeed(), Grenade->GetFuseTime());
 }
 
 void APhotonCharacter::RunSelfTest()
@@ -364,6 +408,33 @@ void APhotonCharacter::RunSelfTest()
 	Check(TEXT("target_dies_at_zero_health"), Target->IsDown());
 	Target->ResetTarget();
 	Check(TEXT("target_reset_restores_health"), !Target->IsDown() && Target->GetHealth() > 0.f);
+
+	// --- Grenade foundation ------------------------------------------------------------------------
+	UPhotonGrenadeData* GrenadeData = LoadObject<UPhotonGrenadeData>(nullptr,
+		TEXT("/Game/Photon/Weapons/DA_PhotonGrenade.DA_PhotonGrenade"));
+	Check(TEXT("grenade_data_loaded"), GrenadeData != nullptr);
+	Check(TEXT("grenade_fuse_valid"), GrenadeData && GrenadeData->FuseTime > 0.f);
+	Check(TEXT("grenade_throw_speed_valid"), GrenadeData && GrenadeData->ThrowSpeed > 100.f);
+
+	const FVector ThrowOrigin = GetActorLocation() + GetActorForwardVector() * 120.f + FVector(0.f, 0.f, 80.f);
+	APhotonGrenade* Grenade = GetWorld()->SpawnActor<APhotonGrenade>(
+		APhotonGrenade::StaticClass(), ThrowOrigin, GetControlRotation());
+	Check(TEXT("grenade_spawned"), Grenade != nullptr);
+	if (Grenade && GrenadeData)
+	{
+		const FVector ThrowVel = GetActorForwardVector() * GrenadeData->ThrowSpeed + FVector(0.f, 0.f, 400.f);
+		Grenade->InitialiseFrom(GrenadeData, EPhotonTeam::Blue, GetController(), ThrowVel);
+		Check(TEXT("grenade_velocity_nonzero"), Grenade->GetSpeed() > 100.f);
+		Check(TEXT("grenade_team_preserved"), Grenade->GetTeam() == EPhotonTeam::Blue);
+
+		const FVector BlastCenter = Target->GetActorLocation();
+		Grenade->SetActorLocation(BlastCenter);
+		Target->ResetTarget();
+		const float GrenadeHealthBefore = Target->GetHealth();
+		Grenade->Explode();
+		Check(TEXT("grenade_exploded"), Grenade->HasExploded());
+		Check(TEXT("grenade_damage_via_explosion"), Target->GetHealth() < GrenadeHealthBefore);
+	}
 
 	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST ==== self-test complete ===="));
 
