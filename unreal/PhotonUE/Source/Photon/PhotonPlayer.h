@@ -68,6 +68,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
 	TObjectPtr<class UStaticMeshComponent> LeftArmProxy;
 
+	/** Visible first-person weapon mesh — lives on the pawn, not the weapon logic actor. */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UStaticMeshComponent> WeaponViewMesh;
+
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonInventoryComponent> Inventory;
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonHealthComponent> Health;
 
@@ -158,4 +162,19 @@ class PHOTON_API APhotonGameMode : public AGameModeBase
 
 public:
 	APhotonGameMode();
+
+protected:
+	virtual void BeginPlay() override;
+
+	/**
+	 * Headless visual capture, enabled with -PhotonShot.
+	 *
+	 * Visual work cannot be verified by assertions, and stopping for a manual PIE session after every
+	 * material change is not a workable loop. This renders a real frame to Saved/Screenshots and exits.
+	 */
+	void CapturePhotonShot();
+	void ExitAfterPhotonShot();
+
+	/** Hold a few live bolts in front of the camera so -PhotonShot can verify projectile readability. */
+	void StagePhotonShotFX();
 };

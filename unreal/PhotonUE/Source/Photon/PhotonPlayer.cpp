@@ -15,6 +15,8 @@
 #include "TimerManager.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
+#include "UnrealClient.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 
 // ---------------------------------------------------------------------------------------------
 // APhotonCharacter
@@ -34,11 +36,11 @@ APhotonCharacter::APhotonCharacter()
 	// The controller drives the camera directly — this is what makes it a first-person camera rather
 	// than a camera that happens to sit inside the character.
 	Camera->bUsePawnControlRotation = true;
+	PhotonVisuals::ConfigureFirstPersonCamera(Camera);
 
 	// TEMPORARY FIRST-PERSON PRESENTATION PROXY — shoulder/arm/hand chain until rigged FP arms exist.
 	FirstPersonPresentationRoot = CreateDefaultSubobject<USceneComponent>(TEXT("FP_PresentationRoot"));
 	FirstPersonPresentationRoot->SetupAttachment(Camera);
-	FirstPersonPresentationRoot->SetRelativeLocation(FVector(8.f, 0.f, -14.f));
 
 	auto SetupArmProxy = [](UStaticMeshComponent* Arm, USceneComponent* Parent,
 		const FVector& Loc, const FRotator& Rot, const FVector& Scale)
@@ -58,21 +60,31 @@ APhotonCharacter::APhotonCharacter()
 			Arm->SetStaticMesh(Cylinder);
 		}
 		PhotonVisuals::ConfigureFirstPersonViewModel(Arm);
-		PhotonVisuals::ApplyTint(Arm, FLinearColor(0.34f, 0.37f, 0.42f));
+		// Materials are applied in BeginPlay, not here: /Game/ content is not loadable while the class
+		// default object is being constructed.
 	};
 
+	// Arms sit far enough forward to clear the near clip plane; the cylinder is 100 uu long, so a
+	// 0.30 scale is a 30 uu forearm whose near end stays ~20 uu from the eye.
 	RightArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArmProxy"));
 	SetupArmProxy(RightArmProxy, FirstPersonPresentationRoot,
-		FVector(6.f, 18.f, -10.f), FRotator(-15.f, 70.f, 10.f), FVector(0.07f, 0.07f, 0.38f));
+		FVector(34.f, 13.f, -15.f), FRotator(-72.f, -12.f, 0.f), FVector(0.09f, 0.09f, 0.30f));
 
 	LeftArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftArmProxy"));
 	SetupArmProxy(LeftArmProxy, FirstPersonPresentationRoot,
-		FVector(6.f, -14.f, -12.f), FRotator(-10.f, 55.f, -8.f), FVector(0.06f, 0.06f, 0.32f));
+		FVector(32.f, -10.f, -17.f), FRotator(-68.f, 14.f, 0.f), FVector(0.085f, 0.085f, 0.26f));
 
+	// Parented to the camera, NOT to an arm proxy: component scale is inherited, so hanging the
+	// weapon off a 0.09-scaled cylinder crushed the data-driven 0.34 hip scale to 0.03 and pushed the
+	// mesh inside the near clip plane. That is what made the gun invisible while it still fired.
 	WeaponRoot = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponRoot"));
-	WeaponRoot->SetupAttachment(RightArmProxy);
-	WeaponRoot->SetRelativeLocation(FVector(32.f, 6.f, -4.f));
-	WeaponRoot->SetRelativeRotation(FRotator(8.f, -8.f, 0.f));
+	WeaponRoot->SetupAttachment(Camera);
+
+	WeaponViewMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponViewMesh"));
+	WeaponViewMesh->SetupAttachment(WeaponRoot);
+	WeaponViewMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponViewMesh->SetCastShadow(false);
+	PhotonVisuals::ConfigureFirstPersonViewModel(WeaponViewMesh);
 
 	Inventory = CreateDefaultSubobject<UPhotonInventoryComponent>(TEXT("Inventory"));
 	Health = CreateDefaultSubobject<UPhotonHealthComponent>(TEXT("Health"));
@@ -115,18 +127,34 @@ void APhotonCharacter::BeginPlay()
 	if (Camera)
 	{
 		Camera->SetRelativeLocation(FVector(0.f, 0.f, EyeHeight));
+		PhotonVisuals::ConfigureFirstPersonCamera(Camera);
 	}
 	if (IsLocallyControlled())
 	{
 		if (RightArmProxy)
 		{
 			PhotonVisuals::ConfigureFirstPersonViewModel(RightArmProxy);
-			PhotonVisuals::ApplyTint(RightArmProxy, FLinearColor(0.34f, 0.37f, 0.42f));
+			// TEMPORARY ARM PROXIES. Lifted well above the arena's structural value so they read as the
+		// player's own hardware against the dark court rather than as black silhouettes.
+		// REPLACEMENT POINT: swap these two cylinders for the rigged Photon robot arm skeletal mesh.
+		// Everything else stays — the hierarchy Camera > FirstPersonPresentationRoot > RightArmProxy >
+		// WeaponRoot > Weapon is what the weapon pose depends on.
+		PhotonVisuals::ApplySurface(RightArmProxy, EPhotonSurface::Structure,
+				FLinearColor(0.20f, 0.215f, 0.245f));
 		}
 		if (LeftArmProxy)
 		{
 			PhotonVisuals::ConfigureFirstPersonViewModel(LeftArmProxy);
-			PhotonVisuals::ApplyTint(LeftArmProxy, FLinearColor(0.30f, 0.33f, 0.38f));
+			PhotonVisuals::ApplySurface(LeftArmProxy, EPhotonSurface::Structure,
+				FLinearColor(0.175f, 0.19f, 0.22f));
+		}
+		if (WeaponViewMesh)
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(WeaponViewMesh);
+		}
+		if (Inventory)
+		{
+			Inventory->RefreshWeaponPresentation();
 		}
 	}
 	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonSelfTest")))
@@ -424,10 +452,51 @@ void APhotonCharacter::RunSelfTest()
 		PH9->Data->RecoilKickOffset.X < 0.f);
 	Check(TEXT("fp_presentation_root_attached"),
 		FirstPersonPresentationRoot && FirstPersonPresentationRoot->GetAttachParent() == Camera);
-	Check(TEXT("fp_weapon_attached_to_arm_proxy"),
-		WeaponRoot && RightArmProxy && WeaponRoot->GetAttachParent() == RightArmProxy);
+	Check(TEXT("fp_camera_first_person_enabled"),
+		Camera && Camera->bEnableFirstPersonFieldOfView && Camera->bEnableFirstPersonScale);
+	Check(TEXT("fp_weapon_view_mesh_attached"),
+		WeaponViewMesh && WeaponViewMesh->GetAttachParent() == WeaponRoot);
+	// Attaching WeaponRoot under a scaled arm proxy silently multiplied the hip scale down to ~0.03
+	// and hid the weapon inside the near clip plane, so the parent is asserted, not assumed.
+	Check(TEXT("fp_weapon_root_parented_to_camera"),
+		WeaponRoot && WeaponRoot->GetAttachParent() == Camera);
 	Check(TEXT("photon_solid_material_loaded"), PhotonVisuals::GetSolidMaterial() != nullptr);
+	// Not "a material loaded" but "a PHOTON material loaded". Falling back to BasicShapeMaterial is
+	// what made every tint a silent no-op and the whole arena flat white.
+	Check(TEXT("photon_structure_material_resolved"),
+		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Structure)));
+	Check(TEXT("photon_floor_material_resolved"),
+		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Floor)));
+	Check(TEXT("photon_cover_material_resolved"),
+		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Cover)));
+	Check(TEXT("photon_energy_material_resolved"),
+		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Energy)));
 	Check(TEXT("weapon_mesh_renderable"), PH6 && PH6->HasRenderableMesh());
+	Check(TEXT("weapon_view_mesh_renderable"),
+		WeaponViewMesh && WeaponViewMesh->GetStaticMesh() && WeaponViewMesh->IsVisible());
+
+	// "Has a mesh and is visible" is not the same as "can be seen". The invisible-gun regression
+	// passed both of those while the mesh was scaled to 3% and sitting behind the near clip plane,
+	// so the effective world scale and the eye distance are asserted directly.
+	if (WeaponViewMesh && Camera)
+	{
+		const float WorldScale = WeaponViewMesh->GetComponentScale().X;
+		Check(TEXT("weapon_view_mesh_world_scale_sane"), WorldScale > 0.2f && WorldScale < 0.7f);
+
+		const float EyeDistance = FVector::Dist(
+			WeaponViewMesh->GetComponentLocation(), Camera->GetComponentLocation());
+		Check(TEXT("weapon_view_mesh_clears_near_plane"), EyeDistance > 15.f && EyeDistance < 200.f);
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] PHOTONTEST viewmesh world_scale=%.3f eye_distance=%.1f"),
+			WorldScale, EyeDistance);
+	}
+
+	if (RightArmProxy && Camera)
+	{
+		const float ArmDistance = FVector::Dist(
+			RightArmProxy->GetComponentLocation(), Camera->GetComponentLocation());
+		Check(TEXT("arm_proxy_clears_near_plane"), ArmDistance > 15.f);
+	}
 	Check(TEXT("arm_proxy_renderable"),
 		RightArmProxy && RightArmProxy->GetStaticMesh() && RightArmProxy->IsVisible());
 
@@ -929,4 +998,83 @@ APhotonGameMode::APhotonGameMode()
 {
 	DefaultPawnClass = APhotonCharacter::StaticClass();
 	PlayerControllerClass = APhotonPlayerController::StaticClass();
+}
+
+void APhotonGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+	PhotonVisuals::BootstrapArenaVisuals(GetWorld());
+
+	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonShot")))
+	{
+		// Delayed so Lumen, auto-exposure and streaming have all settled before the frame is captured.
+		FTimerHandle ShotTimer;
+		GetWorldTimerManager().SetTimer(ShotTimer, this, &APhotonGameMode::CapturePhotonShot, 4.f, false);
+	}
+}
+
+void APhotonGameMode::StagePhotonShotFX()
+{
+	UWorld* World = GetWorld();
+	APhotonCharacter* Character = World ? World->GetFirstPlayerController()
+		? Cast<APhotonCharacter>(World->GetFirstPlayerController()->GetPawn()) : nullptr : nullptr;
+	if (!Character || !Character->Inventory)
+	{
+		return;
+	}
+
+	APhotonWeapon* Weapon = Character->Inventory->GetActiveWeapon();
+	const UPhotonWeaponData* WeaponData = Weapon ? Weapon->Data : nullptr;
+	if (!WeaponData)
+	{
+		return;
+	}
+
+	// Bolts are staged rather than fired: at 15000 uu/s a live bolt has left the arena long before the
+	// next frame is captured, so movement is stopped and they are held in view for the screenshot.
+	const FVector Origin = Character->Camera->GetComponentLocation();
+	const FVector Forward = Character->Camera->GetForwardVector();
+	for (int32 i = 0; i < 3; ++i)
+	{
+		const FVector Where = Origin + Forward * (350.f + i * 320.f) + FVector(0.f, 0.f, -20.f);
+		APhotonProjectile* Bolt = World->SpawnActor<APhotonProjectile>(
+			APhotonProjectile::StaticClass(), Where, Forward.Rotation());
+		if (!Bolt)
+		{
+			continue;
+		}
+		const EPhotonTeam Team = Character->Health ? Character->Health->Team : EPhotonTeam::Blue;
+		Bolt->InitialiseFrom(WeaponData, Team, Character->GetController());
+		if (UProjectileMovementComponent* Move = Bolt->FindComponentByClass<UProjectileMovementComponent>())
+		{
+			Move->StopMovementImmediately();
+			Move->ProjectileGravityScale = 0.f;
+		}
+		Bolt->SetLifeSpan(0.f);
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONSHOT staged bolts for capture"));
+}
+
+void APhotonGameMode::CapturePhotonShot()
+{
+	// Re-applied here so a -ExecCmds exposure override, which is parsed after BeginPlay, is honoured.
+	PhotonVisuals::RefreshArenaPostProcess(GetWorld());
+
+	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonShotFX")))
+	{
+		StagePhotonShotFX();
+	}
+
+	FScreenshotRequest::RequestScreenshot(TEXT("PhotonSprint"), false, false);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONSHOT requested -> %s"), *FScreenshotRequest::GetFilename());
+
+	FTimerHandle QuitTimer;
+	GetWorldTimerManager().SetTimer(QuitTimer, this, &APhotonGameMode::ExitAfterPhotonShot, 2.f, false);
+}
+
+void APhotonGameMode::ExitAfterPhotonShot()
+{
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONSHOT complete, exiting"));
+	FPlatformMisc::RequestExit(false);
 }

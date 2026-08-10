@@ -55,6 +55,9 @@ public:
 	/** Clears burst latch so the next trigger press may fire again. Called on fire input release. */
 	void NotifyFireReleased();
 
+	/** Copies this weapon's mesh/pose onto the owning pawn's WeaponViewMesh (visible FP model). */
+	void SyncViewMesh(APhotonCharacter* OwnerChar);
+
 	/** Seconds until the next shot is permitted; 0 when ready. */
 	float GetCooldownRemaining() const;
 
@@ -65,7 +68,7 @@ public:
 	/** Self-test accessors — not gameplay API. */
 	bool HasMuzzleFlashLight() const { return MuzzleFlash != nullptr; }
 	bool HasActiveRecoil() const { return !WeaponRecoilOffset.IsNearlyZero() || !WeaponRecoilRotation.IsNearlyZero(0.05f); }
-	bool HasRenderableMesh() const { return Mesh && Mesh->GetStaticMesh() && Mesh->IsVisible(); }
+	bool HasRenderableMesh() const { return Mesh && Mesh->GetStaticMesh() != nullptr; }
 	FVector GetMuzzleOffsetLocal() const { return Data ? Data->MuzzleOffset : FVector::ZeroVector; }
 	float GetHipUniformScale() const { return Data ? Data->HipTransform.GetScale3D().X : 0.f; }
 
@@ -128,6 +131,9 @@ public:
 
 	/** Name of the active weapon's data asset, for logging and HUD. */
 	FName GetActiveWeaponId() const;
+
+	/** Refreshes which weapon mesh is drawn on the pawn. */
+	void RefreshWeaponPresentation();
 
 protected:
 	virtual void BeginPlay() override;

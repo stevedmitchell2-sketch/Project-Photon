@@ -49,6 +49,8 @@ void APhotonWeapon::InitialiseFromData(const UPhotonWeaponData* InData)
 	{
 		Mesh->SetStaticMesh(Data->Mesh);
 	}
+	Mesh->SetVisibility(false, true);
+	Mesh->SetHiddenInGame(true);
 	PhotonVisuals::ConfigureFirstPersonViewModel(Mesh);
 	PhotonVisuals::ApplyTint(Mesh, FLinearColor(0.55f, 0.60f, 0.68f));
 	// The first-person pose is authored per weapon in the data asset, so a longer or shorter weapon
@@ -74,6 +76,35 @@ void APhotonWeapon::UpdateWeaponPose()
 	}
 	const FTransform Kick(WeaponRecoilRotation, WeaponRecoilOffset);
 	Mesh->SetRelativeTransform(Kick * HipPose);
+	if (APhotonCharacter* OwnerChar = Cast<APhotonCharacter>(GetOwner()))
+	{
+		if (UStaticMeshComponent* View = OwnerChar->WeaponViewMesh)
+		{
+			View->SetRelativeTransform(Mesh->GetRelativeTransform());
+		}
+	}
+}
+
+void APhotonWeapon::SyncViewMesh(APhotonCharacter* OwnerChar)
+{
+	if (!OwnerChar || !OwnerChar->WeaponViewMesh || !Data)
+	{
+		return;
+	}
+	UStaticMeshComponent* View = OwnerChar->WeaponViewMesh;
+	if (Data->Mesh)
+	{
+		View->SetStaticMesh(Data->Mesh);
+	}
+	else if (Mesh && Mesh->GetStaticMesh())
+	{
+		View->SetStaticMesh(Mesh->GetStaticMesh());
+	}
+	PhotonVisuals::ConfigureFirstPersonViewModel(View);
+	PhotonVisuals::ApplyTint(View, FLinearColor(0.55f, 0.60f, 0.68f), 0.35f);
+	UpdateWeaponPose();
+	View->SetVisibility(true, true);
+	View->SetHiddenInGame(false);
 }
 
 void APhotonWeapon::PulseMuzzleFlash()
@@ -386,6 +417,7 @@ bool UPhotonInventoryComponent::EquipNext()
 
 void UPhotonInventoryComponent::ApplyActiveVisibility()
 {
+	APhotonCharacter* OwnerChar = Cast<APhotonCharacter>(GetOwner());
 	for (int32 i = 0; i < Weapons.Num(); ++i)
 	{
 		if (Weapons[i])
@@ -393,6 +425,23 @@ void UPhotonInventoryComponent::ApplyActiveVisibility()
 			Weapons[i]->SetActorHiddenInGame(i != ActiveIndex);
 		}
 	}
+	if (OwnerChar && OwnerChar->WeaponViewMesh)
+	{
+		if (APhotonWeapon* Active = GetActiveWeapon())
+		{
+			Active->SyncViewMesh(OwnerChar);
+		}
+		else
+		{
+			OwnerChar->WeaponViewMesh->SetVisibility(false, true);
+			OwnerChar->WeaponViewMesh->SetHiddenInGame(true);
+		}
+	}
+}
+
+void UPhotonInventoryComponent::RefreshWeaponPresentation()
+{
+	ApplyActiveVisibility();
 }
 
 void UPhotonInventoryComponent::OnRep_ActiveIndex()
