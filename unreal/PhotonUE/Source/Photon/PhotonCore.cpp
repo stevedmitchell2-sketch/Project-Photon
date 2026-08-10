@@ -1,4 +1,5 @@
 #include "PhotonCore.h"
+#include "PhotonVisuals.h"
 
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -98,6 +99,16 @@ APhotonGrenade::APhotonGrenade()
 	Glow->SetAttenuationRadius(220.f);
 	Glow->SetCastShadows(false);
 
+	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
+	Body->SetupAttachment(Collision);
+	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Body->SetCastShadow(false);
+	if (UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")))
+	{
+		Body->SetStaticMesh(Sphere);
+	}
+	Body->SetRelativeScale3D(FVector(0.24f));
+
 	ExplosionFlash = CreateDefaultSubobject<UPointLightComponent>(TEXT("ExplosionFlash"));
 	ExplosionFlash->SetupAttachment(Collision);
 	ExplosionFlash->SetIntensity(0.f);
@@ -121,6 +132,10 @@ void APhotonGrenade::InitialiseFrom(const UPhotonGrenadeData* InData, EPhotonTea
 	if (Glow)
 	{
 		Glow->SetLightColor(Colour);
+	}
+	if (Body)
+	{
+		PhotonVisuals::ApplyEnergyTint(Body, Colour);
 	}
 	Movement->ProjectileGravityScale = 1.f;
 	Movement->Bounciness = Data->Bounciness;
@@ -269,6 +284,11 @@ bool APhotonProjectile::HasVisibleRepresentation() const
 	return Body != nullptr && Body->GetStaticMesh() != nullptr && Body->IsVisible();
 }
 
+bool APhotonProjectile::HasTintedMaterial() const
+{
+	return Body != nullptr && Body->GetMaterial(0) != nullptr;
+}
+
 float APhotonProjectile::GetSpeed() const
 {
 	return Movement ? Movement->Velocity.Size() : 0.f;
@@ -295,11 +315,7 @@ void APhotonProjectile::InitialiseFrom(const UPhotonWeaponData* Data, EPhotonTea
 	}
 	if (Body)
 	{
-		if (UMaterialInstanceDynamic* MID = Body->CreateAndSetMaterialInstanceDynamic(0))
-		{
-			MID->SetVectorParameterValue(TEXT("Color"), Colour);
-			MID->SetVectorParameterValue(TEXT("BaseColor"), Colour);
-		}
+		PhotonVisuals::ApplyEnergyTint(Body, Colour);
 		// A faster weapon gets a longer bolt, so PH-6 and PH-9 fire is visually distinguishable.
 		const float Stretch = FMath::GetMappedRangeValueClamped(
 			FVector2D(15000.f, 45000.f), FVector2D(0.26f, 0.62f), Data->ProjectileSpeed);

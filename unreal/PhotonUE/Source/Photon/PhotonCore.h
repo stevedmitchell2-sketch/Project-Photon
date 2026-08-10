@@ -244,6 +244,7 @@ protected:
 
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USphereComponent> Collision;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UProjectileMovementComponent> Movement;
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> Glow;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> ExplosionFlash;
 
@@ -316,6 +317,7 @@ protected:
 public:
 	/** True only when the bolt has geometry that is actually being drawn. */
 	bool HasVisibleRepresentation() const;
+	bool HasTintedMaterial() const;
 	float GetSpeed() const;
 	FVector GetSpawnLocation() const { return SpawnLocation; }
 protected:

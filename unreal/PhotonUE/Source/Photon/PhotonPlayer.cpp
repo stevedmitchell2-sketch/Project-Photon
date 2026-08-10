@@ -10,6 +10,7 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "PhotonCore.h"
+#include "PhotonVisuals.h"
 #include "PhotonWeapon.h"
 #include "TimerManager.h"
 #include "EngineUtils.h"
@@ -56,6 +57,8 @@ APhotonCharacter::APhotonCharacter()
 		{
 			Arm->SetStaticMesh(Cylinder);
 		}
+		PhotonVisuals::ConfigureFirstPersonViewModel(Arm);
+		PhotonVisuals::ApplyTint(Arm, FLinearColor(0.34f, 0.37f, 0.42f));
 	};
 
 	RightArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArmProxy"));
@@ -81,11 +84,11 @@ APhotonCharacter::APhotonCharacter()
 	}
 	if (RightArmProxy)
 	{
-		RightArmProxy->SetOnlyOwnerSee(true);
+		PhotonVisuals::ConfigureFirstPersonViewModel(RightArmProxy);
 	}
 	if (LeftArmProxy)
 	{
-		LeftArmProxy->SetOnlyOwnerSee(true);
+		PhotonVisuals::ConfigureFirstPersonViewModel(LeftArmProxy);
 	}
 
 	UCharacterMovementComponent* Move = GetCharacterMovement();
@@ -112,6 +115,19 @@ void APhotonCharacter::BeginPlay()
 	if (Camera)
 	{
 		Camera->SetRelativeLocation(FVector(0.f, 0.f, EyeHeight));
+	}
+	if (IsLocallyControlled())
+	{
+		if (RightArmProxy)
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(RightArmProxy);
+			PhotonVisuals::ApplyTint(RightArmProxy, FLinearColor(0.34f, 0.37f, 0.42f));
+		}
+		if (LeftArmProxy)
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(LeftArmProxy);
+			PhotonVisuals::ApplyTint(LeftArmProxy, FLinearColor(0.30f, 0.33f, 0.38f));
+		}
 	}
 	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonSelfTest")))
 	{
@@ -410,6 +426,10 @@ void APhotonCharacter::RunSelfTest()
 		FirstPersonPresentationRoot && FirstPersonPresentationRoot->GetAttachParent() == Camera);
 	Check(TEXT("fp_weapon_attached_to_arm_proxy"),
 		WeaponRoot && RightArmProxy && WeaponRoot->GetAttachParent() == RightArmProxy);
+	Check(TEXT("photon_solid_material_loaded"), PhotonVisuals::GetSolidMaterial() != nullptr);
+	Check(TEXT("weapon_mesh_renderable"), PH6 && PH6->HasRenderableMesh());
+	Check(TEXT("arm_proxy_renderable"),
+		RightArmProxy && RightArmProxy->GetStaticMesh() && RightArmProxy->IsVisible());
 
 	const int32 Before = PH9 ? PH9->ShotsFired : -1;
 	Check(TEXT("fire_ph9_accepted"), PH9 && PH9->TryFire(this));
@@ -435,6 +455,7 @@ void APhotonCharacter::RunSelfTest()
 
 	// A bolt nobody can see is not a working projectile, and neither is one that is not moving.
 	Check(TEXT("projectile_has_visible_body"), Sample && Sample->HasVisibleRepresentation());
+	Check(TEXT("projectile_has_tinted_material"), Sample && Sample->HasTintedMaterial());
 	Check(TEXT("projectile_velocity_nonzero"), Sample && Sample->GetSpeed() > 1.f);
 	Check(TEXT("projectile_instigator_is_shooter"), Sample && Sample->GetInstigator() == this);
 	Check(TEXT("projectile_started_near_muzzle"), Sample && Inventory->GetActiveWeapon() &&

@@ -7,6 +7,7 @@
 #include "Net/UnrealNetwork.h"
 #include "PhotonCore.h"
 #include "PhotonPlayer.h"
+#include "PhotonVisuals.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TimerManager.h"
 #include "GameFramework/PlayerController.h"
@@ -26,6 +27,7 @@ APhotonWeapon::APhotonWeapon()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Mesh->SetCastShadow(false);
 	RootComponent = Mesh;
+	PhotonVisuals::ConfigureFirstPersonViewModel(Mesh);
 
 	MuzzleFlash = CreateDefaultSubobject<UPointLightComponent>(TEXT("MuzzleFlash"));
 	MuzzleFlash->SetupAttachment(Mesh);
@@ -47,6 +49,8 @@ void APhotonWeapon::InitialiseFromData(const UPhotonWeaponData* InData)
 	{
 		Mesh->SetStaticMesh(Data->Mesh);
 	}
+	PhotonVisuals::ConfigureFirstPersonViewModel(Mesh);
+	PhotonVisuals::ApplyTint(Mesh, FLinearColor(0.55f, 0.60f, 0.68f));
 	// The first-person pose is authored per weapon in the data asset, so a longer or shorter weapon
 	// sits correctly without code changes.
 	HipPose = Data->HipTransform;
@@ -334,6 +338,7 @@ void UPhotonInventoryComponent::BuildLoadout()
 			continue;
 		}
 		W->InitialiseFromData(D);
+		PhotonVisuals::ConfigureFirstPersonViewModel(W->Mesh);
 		// Attached to the hand proxy on the TEMPORARY FIRST-PERSON PRESENTATION PROXY hierarchy.
 		W->AttachToComponent(Owner->WeaponRoot, FAttachmentTransformRules::KeepRelativeTransform);
 		W->SetActorHiddenInGame(true);
@@ -446,11 +451,9 @@ void APhotonTarget::BeginPlay()
 		Health->OnDied.AddDynamic(this, &APhotonTarget::HandleDied);
 	}
 	Skin = Mesh ? Mesh->CreateAndSetMaterialInstanceDynamic(0) : nullptr;
-	if (Skin)
+	if (Mesh)
 	{
-		const FLinearColor C = PhotonTeamColor(Team) * 0.35f;
-		Skin->SetVectorParameterValue(TEXT("Color"), C);
-		Skin->SetVectorParameterValue(TEXT("BaseColor"), C);
+		PhotonVisuals::ApplyEnergyTint(Mesh, PhotonTeamColor(Team) * 0.45f);
 	}
 }
 
@@ -478,10 +481,8 @@ void APhotonTarget::HandleDied(AController*)
 
 void APhotonTarget::Flash()
 {
-	if (Skin)
+	if (Mesh)
 	{
-		const FLinearColor C = PhotonTeamColor(Team) * 0.35f;
-		Skin->SetVectorParameterValue(TEXT("Color"), C);
-		Skin->SetVectorParameterValue(TEXT("BaseColor"), C);
+		PhotonVisuals::ApplyEnergyTint(Mesh, PhotonTeamColor(Team) * 0.45f);
 	}
 }

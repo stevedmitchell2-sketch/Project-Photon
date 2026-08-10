@@ -65,6 +65,7 @@ public:
 	/** Self-test accessors — not gameplay API. */
 	bool HasMuzzleFlashLight() const { return MuzzleFlash != nullptr; }
 	bool HasActiveRecoil() const { return !WeaponRecoilOffset.IsNearlyZero() || !WeaponRecoilRotation.IsNearlyZero(0.05f); }
+	bool HasRenderableMesh() const { return Mesh && Mesh->GetStaticMesh() && Mesh->IsVisible(); }
 	FVector GetMuzzleOffsetLocal() const { return Data ? Data->MuzzleOffset : FVector::ZeroVector; }
 	float GetHipUniformScale() const { return Data ? Data->HipTransform.GetScale3D().X : 0.f; }
 
