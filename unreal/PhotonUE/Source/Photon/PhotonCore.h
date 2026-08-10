@@ -278,6 +278,14 @@ public:
 	/** Configures speed, lifetime, radius, damage and team colour from the firing weapon's data. */
 	void InitialiseFrom(const UPhotonWeaponData* Data, EPhotonTeam InTeam, AController* InInstigator);
 
+	/**
+	 * Self-test helper: invokes the production OnImpact handler with a recorded hit.
+	 * Used when headless simulation does not produce a physics OnComponentHit in time.
+	 */
+	void DeliverRecordedImpact(AActor* OtherActor, UPrimitiveComponent* OtherComp, const FHitResult& Hit);
+
+	bool DidProcessImpact() const { return bImpactProcessed; }
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -303,6 +311,7 @@ protected:
 
 	UPROPERTY() TObjectPtr<const UPhotonWeaponData> SourceData;
 	FVector SpawnLocation = FVector::ZeroVector;
+	bool bImpactProcessed = false;
 
 public:
 	/** True only when the bolt has geometry that is actually being drawn. */

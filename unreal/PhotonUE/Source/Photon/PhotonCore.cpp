@@ -322,11 +322,18 @@ void APhotonProjectile::BeginPlay()
 	Collision->OnComponentHit.AddDynamic(this, &APhotonProjectile::OnImpact);
 }
 
+void APhotonProjectile::DeliverRecordedImpact(AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	const FHitResult& Hit)
+{
+	OnImpact(Collision, OtherActor, OtherComp, FVector::ZeroVector, Hit);
+}
+
 void APhotonProjectile::OnImpact(UPrimitiveComponent*, AActor* OtherActor, UPrimitiveComponent*,
 	FVector, const FHitResult& Hit)
 {
+	bImpactProcessed = true;
 	// Damage is server-only. Clients still see the impact because the actor's destruction and the
-	// impact effect are cosmetic and can be spawned locally.
+	// impact effect are cosmetic and can spawn locally.
 	if (HasAuthority() && SourceData && OtherActor)
 	{
 		if (UPhotonHealthComponent* Health = OtherActor->FindComponentByClass<UPhotonHealthComponent>())
