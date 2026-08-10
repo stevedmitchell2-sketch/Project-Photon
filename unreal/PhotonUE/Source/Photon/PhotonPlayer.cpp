@@ -16,6 +16,9 @@
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "UnrealClient.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/Canvas.h"
+#include "Engine/StaticMesh.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 // ---------------------------------------------------------------------------------------------
@@ -38,12 +41,11 @@ APhotonCharacter::APhotonCharacter()
 	Camera->bUsePawnControlRotation = true;
 	PhotonVisuals::ConfigureFirstPersonCamera(Camera);
 
-	// TEMPORARY FIRST-PERSON PRESENTATION PROXY — shoulder/arm/hand chain until rigged FP arms exist.
 	FirstPersonPresentationRoot = CreateDefaultSubobject<USceneComponent>(TEXT("FP_PresentationRoot"));
 	FirstPersonPresentationRoot->SetupAttachment(Camera);
 
-	auto SetupArmProxy = [](UStaticMeshComponent* Arm, USceneComponent* Parent,
-		const FVector& Loc, const FRotator& Rot, const FVector& Scale)
+	auto SetupArm = [](UStaticMeshComponent* Arm, USceneComponent* Parent, const TCHAR* MeshPath,
+		const FVector& Loc, const FRotator& Rot)
 	{
 		if (!Arm)
 		{
@@ -52,27 +54,64 @@ APhotonCharacter::APhotonCharacter()
 		Arm->SetupAttachment(Parent);
 		Arm->SetRelativeLocation(Loc);
 		Arm->SetRelativeRotation(Rot);
-		Arm->SetRelativeScale3D(Scale);
 		Arm->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Arm->SetCastShadow(false);
-		if (UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+		if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, MeshPath))
 		{
-			Arm->SetStaticMesh(Cylinder);
+			Arm->SetStaticMesh(Mesh);
 		}
 		PhotonVisuals::ConfigureFirstPersonViewModel(Arm);
 		// Materials are applied in BeginPlay, not here: /Game/ content is not loadable while the class
 		// default object is being constructed.
 	};
 
-	// Arms sit far enough forward to clear the near clip plane; the cylinder is 100 uu long, so a
-	// 0.30 scale is a 30 uu forearm whose near end stays ~20 uu from the eye.
-	RightArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArmProxy"));
-	SetupArmProxy(RightArmProxy, FirstPersonPresentationRoot,
-		FVector(34.f, 13.f, -15.f), FRotator(-72.f, -12.f, 0.f), FVector(0.09f, 0.09f, 0.30f));
+	// The arms are authored elbow-at-origin running along local +Z, so a rotator's local +Z maps to
+	// (-sin(pitch), 0, cos(pitch)) before yaw. These two poses are solved backwards from where the
+	// hands have to end up: the PH-6 hip transform puts the weapon origin at (44, 14, -12) with the
+	// muzzle ~62 uu ahead of the eye, so the right hand sits on the grip at roughly (40, 14, -14)
+	// and the left hand on the forend at (56, 8, -10). The elbows land 35-45 uu below the eye line,
+	// which is below the frustum — the arms enter frame partway along the forearm, as they should.
+	RightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArm"));
+	SetupArm(RightArm, FirstPersonPresentationRoot,
+		TEXT("/Game/Photon/Meshes/SM_PhotonArmRight.SM_PhotonArmRight"),
+		FVector(16.4f, 17.8f, -43.6f), FRotator(-38.7f, -9.2f, 0.f));
 
-	LeftArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftArmProxy"));
-	SetupArmProxy(LeftArmProxy, FirstPersonPresentationRoot,
-		FVector(32.f, -10.f, -17.f), FRotator(-68.f, 14.f, 0.f), FVector(0.085f, 0.085f, 0.26f));
+	LeftArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftArm"));
+	SetupArm(LeftArm, FirstPersonPresentationRoot,
+		TEXT("/Game/Photon/Meshes/SM_PhotonArmLeft.SM_PhotonArmLeft"),
+		FVector(37.2f, -6.9f, -35.4f), FRotator(-43.9f, 29.5f, 0.f));
+
+	// Viewmodel lighting: channel 1 only, so these two lights touch the arms and the weapon and
+	// nothing in the arena, and the arena's own lights no longer touch the viewmodel.
+	ViewModelKey = CreateDefaultSubobject<UPointLightComponent>(TEXT("ViewModelKey"));
+	ViewModelKey->SetupAttachment(Camera);
+	ViewModelKey->SetRelativeLocation(FVector(28.f, 26.f, 30.f));
+	ViewModelKey->SetIntensityUnits(ELightUnits::Lumens);
+	// Tiny numbers, and correctly so. A point light 30 cm from the arms delivers roughly 200x the
+	// illuminance of a 3200 lm ceiling fixture 8 m up, so arena-scale lumens here render the arms
+	// as a white silhouette. These are solved for the viewmodel sitting a few stops above the room.
+	ViewModelKey->SetIntensity(105.f);
+	ViewModelKey->SetAttenuationRadius(220.f);
+	ViewModelKey->SetLightColor(FLinearColor(0.82f, 0.88f, 1.f));
+	ViewModelKey->SetCastShadows(false);
+
+	ViewModelFill = CreateDefaultSubobject<UPointLightComponent>(TEXT("ViewModelFill"));
+	ViewModelFill->SetupAttachment(Camera);
+	ViewModelFill->SetRelativeLocation(FVector(44.f, -30.f, -26.f));
+	ViewModelFill->SetIntensityUnits(ELightUnits::Lumens);
+	ViewModelFill->SetIntensity(30.f);
+	ViewModelFill->SetAttenuationRadius(200.f);
+	ViewModelFill->SetLightColor(FLinearColor(0.34f, 0.68f, 0.95f));
+	ViewModelFill->SetCastShadows(false);
+
+	for (UPointLightComponent* Light : { ViewModelKey.Get(), ViewModelFill.Get() })
+	{
+		FLightingChannels Channels;
+		Channels.bChannel0 = false;
+		Channels.bChannel1 = true;
+		Channels.bChannel2 = false;
+		Light->SetLightingChannels(Channels.bChannel0, Channels.bChannel1, Channels.bChannel2);
+	}
 
 	// Parented to the camera, NOT to an arm proxy: component scale is inherited, so hanging the
 	// weapon off a 0.09-scaled cylinder crushed the data-driven 0.34 hip scale to 0.03 and pushed the
@@ -94,13 +133,13 @@ APhotonCharacter::APhotonCharacter()
 	{
 		Body->SetOwnerNoSee(true);
 	}
-	if (RightArmProxy)
+	if (RightArm)
 	{
-		PhotonVisuals::ConfigureFirstPersonViewModel(RightArmProxy);
+		PhotonVisuals::ConfigureFirstPersonViewModel(RightArm);
 	}
-	if (LeftArmProxy)
+	if (LeftArm)
 	{
-		PhotonVisuals::ConfigureFirstPersonViewModel(LeftArmProxy);
+		PhotonVisuals::ConfigureFirstPersonViewModel(LeftArm);
 	}
 
 	UCharacterMovementComponent* Move = GetCharacterMovement();
@@ -131,22 +170,19 @@ void APhotonCharacter::BeginPlay()
 	}
 	if (IsLocallyControlled())
 	{
-		if (RightArmProxy)
+		// Competition kit, not armour: a mid-value composite sleeve and a slightly darker glove, both
+		// well above the arena's structural value so the arms read against the dark court.
+		if (RightArm)
 		{
-			PhotonVisuals::ConfigureFirstPersonViewModel(RightArmProxy);
-			// TEMPORARY ARM PROXIES. Lifted well above the arena's structural value so they read as the
-		// player's own hardware against the dark court rather than as black silhouettes.
-		// REPLACEMENT POINT: swap these two cylinders for the rigged Photon robot arm skeletal mesh.
-		// Everything else stays — the hierarchy Camera > FirstPersonPresentationRoot > RightArmProxy >
-		// WeaponRoot > Weapon is what the weapon pose depends on.
-		PhotonVisuals::ApplySurface(RightArmProxy, EPhotonSurface::Structure,
-				FLinearColor(0.20f, 0.215f, 0.245f));
+			PhotonVisuals::ConfigureFirstPersonViewModel(RightArm);
+			PhotonVisuals::ApplySurface(RightArm, EPhotonSurface::Cover,
+				FLinearColor(0.155f, 0.168f, 0.200f));
 		}
-		if (LeftArmProxy)
+		if (LeftArm)
 		{
-			PhotonVisuals::ConfigureFirstPersonViewModel(LeftArmProxy);
-			PhotonVisuals::ApplySurface(LeftArmProxy, EPhotonSurface::Structure,
-				FLinearColor(0.175f, 0.19f, 0.22f));
+			PhotonVisuals::ConfigureFirstPersonViewModel(LeftArm);
+			PhotonVisuals::ApplySurface(LeftArm, EPhotonSurface::Cover,
+				FLinearColor(0.140f, 0.152f, 0.182f));
 		}
 		if (WeaponViewMesh)
 		{
@@ -469,6 +505,8 @@ void APhotonCharacter::RunSelfTest()
 		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Floor)));
 	Check(TEXT("photon_cover_material_resolved"),
 		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Cover)));
+	Check(TEXT("photon_metal_material_resolved"),
+		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Metal)));
 	Check(TEXT("photon_energy_material_resolved"),
 		PhotonVisuals::IsPhotonMaterial(PhotonVisuals::GetSurfaceMaterial(EPhotonSurface::Energy)));
 	Check(TEXT("weapon_mesh_renderable"), PH6 && PH6->HasRenderableMesh());
@@ -491,14 +529,25 @@ void APhotonCharacter::RunSelfTest()
 			WorldScale, EyeDistance);
 	}
 
-	if (RightArmProxy && Camera)
+	if (RightArm && Camera)
 	{
 		const float ArmDistance = FVector::Dist(
-			RightArmProxy->GetComponentLocation(), Camera->GetComponentLocation());
-		Check(TEXT("arm_proxy_clears_near_plane"), ArmDistance > 15.f);
+			RightArm->GetComponentLocation(), Camera->GetComponentLocation());
+		Check(TEXT("arm_clears_near_plane"), ArmDistance > 15.f);
+
+		// The arms are authored geometry now, not scaled cylinders, so the mesh they carry is worth
+		// asserting on: a missing kit asset would otherwise show up only as empty space in frame.
+		const UStaticMesh* ArmMesh = RightArm->GetStaticMesh();
+		Check(TEXT("arm_uses_authored_photon_mesh"),
+			ArmMesh && ArmMesh->GetPathName().Contains(TEXT("/Game/Photon/Meshes/")));
+		Check(TEXT("arm_is_not_engine_primitive"),
+			ArmMesh && !ArmMesh->GetPathName().Contains(TEXT("/Engine/BasicShapes/")));
+		Check(TEXT("left_arm_present"), LeftArm && LeftArm->GetStaticMesh());
+		Check(TEXT("viewmodel_has_dedicated_lighting"),
+			ViewModelKey && ViewModelKey->IsRegistered() && ViewModelKey->Intensity > 0.f);
 	}
-	Check(TEXT("arm_proxy_renderable"),
-		RightArmProxy && RightArmProxy->GetStaticMesh() && RightArmProxy->IsVisible());
+	Check(TEXT("arm_renderable"),
+		RightArm && RightArm->GetStaticMesh() && RightArm->IsVisible());
 
 	const int32 Before = PH9 ? PH9->ShotsFired : -1;
 	Check(TEXT("fire_ph9_accepted"), PH9 && PH9->TryFire(this));
@@ -998,6 +1047,7 @@ APhotonGameMode::APhotonGameMode()
 {
 	DefaultPawnClass = APhotonCharacter::StaticClass();
 	PlayerControllerClass = APhotonPlayerController::StaticClass();
+	HUDClass = APhotonHUD::StaticClass();
 }
 
 void APhotonGameMode::BeginPlay()
@@ -1005,7 +1055,12 @@ void APhotonGameMode::BeginPlay()
 	Super::BeginPlay();
 	PhotonVisuals::BootstrapArenaVisuals(GetWorld());
 
-	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonShot")))
+	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonTour")))
+	{
+		FTimerHandle TourTimer;
+		GetWorldTimerManager().SetTimer(TourTimer, this, &APhotonGameMode::StepPhotonTour, 4.f, false);
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("PhotonShot")))
 	{
 		// Delayed so Lumen, auto-exposure and streaming have all settled before the frame is captured.
 		FTimerHandle ShotTimer;
@@ -1073,8 +1128,119 @@ void APhotonGameMode::CapturePhotonShot()
 	GetWorldTimerManager().SetTimer(QuitTimer, this, &APhotonGameMode::ExitAfterPhotonShot, 2.f, false);
 }
 
+// ---------------------------------------------------------------------------------------------
+// APhotonHUD
+// ---------------------------------------------------------------------------------------------
+
+void APhotonHUD::DrawHUD()
+{
+	Super::DrawHUD();
+	if (!Canvas)
+	{
+		return;
+	}
+
+	// Canvas size, not viewport size: this is already the space DrawRect draws in, so the reticle
+	// lands on the exact centre pixel at any resolution or aspect ratio.
+	const float CentreX = FMath::RoundToFloat(Canvas->SizeX * 0.5f);
+	const float CentreY = FMath::RoundToFloat(Canvas->SizeY * 0.5f);
+	const float Scale = FMath::Max(1.f, Canvas->SizeY / 1080.f);
+
+	const float Gap = CrosshairGap * Scale;
+	const float Len = CrosshairLength * Scale;
+	const float Thick = FMath::Max(1.f, FMath::RoundToFloat(CrosshairThickness * Scale));
+	const float Edge = FMath::Max(1.f, FMath::RoundToFloat(Scale));
+
+	const FLinearColor Ink(0.55f, 0.90f, 1.f, 0.92f);
+	// A dark surround under every segment. Without it the reticle disappears against the coffer
+	// panels and the emissive floor markings, which are the two things most often behind it.
+	const FLinearColor Shadow(0.f, 0.f, 0.f, 0.55f);
+
+	// Left, right, top, bottom. Each is (x, y, width, height) of the lit part.
+	const float Segments[4][4] = {
+		{ CentreX - Gap - Len, CentreY - Thick * 0.5f, Len,   Thick },
+		{ CentreX + Gap,       CentreY - Thick * 0.5f, Len,   Thick },
+		{ CentreX - Thick * 0.5f, CentreY - Gap - Len, Thick, Len   },
+		{ CentreX - Thick * 0.5f, CentreY + Gap,       Thick, Len   },
+	};
+
+	for (const float* S : Segments)
+	{
+		DrawRect(Shadow, S[0] - Edge, S[1] - Edge, S[2] + Edge * 2.f, S[3] + Edge * 2.f);
+	}
+	for (const float* S : Segments)
+	{
+		DrawRect(Ink, S[0], S[1], S[2], S[3]);
+	}
+
+	// Centre dot: what the player actually aims with. Kept to a couple of pixels so it marks the
+	// point of impact without covering a target at range.
+	const float Dot = FMath::Max(1.f, FMath::RoundToFloat(2.f * Scale));
+	DrawRect(Shadow, CentreX - Dot * 0.5f - Edge, CentreY - Dot * 0.5f - Edge,
+		Dot + Edge * 2.f, Dot + Edge * 2.f);
+	DrawRect(FLinearColor(0.92f, 0.98f, 1.f, 0.95f),
+		CentreX - Dot * 0.5f, CentreY - Dot * 0.5f, Dot, Dot);
+}
+
 void APhotonGameMode::ExitAfterPhotonShot()
 {
 	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONSHOT complete, exiting"));
 	FPlatformMisc::RequestExit(false);
+}
+
+namespace
+{
+	/**
+	 * The eight viewpoints the visual pass is judged from.
+	 *
+	 * Eye height is 150 rather than the pawn's 120 + 64 because the pawn is teleported rather than
+	 * spawned, and these are camera poses, not spawn points.
+	 */
+	const APhotonGameMode::FPhotonViewpoint PhotonTour[] = {
+		{ TEXT("01_PlayerSpawn"),   FVector(0.f, -1700.f, 150.f),    FRotator(0.f, 90.f, 0.f) },
+		{ TEXT("02_CenterCourt"),   FVector(0.f, -520.f, 190.f),     FRotator(-3.f, 90.f, 0.f) },
+		{ TEXT("03_OppositeSide"),  FVector(-260.f, -1250.f, 160.f), FRotator(2.f, 72.f, 0.f) },
+		{ TEXT("04_AcrossCover"),   FVector(1080.f, -1000.f, 150.f), FRotator(0.f, 128.f, 0.f) },
+		{ TEXT("05_LookingUp"),     FVector(330.f, -740.f, 150.f),   FRotator(46.f, 66.f, 0.f) },
+		{ TEXT("06_ArenaCorner"),   FVector(1150.f, -1150.f, 150.f), FRotator(6.f, -46.f, 0.f) },
+		{ TEXT("07_WeaponView"),    FVector(240.f, -1420.f, 150.f),  FRotator(-6.f, 78.f, 0.f) },
+		{ TEXT("08_TeamSpawn"),     FVector(820.f, 120.f, 150.f),    FRotator(0.f, -8.f, 0.f) },
+	};
+}
+
+void APhotonGameMode::StepPhotonTour()
+{
+	if (TourIndex >= UE_ARRAY_COUNT(PhotonTour))
+	{
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTOUR complete, exiting"));
+		FPlatformMisc::RequestExit(false);
+		return;
+	}
+
+	const FPhotonViewpoint& View = PhotonTour[TourIndex];
+	APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (Pawn && PC)
+	{
+		// Teleport rather than sweep: several viewpoints sit inside cover volumes, and a swept move
+		// would stop short of them and quietly photograph the wrong place.
+		Pawn->SetActorLocation(View.Location, false, nullptr, ETeleportType::TeleportPhysics);
+		PC->SetControlRotation(View.Rotation);
+	}
+
+	FTimerHandle Settle;
+	GetWorldTimerManager().SetTimer(Settle, this, &APhotonGameMode::CaptureTourShot, 0.7f, false);
+}
+
+void APhotonGameMode::CaptureTourShot()
+{
+	PhotonVisuals::RefreshArenaPostProcess(GetWorld());
+	const FPhotonViewpoint& View = PhotonTour[TourIndex];
+	// UI is included so the crosshair is proved by the same images as the architecture.
+	FScreenshotRequest::RequestScreenshot(FString::Printf(TEXT("Photon_%s"), View.Name), true, false);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTOUR shot %s"), View.Name);
+
+	++TourIndex;
+	FTimerHandle Next;
+	GetWorldTimerManager().SetTimer(Next, this, &APhotonGameMode::StepPhotonTour, 1.1f, false);
 }

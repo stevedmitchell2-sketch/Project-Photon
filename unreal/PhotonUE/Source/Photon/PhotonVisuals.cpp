@@ -83,6 +83,12 @@ namespace
 			MID->SetScalarParameterValue(TEXT("Roughness"), 0.55f);
 			MID->SetScalarParameterValue(TEXT("Metallic"), 0.18f);
 			break;
+		case EPhotonSurface::Metal:
+			// Smooth and fully metallic. In an arena this dark, structural steel can only be told
+			// apart from graphite by how it catches the ceiling rig, not by its albedo.
+			MID->SetScalarParameterValue(TEXT("Roughness"), 0.34f);
+			MID->SetScalarParameterValue(TEXT("Metallic"), 0.85f);
+			break;
 		case EPhotonSurface::Structure:
 			MID->SetScalarParameterValue(TEXT("Roughness"), 0.64f);
 			MID->SetScalarParameterValue(TEXT("Metallic"), 0.f);
@@ -106,6 +112,10 @@ UMaterialInterface* PhotonVisuals::GetSurfaceMaterial(EPhotonSurface Role)
 		return ResolvePhotonMaterial(Role, {
 			TEXT("/Game/Photon/Materials/M_PhotonCover.M_PhotonCover"),
 			TEXT("/Game/Photon/Materials/M_PhotonSurface.M_PhotonSurface") });
+	case EPhotonSurface::Metal:
+		return ResolvePhotonMaterial(Role, {
+			TEXT("/Game/Photon/Materials/M_PhotonMetal.M_PhotonMetal"),
+			TEXT("/Game/Photon/Materials/M_PhotonCover.M_PhotonCover") });
 	case EPhotonSurface::Energy:
 		return ResolvePhotonMaterial(Role, {
 			TEXT("/Game/Photon/Materials/M_PhotonGlow.M_PhotonGlow"),
@@ -133,9 +143,14 @@ UMaterialInterface* PhotonVisuals::GetEnergyMaterial()
 	return GetSurfaceMaterial(EPhotonSurface::Energy);
 }
 
-FLinearColor PhotonVisuals::Palette::Structure() { return FLinearColor(0.055f, 0.060f, 0.075f); }
-FLinearColor PhotonVisuals::Palette::Floor()     { return FLinearColor(0.030f, 0.034f, 0.045f); }
-FLinearColor PhotonVisuals::Palette::Cover()     { return FLinearColor(0.115f, 0.125f, 0.150f); }
+// Kept in step with Tools/build_photon_arena.py. The floor is authored much darker than it looks
+// like it should be: it is the only large surface facing the ceiling rig head on, so it collects
+// several times the light any vertical surface does, and at the previous 0.030 it still rendered as
+// the brightest thing in frame with cover reading darker than the ground beneath it.
+FLinearColor PhotonVisuals::Palette::Structure() { return FLinearColor(0.062f, 0.067f, 0.082f); }
+FLinearColor PhotonVisuals::Palette::Floor()     { return FLinearColor(0.022f, 0.025f, 0.033f); }
+FLinearColor PhotonVisuals::Palette::Cover()     { return FLinearColor(0.145f, 0.156f, 0.184f); }
+FLinearColor PhotonVisuals::Palette::Metal()     { return FLinearColor(0.085f, 0.092f, 0.108f); }
 FLinearColor PhotonVisuals::Palette::Energy()    { return FLinearColor(0.35f, 0.82f, 1.0f); }
 
 void PhotonVisuals::ApplyTint(UPrimitiveComponent* Component, FLinearColor Color, float EmissiveScale)
@@ -189,6 +204,9 @@ void PhotonVisuals::ConfigureFirstPersonViewModel(UPrimitiveComponent* Component
 	Component->SetCastShadow(false);
 	Component->SetVisibility(true, true);
 	Component->SetHiddenInGame(false);
+	// Lighting channel 1 only. The arena's lights are all on channel 0, so the viewmodel is lit
+	// exclusively by the camera-mounted key and fill and can be exposed independently of the room.
+	Component->SetLightingChannels(false, true, false);
 }
 
 void PhotonVisuals::ConfigureFirstPersonCamera(UCameraComponent* Camera)
@@ -286,30 +304,76 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 	}
 
 	const FLinearColor Neon = Palette::Energy();
+	const FLinearColor Steel = Palette::Metal();
+
+	// Matched in order, first hit wins, on a substring of the actor's name and label. Order is
+	// load-bearing wherever one token contains another: SpawnGate before Spawn, CentreRing before
+	// Centre, CourtSeam before Court. The build script (Tools/build_photon_arena.py) authors the
+	// labels this table expects, and the two have to be edited together.
 	const FArenaRule Rules[] = {
-		// Energy first: these names also contain structural tokens such as "Spawn".
+		// --- Energy. Listed first because these labels also carry structural tokens. -------------
+		{ TEXT("SpawnStrip_Red"), EPhotonSurface::Energy,    FLinearColor(0.95f, 0.22f, 0.18f), 3.6f },
+		{ TEXT("SpawnStrip_Green"),EPhotonSurface::Energy,   FLinearColor(0.18f, 0.88f, 0.42f), 3.6f },
+		{ TEXT("SpawnStrip_Blue"),EPhotonSurface::Energy,    FLinearColor(0.22f, 0.55f, 1.00f), 3.6f },
+		{ TEXT("SpawnStrip_Yellow"),EPhotonSurface::Energy,  FLinearColor(0.98f, 0.82f, 0.18f), 3.6f },
+		{ TEXT("Energy_Clerestory"),EPhotonSurface::Energy,  Neon * 0.85f,                      3.2f },
+		{ TEXT("Energy_BayChannel"),EPhotonSurface::Energy,  Neon * 0.7f,                       2.4f },
+		{ TEXT("Energy_CentreRing"),EPhotonSurface::Energy,  Neon * 0.75f,                      2.6f },
+		{ TEXT("Energy_RigRing"), EPhotonSurface::Energy,    Neon * 0.9f,                       3.4f },
+		{ TEXT("Energy_BeaconTop"),EPhotonSurface::Energy,   Neon,                              5.0f },
+		{ TEXT("Energy_CoverTrim"),EPhotonSurface::Energy,   Neon * 0.55f,                      1.5f },
+		{ TEXT("Energy_PylonCap"),EPhotonSurface::Energy,    Neon * 0.6f,                       2.0f },
+		{ TEXT("Energy_CofferPanel"),EPhotonSurface::Energy, FLinearColor(0.72f, 0.83f, 1.0f),  2.2f },
+		{ TEXT("Energy"),         EPhotonSurface::Energy,    Neon,                              3.0f },
 		{ TEXT("EnergyStrip"),    EPhotonSurface::Energy,    Neon,                              6.0f },
 		{ TEXT("CenterMark"),     EPhotonSurface::Energy,    Neon,                              3.0f },
-		{ TEXT("SpawnStrip_Red"), EPhotonSurface::Energy,    FLinearColor(0.95f, 0.22f, 0.18f), 5.0f },
-		{ TEXT("SpawnStrip_Green"),EPhotonSurface::Energy,   FLinearColor(0.18f, 0.88f, 0.42f), 5.0f },
-		{ TEXT("SpawnStrip_Blue"),EPhotonSurface::Energy,    FLinearColor(0.22f, 0.55f, 1.00f), 5.0f },
-		{ TEXT("SpawnStrip_Yellow"),EPhotonSurface::Energy,  FLinearColor(0.98f, 0.82f, 0.18f), 5.0f },
-		{ TEXT("LaneLine"),       EPhotonSurface::Energy,    Neon * 0.55f,                      2.2f },
-		{ TEXT("BoundaryLine"),   EPhotonSurface::Energy,    Neon * 0.7f,                       2.6f },
-		{ TEXT("Signage"),        EPhotonSurface::Energy,    Neon,                              4.0f },
-		{ TEXT("Pedestal"),       EPhotonSurface::Structure, Palette::Structure() * 1.6f,       0.0f },
-		{ TEXT("SpawnPad_Red"),   EPhotonSurface::Cover,     FLinearColor(0.20f, 0.045f, 0.04f),0.5f },
-		{ TEXT("SpawnPad_Green"), EPhotonSurface::Cover,     FLinearColor(0.04f, 0.19f, 0.09f), 0.5f },
-		{ TEXT("SpawnPad_Blue"),  EPhotonSurface::Cover,     FLinearColor(0.05f, 0.12f, 0.22f), 0.5f },
-		{ TEXT("SpawnPad_Yellow"),EPhotonSurface::Cover,     FLinearColor(0.21f, 0.17f, 0.04f), 0.5f },
+		{ TEXT("LaneLine"),       EPhotonSurface::Energy,    Neon * 0.5f,                       0.9f },
+		{ TEXT("BoundaryLine"),   EPhotonSurface::Energy,    Neon,                              1.6f },
+		{ TEXT("Signage_"),       EPhotonSurface::Energy,    Neon * 0.22f,                      0.55f },
+
+		// --- Structural metal: trusses, railings, the overhead rig, deck columns. ----------------
+		{ TEXT("Truss"),          EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("Railing"),        EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("Gantry"),         EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("CentreRig"),      EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("DeckColumn"),     EPhotonSurface::Metal,     Steel,                             0.0f },
+
+		// --- Cover volumes and the things the player stands on. ----------------------------------
+		{ TEXT("SpawnPad_Red"),   EPhotonSurface::Cover,     FLinearColor(0.16f, 0.030f, 0.023f),0.0f },
+		{ TEXT("SpawnPad_Green"), EPhotonSurface::Cover,     FLinearColor(0.026f, 0.152f, 0.067f),0.0f },
+		{ TEXT("SpawnPad_Blue"),  EPhotonSurface::Cover,     FLinearColor(0.032f, 0.088f, 0.16f),0.0f },
+		{ TEXT("SpawnPad_Yellow"),EPhotonSurface::Cover,     FLinearColor(0.16f, 0.128f, 0.019f),0.0f },
+		{ TEXT("CentreDais"),     EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
+		{ TEXT("Beacon"),         EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
+		{ TEXT("DeckSlab"),       EPhotonSurface::Cover,     Palette::Cover() * 0.9f,           0.0f },
+		{ TEXT("DeckStep"),       EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
 		{ TEXT("ArenaSpawn_"),    EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
 		{ TEXT("Cover"),          EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
 		{ TEXT("Elevated"),       EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
 		{ TEXT("Platform"),       EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
 		{ TEXT("Perch"),          EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
-		{ TEXT("Panel"),          EPhotonSurface::Structure, Palette::Structure() * 1.3f,       0.0f },
+
+		// --- Architecture. -----------------------------------------------------------------------
+		{ TEXT("Pedestal"),       EPhotonSurface::Structure, Palette::Structure() * 1.6f,       0.0f },
+		{ TEXT("SpawnGate"),      EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
+		{ TEXT("CornerPylon"),    EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
+		{ TEXT("CeilingBay"),     EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
+		{ TEXT("Soffit"),         EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
+		{ TEXT("Clerestory"),     EPhotonSurface::Structure, Palette::Structure() * 0.8f,       0.0f },
+		{ TEXT("UpperWall"),      EPhotonSurface::Structure, Palette::Structure() * 0.9f,       0.0f },
+		{ TEXT("SignageBody"),    EPhotonSurface::Structure, Palette::Structure() * 1.2f,       0.0f },
+		{ TEXT("WallBay"),        EPhotonSurface::Structure, Palette::Structure(),              0.0f },
+		{ TEXT("Roof"),           EPhotonSurface::Structure, Palette::Structure() * 0.85f,      0.0f },
+		// No bare "Panel" rule. It sits above the floor block, so it swallowed CourtPanelA/B and
+		// retinted the four court quadrants — the biggest surfaces in the arena — as pale structure.
 		{ TEXT("Shell"),          EPhotonSurface::Structure, Palette::Structure(),              0.0f },
 		{ TEXT("Wall"),           EPhotonSurface::Structure, Palette::Structure(),              0.0f },
+
+		// --- Floor. CourtSeam and CourtPanel before the bare Floor rule. -------------------------
+		{ TEXT("CourtSeam"),      EPhotonSurface::Floor,     Palette::Floor() * 0.6f,           0.0f },
+		{ TEXT("CourtPanelA"),    EPhotonSurface::Floor,     FLinearColor(0.030f, 0.034f, 0.044f),0.0f },
+		{ TEXT("CourtPanelB"),    EPhotonSurface::Floor,     FLinearColor(0.024f, 0.027f, 0.036f),0.0f },
+		{ TEXT("Court"),          EPhotonSurface::Floor,     FLinearColor(0.030f, 0.034f, 0.044f),0.0f },
 		{ TEXT("Floor"),          EPhotonSurface::Floor,     Palette::Floor(),                  0.0f },
 	};
 

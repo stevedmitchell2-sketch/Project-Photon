@@ -87,6 +87,11 @@ build_surface("M_PhotonFloor", unreal.LinearColor(0.030, 0.034, 0.045, 1.0), 0.4
 # Cover: lighter graphite with a hint of metal so it separates from both floor and wall.
 build_surface("M_PhotonCover", unreal.LinearColor(0.115, 0.125, 0.150, 1.0), 0.48, 0.25, 0.0)
 
+# Structural metal: trusses, railings, the overhead rig. Genuinely metallic and much smoother than
+# the architecture, so it separates from the graphite by specular response rather than by being a
+# different shade of dark grey — which is the only kind of separation that survives a dim arena.
+build_surface("M_PhotonMetal", unreal.LinearColor(0.085, 0.092, 0.108, 1.0), 0.34, 0.85, 0.0)
+
 # Energy: unlit emissive. Base colour is irrelevant when unlit, emission carries it.
 build_surface("M_PhotonGlow", unreal.LinearColor(0.35, 0.82, 1.0, 1.0), 0.5, 0.0, 6.0, unlit=True)
 

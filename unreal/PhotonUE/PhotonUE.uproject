@@ -32,6 +32,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "GeometryScripting",
+			"Enabled": true
+		},
+		{
 			"Name": "Fab",
 			"Enabled": false
 		}

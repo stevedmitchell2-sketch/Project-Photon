@@ -1,25 +1,35 @@
-"""Authoritative Photon arena build — Visual Sprint 01.
+"""Authoritative Photon arena build — Visual Sprint 02.
 
-Replaces the incremental greybox scripts. The layout is inherited from build_arena_foundation.py;
-what changes is that the geometry is now correct and the surfaces are readable.
+Sprint 01 fixed the materials and the lighting, which left an arena that was correctly lit and
+correctly shaded and still unmistakably a greybox. The reason was never the shading: every actor in
+the level was /Engine/BasicShapes/Cube, and a cube reads as a cube at any exposure.
 
-Three classes of bug are fixed here, all found by probing the saved level rather than by reading the
-scripts that produced it:
+So this build places almost nothing from BasicShapes. The modules come from Tools/photon_mesh_kit.py,
+which authors them with Geometry Script — massed from several volumes, boolean-cut for recessed
+detail, and bevelled so edges catch a highlight. Run that script first; this one only places.
 
-  * Buried geometry. Cover was placed with `z = h * 50 - 50`, which puts a 45 uu low barrier entirely
-    inside the 100 uu floor slab. Low cover, spawn pads, the competition floor and the centre mark
-    were all invisible because they sat below the floor surface. Everything now sits ON z = 0.
-  * Unreadable surfaces. Every actor was bound to one UNLIT material, so it could only ever be flat
-    black or blown out. Structure, floor and cover now use separate lit materials with distinct
-    values, and emission is reserved for energy.
-  * Blown-out sky. The arena was open to a SkyAtmosphere, so auto-exposure metered for the sky and
-    washed the interior white. The arena is now a roofed facility lit by its own ceiling rig.
+Structure of the arena, bottom to top:
 
-The player start pitch is also corrected: it was 90 degrees, so the player spawned looking at the sky.
+  z    0 - 700   wall bays: recessed centre panel, structural ribs, kick plinth
+  z  700 - 860   clerestory: a band set back 40 uu with an illuminated channel inside it
+  z  860 - 900   soffit: a ledge projecting inward, capping the clerestory
+  z  900 - 1000  upper wall, stepped back again
+  z 1000          ceiling plane; coffers hang below it and the truss grid runs through it
+
+That stepped section is what stops the perimeter reading as one flat wall, and it is why the arena
+is 10 m tall rather than the 7 m it was: the tiers need somewhere to live.
+
+Emissive is deliberately rationed. Sprint 01 put a strip on every available edge, which is the same
+mistake as putting a cube everywhere — it stops meaning anything. Here it marks the court, the
+clerestory, the centre, the team zones, and the inside of alternating wall recesses. Nothing else.
 """
+import math
+
 import unreal
 
 MAP = "/Game/Photon/Maps/L_PhotonGrey"
+KIT = "/Game/Photon/Meshes"
+FOLDER = "PhotonArena"
 
 CUBE = unreal.EditorAssetLibrary.load_asset("/Engine/BasicShapes/Cube")
 CYL = unreal.EditorAssetLibrary.load_asset("/Engine/BasicShapes/Cylinder")
@@ -28,15 +38,31 @@ MAT = {
     "structure": unreal.EditorAssetLibrary.load_asset("/Game/Photon/Materials/M_PhotonSurface"),
     "floor": unreal.EditorAssetLibrary.load_asset("/Game/Photon/Materials/M_PhotonFloor"),
     "cover": unreal.EditorAssetLibrary.load_asset("/Game/Photon/Materials/M_PhotonCover"),
+    "metal": unreal.EditorAssetLibrary.load_asset("/Game/Photon/Materials/M_PhotonMetal"),
     "energy": unreal.EditorAssetLibrary.load_asset("/Game/Photon/Materials/M_PhotonGlow"),
 }
 
-# --- Palette (linear) --------------------------------------------------------------------------
-STRUCTURE = unreal.LinearColor(0.055, 0.060, 0.075, 1.0)
-STRUCTURE_LIGHT = unreal.LinearColor(0.095, 0.102, 0.120, 1.0)
-FLOOR_COL = unreal.LinearColor(0.030, 0.034, 0.045, 1.0)
-COURT_COL = unreal.LinearColor(0.048, 0.055, 0.070, 1.0)
-COVER_COL = unreal.LinearColor(0.115, 0.125, 0.150, 1.0)
+# Roughness/metallic per role, mirroring PhotonVisuals::SetPhotonParameters. The runtime bootstrap
+# re-applies these anyway; matching them here keeps the editor viewport honest.
+ROLE_SHADING = {
+    "structure": (0.64, 0.0),
+    "floor": (0.68, 0.0),
+    "cover": (0.55, 0.18),
+    "metal": (0.34, 0.85),
+    "energy": (0.50, 0.0),
+}
+
+# --- Palette (linear) — mirrors PhotonVisuals::Palette -------------------------------------------
+STRUCTURE = unreal.LinearColor(0.062, 0.067, 0.082, 1.0)
+STRUCTURE_LIGHT = unreal.LinearColor(0.105, 0.113, 0.132, 1.0)
+# The floor is the one surface facing the ceiling rig square on, so it collects far more light than
+# anything vertical. It has to be authored darker than looks right in isolation or it becomes the
+# brightest thing in every frame and flattens the arena.
+FLOOR_COL = unreal.LinearColor(0.022, 0.025, 0.033, 1.0)
+COURT_COL = unreal.LinearColor(0.030, 0.034, 0.044, 1.0)
+COURT_ALT = unreal.LinearColor(0.024, 0.027, 0.036, 1.0)
+COVER_COL = unreal.LinearColor(0.145, 0.156, 0.184, 1.0)
+METAL_COL = unreal.LinearColor(0.085, 0.092, 0.108, 1.0)
 NEON = unreal.LinearColor(0.35, 0.82, 1.0, 1.0)
 TEAM = {
     "Red": unreal.LinearColor(1.00, 0.18, 0.14, 1.0),
@@ -45,28 +71,48 @@ TEAM = {
     "Yellow": unreal.LinearColor(1.00, 0.80, 0.12, 1.0),
 }
 
-# --- Arena dimensions --------------------------------------------------------------------------
+# --- Arena dimensions ----------------------------------------------------------------------------
 HALF = 2000.0        # inner face of the perimeter wall
-WALL_H = 700.0       # floor to ceiling
-ROOF_T = 60.0
+WALL_H = 700.0       # top of the wall-bay tier
+CLEAR_H = 860.0      # top of the clerestory recess
+CEIL = 1000.0        # ceiling plane
 COURT = 1700.0       # half-extent of the marked competition court
 
-# --- Lighting tunables -------------------------------------------------------------------------
-# 60000 lm per light blew a 3% albedo floor to pure white. The arena reads as designed at 4200,
-# paired with exposure pinned at photon.Exposure 18.
-CEILING_LIGHT_LUMENS = 4200.0
-# The arena is roofed, so the sun and sky are fill at most. They are kept low rather than removed
-# because the perimeter still catches a little of both.
-KEY_LIGHT_LUX = 0.6
-SKY_LIGHT = 0.35
-BLOOM = 0.35
+# --- Lighting ------------------------------------------------------------------------------------
+# Seven zones, per the sprint. Values are lumens unless noted.
+#
+# The first attempt aimed every light straight down, which lit the floor and starved every vertical
+# surface: cover read darker than the ground it stood on, which is the opposite of how a real venue
+# looks. The downward zones are pulled back here and the horizontal ones are the largest numbers in
+# the list, because vertical surfaces are what the player actually sees.
+COFFER_LM = 2000.0       # zone 2: ceiling key, recessed in the coffers
+CENTRE_LM = 2400.0       # zone 3: competition floor, from the overhead rig
+WALLWASH_LM = 6000.0     # zone 1: inward fill; this is what lights the faces of cover
+GRAZE_LM = 4600.0        # zone 1: down the wall bays, so the perimeter relief reads
+UPLIGHT_LM = 1800.0      # zone 2: onto the truss grid, so the ceiling is not a black void
+CYAN_LM = 260.0          # zone 4: makes the cyan infrastructure actually spill onto architecture
+TEAM_LM = 2200.0         # zone 5: team identity at the spawns
+KEY_LIGHT_LUX = 0.35
+SKY_LIGHT = 0.30
+BLOOM = 0.32
 
 report = []
 subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 
 
 def say(text):
-    report.append(text)
+    report.append(str(text))
+
+
+def cool(r, g, b):
+    """FColor is laid out B,G,R,A, so unreal.Color's positional arguments are (b, g, r, a).
+
+    Every light in the first pass was written as Color(206, 226, 255) meaning cool white and
+    was silently created as R=255 G=226 B=206 — warm amber. That is where the row of orange dots
+    along the wall tops came from, and why an arena lit entirely by cyan-white fixtures rendered
+    brown. Naming the channels is the fix.
+    """
+    return unreal.Color(r=r, g=g, b=b, a=255)
 
 
 def dim(color, factor):
@@ -75,21 +121,49 @@ def dim(color, factor):
 
 
 def spawn(cls, loc, yaw=0.0, pitch=0.0, roll=0.0):
-    return subsys.spawn_actor_from_class(
+    a = subsys.spawn_actor_from_class(
         cls, unreal.Vector(*loc), unreal.Rotator(roll=roll, pitch=pitch, yaw=yaw))
+    if a:
+        # Every actor this script owns is tagged by folder, which is what makes the rebuild
+        # idempotent. The previous version matched on label prefixes and quietly duplicated four
+        # spawn pylons on every run because one prefix was missing from the list.
+        a.set_folder_path(FOLDER)
+    return a
 
 
 def surface(actor, role, color, emissive=0.0):
     smc = actor.static_mesh_component
     parent = MAT.get(role) or MAT["structure"]
-    smc.set_material(0, parent)
-    mid = smc.create_dynamic_material_instance(0)
-    if mid:
-        mid.set_vector_parameter_value("TintColor", color)
-        mid.set_scalar_parameter_value("EmissiveStrength", emissive)
+    rough, metal = ROLE_SHADING.get(role, (0.6, 0.0))
+    for slot in range(max(1, smc.get_num_materials())):
+        smc.set_material(slot, parent)
+        mid = smc.create_dynamic_material_instance(slot)
+        if mid:
+            mid.set_vector_parameter_value("TintColor", color)
+            mid.set_scalar_parameter_value("EmissiveStrength", emissive)
+            mid.set_scalar_parameter_value("Roughness", rough)
+            mid.set_scalar_parameter_value("Metallic", metal)
+
+
+def place(asset, loc, label, role="structure", color=None, emissive=0.0, yaw=0.0, pitch=0.0,
+          roll=0.0, scale=1.0):
+    """Place an authored kit module. Authored at real size, so scale stays 1 unless stated."""
+    mesh = unreal.EditorAssetLibrary.load_asset("%s/%s" % (KIT, asset))
+    if not mesh:
+        say("MISSING KIT ASSET %s" % asset)
+        return None
+    a = spawn(unreal.StaticMeshActor, loc, yaw=yaw, pitch=pitch, roll=roll)
+    a.set_actor_label(label)
+    a.set_actor_scale3d(unreal.Vector(scale, scale, scale) if isinstance(scale, float)
+                        else unreal.Vector(*scale))
+    a.static_mesh_component.set_static_mesh(mesh)
+    a.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
+    surface(a, role, color if color else STRUCTURE, emissive)
+    return a
 
 
 def box(loc, scale, label, role="structure", color=None, emissive=0.0, yaw=0.0, mesh=None):
+    """Engine cube. Reserved for slabs and thin strips, where there is no silhouette to get wrong."""
     a = spawn(unreal.StaticMeshActor, loc, yaw=yaw)
     a.set_actor_label(label)
     a.set_actor_scale3d(unreal.Vector(*scale))
@@ -102,154 +176,307 @@ def box(loc, scale, label, role="structure", color=None, emissive=0.0, yaw=0.0, 
 unreal.EditorLoadingAndSavingUtils.load_map(MAP)
 say("loaded_map=%s" % MAP)
 
-# --- 0. Clear previously generated arena geometry -----------------------------------------------
-REBUILD_PREFIXES = ("Floor", "Wall", "Cover_", "LaneCover", "Platform", "Perch", "Arena", "Target_",
-                    "Court", "Boundary", "Lane", "Panel", "Roof", "Ceiling", "Signage", "Pylon",
-                    # "Spawn" rather than the individual SpawnPad/SpawnStrip names: SpawnPylon was
-                    # missing from that list, so four pylons were duplicated on every rebuild.
-                    "Spawn", "Pedestal", "Step")
+# --- 0. Clear the previously generated arena -----------------------------------------------------
+LEGACY_PREFIXES = ("Floor", "Wall", "Cover", "LaneCover", "Platform", "Perch", "Arena", "Target_",
+                   "Court", "Boundary", "Lane", "Panel", "Roof", "Ceiling", "Signage", "Pylon",
+                   "Spawn", "Pedestal", "Step")
 removed = 0
 for a in subsys.get_all_level_actors():
     label = a.get_actor_label()
-    is_arena_mesh = isinstance(a, unreal.StaticMeshActor) and label.startswith(REBUILD_PREFIXES)
-    is_arena_light = isinstance(a, unreal.RectLight) and label.startswith("Ceiling")
+    in_folder = str(a.get_folder_path()) == FOLDER
+    legacy_mesh = isinstance(a, unreal.StaticMeshActor) and label.startswith(LEGACY_PREFIXES)
+    legacy_light = isinstance(a, (unreal.RectLight, unreal.SpotLight, unreal.PointLight))
     is_target = a.get_class().get_name() == "PhotonTarget"
-    if is_arena_mesh or is_arena_light or is_target:
+    if in_folder or legacy_mesh or legacy_light or is_target:
         subsys.destroy_actor(a)
         removed += 1
 say("removed_previous_actors=%d" % removed)
 
 # --- 1. Floor and competition court --------------------------------------------------------------
-box((0, 0, -50), (41, 41, 1.0), "Floor", "floor", FLOOR_COL)
-box((0, 0, 1), (COURT * 2 / 100.0, COURT * 2 / 100.0, 0.02), "CourtSurface", "floor", COURT_COL)
+box((0, 0, -50), (43, 43, 1.0), "Floor", "floor", FLOOR_COL)
 
-# Boundary lines: a thin emissive frame around the court reads as a competition boundary.
+# Panel variation: four quadrant panels at marginally different values, plus seams. Subtle enough
+# that it reads as flooring rather than as a checkerboard, but it stops the court being one dead
+# 34 m plane.
+for i, (sx, sy) in enumerate([(1, 1), (-1, 1), (1, -1), (-1, -1)]):
+    lit = (sx * sy) > 0
+    box((sx * COURT / 2.0, sy * COURT / 2.0, 1), (COURT / 100.0, COURT / 100.0, 0.02),
+        "CourtPanel%s_%d" % ("A" if lit else "B", i), "floor", COURT_COL if lit else COURT_ALT)
+for i, off in enumerate([-1130, -570, 570, 1130]):
+    box((off, 0, 2), (0.05, COURT * 2 / 100.0, 0.02), "CourtSeam_X%d" % i, "floor",
+        dim(FLOOR_COL, 0.6))
+    box((0, off, 2), (COURT * 2 / 100.0, 0.05, 0.02), "CourtSeam_Y%d" % i, "floor",
+        dim(FLOOR_COL, 0.6))
+
+# Competition markings: the court boundary and three lane lines. Restrained on purpose.
 for i, (x, y, sx, sy) in enumerate([
     (0, COURT, COURT * 2 / 100.0, 0.10), (0, -COURT, COURT * 2 / 100.0, 0.10),
     (COURT, 0, 0.10, COURT * 2 / 100.0), (-COURT, 0, 0.10, COURT * 2 / 100.0),
 ]):
-    box((x, y, 3), (sx, sy, 0.03), "BoundaryLine_%d" % i, "energy", NEON, 2.2)
-
-# Lane lines: restrained interior markings, not a grid.
-for i, x in enumerate([-850, 0, 850]):
-    box((x, 0, 2.5), (0.06, COURT * 2 / 100.0, 0.02), "LaneLine_%d" % i, "energy", dim(NEON, 0.5), 1.2)
-
-# Centre circle, built from a flat cylinder so it reads as a designed centre mark.
-centre = spawn(unreal.StaticMeshActor, (0, 0, 3))
-centre.set_actor_label("CourtCentreMark")
-centre.set_actor_scale3d(unreal.Vector(5.2, 5.2, 0.03))
-centre.static_mesh_component.set_static_mesh(CYL)
-centre.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
-surface(centre, "energy", dim(NEON, 0.55), 1.6)
+    box((x, y, 3), (sx, sy, 0.03), "BoundaryLine_%d" % i, "energy", NEON, 1.6)
+for i, x in enumerate([-850, 850]):
+    box((x, 0, 2.5), (0.05, COURT * 2 / 100.0, 0.02), "LaneLine_%d" % i, "energy", dim(NEON, 0.5), 0.9)
 
 # --- 2. Perimeter shell ---------------------------------------------------------------------------
-WALL_SCALE_Z = WALL_H / 100.0
-for i, (x, y, sx, sy) in enumerate([
-    (0, HALF + 50, 41, 1), (0, -(HALF + 50), 41, 1),
-    (HALF + 50, 0, 1, 41), (-(HALF + 50), 0, 1, 41),
-]):
-    box((x, y, WALL_H / 2.0), (sx, sy, WALL_SCALE_Z), "Wall_%d" % i, "structure", STRUCTURE)
+# Sides as (label, sign, axis). Each wall is built inward-facing from the same module set.
+SIDES = [("N", (0.0, 1.0), 0.0), ("S", (0.0, -1.0), 180.0),
+         ("E", (1.0, 0.0), -90.0), ("W", (-1.0, 0.0), 90.0)]
+BAY_OFFSETS = [-1750.0, -1250.0, -750.0, -250.0, 250.0, 750.0, 1250.0, 1750.0]
+# Canted bays at two positions per side, so the perimeter is not eight identical modules in a row.
+ANGLED_AT = {1, 6}
+# Illuminated recess channels on alternating bays only.
+LIT_BAYS = {0, 3, 4, 7}
 
-# Corner pylons give the enclosure defined architectural corners.
-for i, (x, y) in enumerate([(HALF, HALF), (-HALF, HALF), (HALF, -HALF), (-HALF, -HALF)]):
-    box((x, y, WALL_H / 2.0), (2.2, 2.2, WALL_SCALE_Z), "Pylon_%d" % i, "structure", STRUCTURE_LIGHT)
+for side, (nx, ny), yaw in SIDES:
+    ax, ay = (abs(nx), abs(ny))
 
-# Vertical architectural panels: regular rhythm around the shell, lifted in value.
-panel_positions = []
-for t in range(-3, 4):
-    panel_positions.append((t * 500.0, HALF - 10, 0.0))
-    panel_positions.append((t * 500.0, -(HALF - 10), 0.0))
-    panel_positions.append((HALF - 10, t * 500.0, 90.0))
-    panel_positions.append((-(HALF - 10), t * 500.0, 90.0))
-for i, (x, y, yaw) in enumerate(panel_positions):
-    box((x, y, 300), (1.8, 0.2, 5.4), "Panel_%d" % i, "structure", STRUCTURE_LIGHT, yaw=yaw)
+    def at(along, out, z):
+        """Convert (position along the wall, distance outward from centre) to world x, y."""
+        if ay:  # north or south wall: the run is along X
+            return (along, ny * out, z)
+        return (nx * out, along, z)
 
-# Horizontal energy bands: the single strongest cue that this is a lit sports venue.
-for i, (x, y, sx, sy, yaw) in enumerate([
-    (0, HALF - 6, 40, 0.14, 0), (0, -(HALF - 6), 40, 0.14, 0),
-    (HALF - 6, 0, 0.14, 40, 0), (-(HALF - 6), 0, 0.14, 40, 0),
-]):
-    box((x, y, 250), (sx, sy, 0.16), "ArenaEnergyStrip_Low_%d" % i, "energy", NEON, 4.0, yaw=yaw)
-    box((x, y, 610), (sx, sy, 0.16), "ArenaEnergyStrip_High_%d" % i, "energy", dim(NEON, 0.8), 3.0, yaw=yaw)
+    # Solid backing wall. Hidden behind the bays, and the guarantee that nothing leaks out of the
+    # arena regardless of how the modules tile.
+    box(at(0.0, HALF + 55, CEIL / 2.0),
+        (43 if ay else 1.1, 1.1 if ay else 43, CEIL / 100.0),
+        "Wall_%s" % side, "structure", STRUCTURE)
 
-# --- 3. Roof and ceiling rig -----------------------------------------------------------------------
-box((0, 0, WALL_H + ROOF_T / 2.0), (41, 41, ROOF_T / 100.0), "Roof", "structure", STRUCTURE)
+    for i, along in enumerate(BAY_OFFSETS):
+        asset = "SM_PhotonWallBayAngled" if i in ANGLED_AT else "SM_PhotonWallBay"
+        place(asset, at(along, HALF + 35, 0.0), "WallBay_%s_%d" % (side, i),
+              "structure", STRUCTURE, yaw=yaw)
+        if i in LIT_BAYS:
+            # Inside the recess. The bay's inner face is at HALF and the recess backs onto HALF+25,
+            # so HALF+14 puts the channel in the pocket. The first pass put it at HALF-16, which is
+            # in front of the wall, and it read as a 2.6 m cyan billboard stuck to the architecture.
+            box(at(along, HALF + 14, 350.0),
+                (0.16 if ay else 0.05, 0.05 if ay else 0.16, 3.4),
+                "Energy_BayChannel_%s_%d" % (side, i), "energy", dim(NEON, 0.7), 2.4)
 
-for i, y in enumerate([-1200, -400, 400, 1200]):
-    box((0, y, WALL_H - 14), (34, 1.1, 0.14), "CeilingBand_%d" % i, "energy", dim(NEON, 0.9), 5.0)
+    # Clerestory: a band stepped back 40 uu with a continuous illuminated channel inside it.
+    box(at(0.0, HALF + 70, (WALL_H + CLEAR_H) / 2.0),
+        (43 if ay else 0.6, 0.6 if ay else 43, (CLEAR_H - WALL_H) / 100.0),
+        "Clerestory_%s" % side, "structure", dim(STRUCTURE, 0.8))
+    box(at(0.0, HALF + 36, 782.0),
+        (40 if ay else 0.06, 0.06 if ay else 40, 0.32),
+        "Energy_Clerestory_%s" % side, "energy", dim(NEON, 0.85), 2.4)
+    # Soffit: the ledge that caps the clerestory and gives the wall a horizontal shadow line.
+    box(at(0.0, HALF - 30, 880.0),
+        (43 if ay else 1.5, 1.5 if ay else 43, 0.4),
+        "Soffit_%s" % side, "structure", STRUCTURE_LIGHT)
+    # Upper wall, stepped back again to the ceiling.
+    box(at(0.0, HALF + 50, 950.0),
+        (43 if ay else 1.0, 1.0 if ay else 43, 1.0),
+        "UpperWall_%s" % side, "structure", dim(STRUCTURE, 0.9))
 
+for i, (sx, sy) in enumerate([(1, 1), (-1, 1), (1, -1), (-1, -1)]):
+    place("SM_PhotonCornerPylon", (sx * (HALF + 60), sy * (HALF + 60), 0),
+          "CornerPylon_%d" % i, "structure", STRUCTURE_LIGHT, yaw=45.0)
+
+# --- 3. Ceiling ------------------------------------------------------------------------------------
+box((0, 0, CEIL + 30), (43, 43, 0.6), "Roof", "structure", dim(STRUCTURE, 0.85))
+
+# Coffers: open-bottomed light boxes hanging just below the ceiling, each with a rect light inside.
 for i, (x, y) in enumerate([(-950, -950), (950, -950), (-950, 950), (950, 950)]):
-    light = spawn(unreal.RectLight, (x, y, WALL_H - 40), pitch=-90.0)
+    place("SM_PhotonCeilingBay", (x, y, CEIL - 110), "CeilingBay_%d" % i,
+          "structure", STRUCTURE_LIGHT)
+    # The visible luminaire. Without it the ceiling is a black plane with an invisible light in it,
+    # which is why looking up read as nothing at all.
+    box((x, y, CEIL - 24), (7.6, 7.6, 0.06), "Energy_CofferPanel_%d" % i, "energy",
+        unreal.LinearColor(0.72, 0.83, 1.0, 1.0), 2.2)
+    light = spawn(unreal.RectLight, (x, y, CEIL - 26), pitch=-90.0)
     light.set_actor_label("CeilingLight_%d" % i)
     lc = light.rect_light_component
     lc.set_mobility(unreal.ComponentMobility.MOVABLE)
     lc.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
-    lc.set_editor_property("intensity", CEILING_LIGHT_LUMENS)
-    lc.set_editor_property("source_width", 900.0)
-    lc.set_editor_property("source_height", 900.0)
-    lc.set_editor_property("attenuation_radius", 3600.0)
-    lc.set_editor_property("light_color", unreal.Color(198, 222, 255))
+    lc.set_editor_property("intensity", COFFER_LM)
+    lc.set_editor_property("source_width", 760.0)
+    lc.set_editor_property("source_height", 760.0)
+    lc.set_editor_property("attenuation_radius", 3200.0)
+    lc.set_editor_property("light_color", cool(206, 226, 255))
     lc.set_editor_property("cast_shadows", i == 0)
+    if i == 0:
+        got = lc.get_editor_property("light_color")
+        say("coffer_light_colour r=%d g=%d b=%d (expected 206/226/255)" % (got.r, got.g, got.b))
 
-# --- 4. Cover, sitting on the floor ----------------------------------------------------------------
-cover_specs = [
-    (600, 200, 0.45, "Low_0"), (-700, 350, 0.45, "Low_1"),
-    (900, -500, 0.45, "Low_2"), (-400, -900, 0.45, "Low_3"),
-    (300, 900, 1.00, "Mid_0"), (-500, 1100, 1.00, "Mid_1"),
-    (1100, 700, 1.00, "Mid_2"), (-1200, 200, 1.00, "Mid_3"),
-    (0, 1400, 1.60, "High_Center"), (1500, 0, 1.40, "High_E"), (-1500, 0, 1.40, "High_W"),
+# Truss grid. Deliberately uneven spacing: an even grid reads as a texture, an uneven one reads as
+# structure that had to span something.
+for i, y in enumerate([-1650, 0, 1650]):
+    place("SM_PhotonTruss", (0, y, 930), "Truss_X_%d" % i, "metal", METAL_COL)
+for i, x in enumerate([-1650, 0, 1650]):
+    place("SM_PhotonTruss", (x, 0, 930), "Truss_Y_%d" % i, "metal", METAL_COL, yaw=90.0)
+
+# --- 4. Centre: the competition anchor ---------------------------------------------------------------
+place("SM_PhotonCentreDais", (0, 0, 0), "CentreDais", "cover", dim(COVER_COL, 0.85))
+place("SM_PhotonCentreRing", (0, 0, 27), "Energy_CentreRing", "energy", dim(NEON, 0.75), 2.6)
+place("SM_PhotonCoverPylon", (0, 0, 28), "Beacon_Centre", "cover", COVER_COL, scale=0.95)
+box((0, 0, 300), (0.98, 0.98, 0.10), "Energy_BeaconTop", "energy", NEON, 4.0)
+
+# Overhead rig: the ceiling half of the same anchor, so the centre reads from any height.
+place("SM_PhotonCentreRig", (0, 0, 745), "CentreRig", "metal", METAL_COL)
+place("SM_PhotonCentreRing", (0, 0, 738), "Energy_RigRing", "energy", dim(NEON, 0.9), 3.4, scale=1.58)
+rig_light = spawn(unreal.RectLight, (0, 0, 726), pitch=-90.0)
+rig_light.set_actor_label("CentreLight")
+rl = rig_light.rect_light_component
+rl.set_mobility(unreal.ComponentMobility.MOVABLE)
+rl.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
+rl.set_editor_property("intensity", CENTRE_LM)
+rl.set_editor_property("source_width", 1200.0)
+rl.set_editor_property("source_height", 1200.0)
+rl.set_editor_property("attenuation_radius", 2600.0)
+rl.set_editor_property("light_color", cool(220, 232, 255))
+rl.set_editor_property("cast_shadows", True)
+
+# --- 5. Cover -----------------------------------------------------------------------------------------
+# One quadrant, instantiated at four rotations. Four teams spawn on four sides, so the layout has to
+# be rotationally fair; it also makes the arena look composed rather than scattered.
+QUADRANT = [
+    ("SM_PhotonCoverPod", 790, 340, 0.0, "Pod"),
+    ("SM_PhotonCoverLow", 1180, 900, 28.0, "Low"),
+    ("SM_PhotonCoverAngled", 430, 1180, -22.0, "Angled"),
+    ("SM_PhotonCoverPylon", 1520, 330, 0.0, "Pylon"),
+    ("SM_PhotonCoverBench", 940, 1520, 90.0, "Bench"),
 ]
-for x, y, h, name in cover_specs:
-    box((x, y, h * 50.0), (2.2, 1.4, h), "ArenaCover_%s" % name, "cover", COVER_COL)
-    # A single emissive lip along the top edge makes cover height readable at a glance.
-    box((x, y, h * 100.0 + 3), (2.24, 1.44, 0.06), "ArenaCoverTrim_%s" % name, "energy", dim(NEON, 0.6), 1.8)
+for q in range(4):
+    a = math.radians(q * 90.0)
+    ca, sa = math.cos(a), math.sin(a)
+    for asset, x, y, yaw, kind in QUADRANT:
+        wx, wy = x * ca - y * sa, x * sa + y * ca
+        label = "Cover_%s_%d" % (kind, q)
+        place(asset, (wx, wy, 0), label, "cover", COVER_COL, yaw=yaw + q * 90.0)
+        # Height cue on the low barriers only. Putting a lit lip on all five archetypes was what
+        # made the last build look like a strip-light showroom.
+        if kind == "Low":
+            box((wx, wy, 114), (2.6, 0.9, 0.05), "Energy_CoverTrim_%d" % q, "energy",
+                dim(NEON, 0.55), 1.5, yaw=yaw + q * 90.0)
+        if kind == "Pylon":
+            box((wx, wy, 280), (1.0, 1.0, 0.08), "Energy_PylonCap_%d" % q, "energy",
+                dim(NEON, 0.6), 2.0, yaw=yaw + q * 90.0)
 
-box((0, 400, 120), (5, 5, 2.4), "ArenaCover_Central", "cover", COVER_COL)
-box((0, 400, 245), (5.1, 5.1, 0.08), "ArenaCoverTrim_Central", "energy", dim(NEON, 0.7), 2.4)
+# --- 6. Verticality ------------------------------------------------------------------------------------
+# Playable deck, reached by steps from the west.
+DECK = (1250.0, -1150.0, 300.0)
+place("SM_PhotonDeckSlab", DECK, "DeckSlab", "cover", dim(COVER_COL, 0.9))
+for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+    box((DECK[0] + sx * 520, DECK[1] + sy * 320, DECK[2] / 2.0), (0.7, 0.7, DECK[2] / 100.0),
+        "DeckColumn_%d%d" % (sx, sy), "metal", METAL_COL)
+for i in range(3):
+    place("SM_PhotonRailing", (DECK[0] - 400 + i * 400, DECK[1] + 400, DECK[2] + 38),
+          "Railing_N_%d" % i, "metal", METAL_COL)
+    place("SM_PhotonRailing", (DECK[0] - 400 + i * 400, DECK[1] - 400, DECK[2] + 38),
+          "Railing_S_%d" % i, "metal", METAL_COL)
+for i, h in enumerate([100, 200, 300]):
+    box((DECK[0] - 700 - i * 130, DECK[1], h / 2.0), (1.3, 5.0, h / 100.0),
+        "DeckStep_%d" % i, "cover", dim(COVER_COL, 0.85))
 
-# --- 5. Elevated deck with a stepped approach ------------------------------------------------------
-box((1300, -1200, 160), (5, 5, 0.35), "ArenaElevated_Deck", "cover", COVER_COL)
-box((1300, -1200, 180), (5.1, 5.1, 0.06), "ArenaElevated_DeckTrim", "energy", dim(NEON, 0.6), 2.0)
-for i, (sx, height) in enumerate([(0, 45), (1, 90), (2, 135)]):
-    box((1030 + sx * 90, -1200, height / 2.0), (0.9, 5, height / 100.0),
-        "Step_%d" % i, "cover", COVER_COL)
-box((1300, -1200, 300), (1.2, 1.2, 1.4), "ArenaCover_Deck", "cover", COVER_COL)
+# Broadcast gantry: not playable, purely to give the west side depth and a sense of a venue that
+# has people in it who are not competing.
+place("SM_PhotonDeckSlab", (-1820, 0, 640), "Gantry", "metal", METAL_COL, yaw=90.0,
+      scale=(1.0, 2.6, 1.0))
+for i in range(5):
+    place("SM_PhotonRailing", (-1420, -800 + i * 400, 678), "Railing_Gantry_%d" % i,
+          "metal", METAL_COL, yaw=90.0)
 
-# --- 6. Team spawn zones ----------------------------------------------------------------------------
-spawns = [("Red", 0, -1700, 90), ("Blue", 0, 1700, -90), ("Green", -1700, 0, 0), ("Yellow", 1700, 0, 180)]
-for team, x, y, yaw in spawns:
+# --- 7. Team spawn zones ---------------------------------------------------------------------------------
+SPAWNS = [("Red", 0.0, -1700.0, 90.0), ("Blue", 0.0, 1700.0, -90.0),
+          ("Green", -1700.0, 0.0, 0.0), ("Yellow", 1700.0, 0.0, 180.0)]
+for team, x, y, facing in SPAWNS:
     colour = TEAM[team]
-    pad_colour = dim(colour, 0.20)
-    box((x, y, 2), (6, 6, 0.03), "SpawnPad_%s" % team, "cover", pad_colour, 0.0)
-    # Team identity comes from a bright edge, not from a glowing floor slab.
-    for j, (ox, oy, sx, sy) in enumerate([(0, 300, 6, 0.1), (0, -300, 6, 0.1),
-                                          (300, 0, 0.1, 6), (-300, 0, 0.1, 6)]):
-        box((x + ox, y + oy, 4), (sx, sy, 0.04), "SpawnStrip_%s_%d" % (team, j), "energy", colour, 4.0)
-    box((x, y, 200), (0.35, 0.35, 4.0), "SpawnPylon_%s" % team, "structure", STRUCTURE_LIGHT)
-    box((x, y, 400), (0.42, 0.42, 0.12), "SpawnStrip_%s_Top" % team, "energy", colour, 5.0)
+    # Outward direction, so the gate sits behind the pad rather than on top of the player.
+    ox, oy = (0.0, -1.0) if y < 0 else (0.0, 1.0) if y > 0 else ((-1.0, 0.0) if x < 0 else (1.0, 0.0))
+    gate_yaw = 0.0 if oy else 90.0
 
-# --- 7. Target pedestals and targets -----------------------------------------------------------------
+    box((x, y, 2), (6, 6, 0.03), "SpawnPad_%s" % team, "cover", dim(colour, 0.16), 0.0)
+    for j, (dx, dy, sx, sy) in enumerate([(0, 300, 6, 0.08), (0, -300, 6, 0.08),
+                                          (300, 0, 0.08, 6), (-300, 0, 0.08, 6)]):
+        box((x + dx, y + dy, 4), (sx, sy, 0.04), "SpawnStrip_%s_%d" % (team, j), "energy",
+            colour, 3.4)
+
+    place("SM_PhotonSpawnGate", (x + ox * 250, y + oy * 250, 0), "SpawnGate_%s" % team,
+          "structure", STRUCTURE_LIGHT, yaw=gate_yaw)
+    box((x + ox * 250, y + oy * 250, 356), (4.0 if oy else 0.3, 0.3 if oy else 4.0, 0.14),
+        "SpawnStrip_%s_Lintel" % team, "energy", colour, 4.0)
+
+    spot = spawn(unreal.SpotLight, (x + ox * 120, y + oy * 120, 620), pitch=-70.0,
+                 yaw=math.degrees(math.atan2(-oy, -ox)))
+    spot.set_actor_label("TeamLight_%s" % team)
+    sc = spot.spot_light_component
+    sc.set_mobility(unreal.ComponentMobility.MOVABLE)
+    sc.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
+    sc.set_editor_property("intensity", TEAM_LM)
+    sc.set_editor_property("attenuation_radius", 1400.0)
+    sc.set_editor_property("outer_cone_angle", 46.0)
+    sc.set_editor_property("inner_cone_angle", 18.0)
+    sc.set_editor_property("light_color", cool(
+        int(min(colour.r, 1.0) * 255), int(min(colour.g, 1.0) * 255), int(min(colour.b, 1.0) * 255)))
+    sc.set_editor_property("cast_shadows", False)
+
+# --- 8. Architectural fill and infrastructure glow ----------------------------------------------------------
+def rect_light(label, loc, yaw, pitch, lumens, width, height, radius, colour, shadows=False):
+    a = spawn(unreal.RectLight, loc, yaw=yaw, pitch=pitch)
+    a.set_actor_label(label)
+    c = a.rect_light_component
+    c.set_mobility(unreal.ComponentMobility.MOVABLE)
+    c.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
+    c.set_editor_property("intensity", lumens)
+    c.set_editor_property("source_width", width)
+    c.set_editor_property("source_height", height)
+    c.set_editor_property("attenuation_radius", radius)
+    c.set_editor_property("light_color", colour)
+    c.set_editor_property("cast_shadows", shadows)
+    return a
+
+
+# A rect light emits along its actor's +X, so the yaw here is the direction the light faces, not the
+# wall it belongs to. Getting this backwards on the first pass aimed every wash out of the arena.
+FACING = {"N": -90.0, "S": 90.0, "E": 180.0, "W": 0.0}
+for side, (nx, ny), _yaw in SIDES:
+    inward = FACING[side]
+    at_wall = lambda out, z: ((0.0, ny * out, z) if ny else (nx * out, 0.0, z))
+
+    # Zone 1a: inward fill. The largest light in the arena, and the reason cover now reads lighter
+    # than the floor it stands on.
+    rect_light("WallWash_%s" % side, at_wall(HALF - 140, 470.0), inward, -14.0,
+               WALLWASH_LM, 3000.0, 520.0, 2600.0, cool(150, 180, 220))
+    # Zone 1b: grazing light down the wall bays, which is what makes the ribs and recesses read.
+    rect_light("WallGraze_%s" % side, at_wall(HALF - 70, 846.0), inward + 180.0, -62.0,
+               GRAZE_LM, 3400.0, 300.0, 1200.0, cool(176, 198, 230))
+    # Zone 2b: onto the truss grid.
+    rect_light("CeilingUp_%s" % side, at_wall(HALF - 420, 880.0), inward, 62.0,
+               UPLIGHT_LM, 2200.0, 400.0, 1500.0, cool(160, 186, 224))
+
+# Zone 4: the cyan channels have to put light onto the architecture or they are just decals.
+for side, (nx, ny), _yaw in SIDES:
+    for along in (-1200.0, 0.0, 1200.0):
+        pos = (along, ny * (HALF - 60), 780.0) if ny else (nx * (HALF - 60), along, 780.0)
+        p = spawn(unreal.PointLight, pos)
+        p.set_actor_label("CyanGlow_%s_%d" % (side, int(along)))
+        pc = p.point_light_component
+        pc.set_mobility(unreal.ComponentMobility.MOVABLE)
+        pc.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
+        pc.set_editor_property("intensity", CYAN_LM)
+        pc.set_editor_property("attenuation_radius", 900.0)
+        pc.set_editor_property("light_color", cool(96, 200, 255))
+        pc.set_editor_property("cast_shadows", False)
+
+# --- 9. Targets ------------------------------------------------------------------------------------------------
 target_cls = unreal.load_class(None, "/Script/Photon.PhotonTarget")
-target_positions = [(0, 600), (700, 1300), (-800, 1600), (400, 2000 - 300), (-900, 400)]
-for i, (x, y) in enumerate(target_positions):
-    ped = spawn(unreal.StaticMeshActor, (x, y, 45))
-    ped.set_actor_label("Pedestal_%d" % i)
-    ped.set_actor_scale3d(unreal.Vector(0.9, 0.9, 0.9))
-    ped.static_mesh_component.set_static_mesh(CYL)
-    ped.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
-    surface(ped, "structure", STRUCTURE_LIGHT)
-    box((x, y, 93), (1.0, 1.0, 0.06), "Pedestal_%d_Trim" % i, "energy", dim(NEON, 0.7), 2.4)
+for i, (x, y) in enumerate([(620, 980), (-980, 620), (-620, -980), (980, -620), (0, 1420)]):
+    place("SM_PhotonPedestal", (x, y, 0), "Pedestal_%d" % i, "structure", STRUCTURE_LIGHT)
     if target_cls:
-        t = spawn(target_cls, (x, y, 180))
+        t = spawn(target_cls, (x, y, 210))
         t.set_actor_label("ArenaTarget_%d" % i)
 
-# --- 8. Signage / scoreboard placeholders ------------------------------------------------------------
-for i, (x, y, yaw) in enumerate([(0, HALF - 12, 0), (0, -(HALF - 12), 0)]):
-    box((x, y, 470), (11, 0.2, 2.6), "SignageBody_%d" % i, "structure", STRUCTURE, yaw=yaw)
-    box((x, y - 6 if i == 0 else y + 6, 470), (10.4, 0.1, 2.2), "Signage_%d" % i, "energy", dim(NEON, 0.35), 1.4,
-        yaw=yaw)
+# --- 10. Signage --------------------------------------------------------------------------------------------------
+# Two screens, set inside the wall recesses so they read as installed rather than stuck on.
+for i, (x, y, yaw) in enumerate([(0, HALF - 8, 0), (0, -(HALF - 8), 180)]):
+    box((x, y + 14, 400) if i == 0 else (x, y - 14, 400), (11.0, 0.18, 2.8),
+        "SignageBody_%d" % i, "structure", STRUCTURE_LIGHT, yaw=yaw)
+    box((x, y + 8, 400) if i == 0 else (x, y - 8, 400), (10.2, 0.08, 2.2),
+        "Signage_%d" % i, "energy", dim(NEON, 0.22), 0.55, yaw=yaw)
 
-# --- 9. Lighting environment ---------------------------------------------------------------------------
+# --- 11. Lighting environment -----------------------------------------------------------------------------------------
 for a in subsys.get_all_level_actors():
     if isinstance(a, unreal.DirectionalLight):
         a.light_component.set_mobility(unreal.ComponentMobility.MOVABLE)
@@ -260,16 +487,15 @@ for a in subsys.get_all_level_actors():
         a.light_component.set_intensity(SKY_LIGHT)
         say("skylight tuned intensity=%.2f" % SKY_LIGHT)
     elif isinstance(a, unreal.PlayerStart):
-        # Was pitch=90: the player spawned looking straight up at the sky.
         a.set_actor_location_and_rotation(
             unreal.Vector(0, -1700, 120), unreal.Rotator(roll=0.0, pitch=0.0, yaw=90.0),
             False, False)
-        say("playerstart corrected to pitch=0 yaw=90")
+        say("playerstart at red spawn, facing centre")
 
 existing = {a.get_actor_label() for a in subsys.get_all_level_actors()}
 
 if "PhotonPostProcess" not in existing:
-    ppv = spawn(unreal.PostProcessVolume, (0, 0, 300))
+    ppv = subsys.spawn_actor_from_class(unreal.PostProcessVolume, unreal.Vector(0, 0, 300))
     ppv.set_actor_label("PhotonPostProcess")
 else:
     ppv = next(a for a in subsys.get_all_level_actors() if a.get_actor_label() == "PhotonPostProcess")
@@ -277,30 +503,35 @@ ppv.set_editor_property("unbound", True)
 s = ppv.get_editor_property("settings")
 # Exposure is deliberately NOT set here. Pinning it on this volume was measured across a ten stop
 # sweep and changed nothing at all, so it lives on the player camera instead
-# (PhotonVisuals::ApplyArenaPostProcess, photon.Exposure). Leaving dead exposure overrides in the
-# level would just send the next person looking in the wrong place.
+# (PhotonVisuals::ApplyArenaPostProcess, photon.Exposure).
 s.set_editor_property("override_bloom_intensity", True)
 s.set_editor_property("bloom_intensity", BLOOM)
 s.set_editor_property("override_vignette_intensity", True)
-s.set_editor_property("vignette_intensity", 0.32)
+s.set_editor_property("vignette_intensity", 0.30)
 ppv.set_editor_property("settings", s)
 say("postprocess bloom=%.2f (exposure is owned by the camera)" % BLOOM)
 
 if "PhotonFog" not in existing:
-    fog = spawn(unreal.ExponentialHeightFog, (0, 0, 0))
+    fog = subsys.spawn_actor_from_class(unreal.ExponentialHeightFog, unreal.Vector(0, 0, 0))
     fog.set_actor_label("PhotonFog")
     fc = fog.component
-    fc.set_editor_property("fog_density", 0.008)
-    fc.set_editor_property("fog_height_falloff", 0.6)
-    fc.set_editor_property("fog_inscattering_luminance", unreal.LinearColor(0.02, 0.05, 0.09, 1.0))
+    fc.set_editor_property("fog_density", 0.010)
+    fc.set_editor_property("fog_height_falloff", 0.45)
+    fc.set_editor_property("fog_inscattering_luminance", unreal.LinearColor(0.015, 0.040, 0.075, 1.0))
     say("fog added")
 
 unreal.EditorLevelLibrary.save_current_level()
 
 actors = subsys.get_all_level_actors()
+kit_actors = [a for a in actors if isinstance(a, unreal.StaticMeshActor)
+              and a.static_mesh_component.static_mesh
+              and "Photon/Meshes" in a.static_mesh_component.static_mesh.get_path_name()]
 say("final_actor_count=%d" % len(actors))
 say("static_meshes=%d" % len([a for a in actors if isinstance(a, unreal.StaticMeshActor)]))
+say("authored_kit_actors=%d" % len(kit_actors))
 say("rect_lights=%d" % len([a for a in actors if isinstance(a, unreal.RectLight)]))
+say("spot_lights=%d" % len([a for a in actors if isinstance(a, unreal.SpotLight)]))
+say("point_lights=%d" % len([a for a in actors if isinstance(a, unreal.PointLight)]))
 say("targets=%d" % len([a for a in actors if a.get_class().get_name() == "PhotonTarget"]))
 
 with open(unreal.Paths.project_saved_dir() + "Logs/photon_arena_build.txt", "w") as f:

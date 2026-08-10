@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/GameModeBase.h"
 #include "PhotonPlayer.generated.h"
@@ -47,26 +48,38 @@ public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UCameraComponent> Camera;
 
-	/**
-	 * The first-person weapon root.
-	 *
-	 * Parented to the right-arm proxy on the TEMPORARY FIRST-PERSON PRESENTATION PROXY hierarchy
-	 * (shoulder → arm → hand → weapon). Replace the proxy with rigged arms when art is ready.
-	 */
+	/** The first-person weapon root. Parented to the camera; see the constructor for why. */
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<USceneComponent> WeaponRoot;
 
-	/**
-	 * TEMPORARY FIRST-PERSON PRESENTATION PROXY — anchor for placeholder arm meshes.
-	 * Camera → FirstPersonPresentationRoot → arm proxies → WeaponRoot.
-	 */
+	/** Anchor for the first-person arms: Camera → FirstPersonPresentationRoot → arms. */
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
 	TObjectPtr<USceneComponent> FirstPersonPresentationRoot;
 
+	/**
+	 * First-person arms, from /Game/Photon/Meshes/SM_PhotonArm*.
+	 *
+	 * Authored by Tools/photon_mesh_kit.py at human proportions — a 30 cm sleeved forearm tapering
+	 * into a cuff, and a gloved hand with a thumb and finger block. They replace the two engine
+	 * cylinders that used to sit here, which read as grey pipes because that is what they were.
+	 */
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
-	TObjectPtr<class UStaticMeshComponent> RightArmProxy;
+	TObjectPtr<class UStaticMeshComponent> RightArm;
 
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
-	TObjectPtr<class UStaticMeshComponent> LeftArmProxy;
+	TObjectPtr<class UStaticMeshComponent> LeftArm;
+
+	/**
+	 * Lights the viewmodel and nothing else.
+	 *
+	 * On lighting channel 1, and the arms and weapon are moved off channel 0 to match. Without this
+	 * the only way to make the weapon readable is to raise the arena lights until the arena itself
+	 * is washed out — the two are the same control otherwise.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UPointLightComponent> ViewModelKey;
+
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UPointLightComponent> ViewModelFill;
 
 	/** Visible first-person weapon mesh — lives on the pawn, not the weapon logic actor. */
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
@@ -154,6 +167,27 @@ protected:
 	void BuildMappingContext();
 };
 
+/**
+ * Photon's first-person HUD. Currently just the crosshair.
+ *
+ * Drawn on the canvas rather than placed as world geometry in front of the camera, because the
+ * centre of the screen is a UI fact, not a world one: a world-space reticle drifts with field of
+ * view, aspect ratio and any weapon pose change, and is never quite where the shot goes.
+ */
+UCLASS()
+class PHOTON_API APhotonHUD : public AHUD
+{
+	GENERATED_BODY()
+
+public:
+	virtual void DrawHUD() override;
+
+	/** Half the gap at the centre, in pixels at 1080p. Kept small — this is a marksman's reticle. */
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|HUD") float CrosshairGap = 5.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|HUD") float CrosshairLength = 7.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|HUD") float CrosshairThickness = 2.f;
+};
+
 /** Smallest game mode that puts a Photon player in a level. Networking is Session C. */
 UCLASS()
 class PHOTON_API APhotonGameMode : public AGameModeBase
@@ -162,6 +196,14 @@ class PHOTON_API APhotonGameMode : public AGameModeBase
 
 public:
 	APhotonGameMode();
+
+	/** One pose in the -PhotonTour screenshot sequence. Public so the tour table can live in the .cpp. */
+	struct FPhotonViewpoint
+	{
+		const TCHAR* Name;
+		FVector Location;
+		FRotator Rotation;
+	};
 
 protected:
 	virtual void BeginPlay() override;
@@ -177,4 +219,17 @@ protected:
 
 	/** Hold a few live bolts in front of the camera so -PhotonShot can verify projectile readability. */
 	void StagePhotonShotFX();
+
+	/**
+	 * Scripted screenshot tour, enabled with -PhotonTour.
+	 *
+	 * -PhotonShot only ever showed the arena from the spawn, which is exactly the one angle a
+	 * greybox can be made to look acceptable from. The tour poses the pawn at a fixed set of
+	 * viewpoints and captures each one, so a visual change has to survive being looked at from the
+	 * centre, from a corner, and from underneath the ceiling before it counts as an improvement.
+	 */
+	void StepPhotonTour();
+	void CaptureTourShot();
+
+	int32 TourIndex = 0;
 };

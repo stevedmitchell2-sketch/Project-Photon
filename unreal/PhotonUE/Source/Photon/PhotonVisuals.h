@@ -17,6 +17,8 @@ enum class EPhotonSurface : uint8
 	Floor,
 	/** Cover volumes — lifted value so they read instantly against the floor. */
 	Cover,
+	/** Trusses, railings, the overhead rig — separated from graphite by specular, not by shade. */
+	Metal,
 	/** Unlit emissive accents — strips, markings, bolts, targets. */
 	Energy,
 };
@@ -95,6 +97,7 @@ namespace PhotonVisuals
 		PHOTON_API FLinearColor Structure();
 		PHOTON_API FLinearColor Floor();
 		PHOTON_API FLinearColor Cover();
+		PHOTON_API FLinearColor Metal();
 		PHOTON_API FLinearColor Energy();
 	}
 }
