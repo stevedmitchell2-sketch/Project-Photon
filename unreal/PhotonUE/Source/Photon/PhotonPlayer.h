@@ -62,7 +62,10 @@ protected:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	void OnMove(const FInputActionValue& Value);
+	/** Mouse look: the value is already a per-frame delta, so it must NOT be scaled by DeltaTime. */
 	void OnLook(const FInputActionValue& Value);
+	/** Stick look: the value is a held deflection, so it MUST be scaled by DeltaTime. */
+	void OnLookStick(const FInputActionValue& Value);
 	void OnJumpStart(const FInputActionValue& Value);
 	void OnJumpStop(const FInputActionValue& Value);
 	void OnCrouchToggle(const FInputActionValue& Value);
@@ -93,7 +96,14 @@ public:
 	/** Actions, loaded from the generated /Game/Photon/Input assets. */
 	UPROPERTY(Transient) TMap<FName, TObjectPtr<UInputAction>> Actions;
 
-	UInputAction* FindAction(FName Name) const;
+	/**
+	 * Loads the action set on first use.
+	 *
+	 * Lazy on purpose: the pawn's SetupPlayerInputComponent runs *before* this controller's BeginPlay,
+	 * so loading in BeginPlay left the map empty at bind time and every BindAction silently no-opped.
+	 * The mapping context still reported 27/27, which is why this was initially mistaken for working.
+	 */
+	UInputAction* FindAction(FName Name);
 
 	/** Number of key mappings actually present. The only honest measure that binding worked. */
 	UFUNCTION(BlueprintCallable, Category = "Photon")
@@ -103,6 +113,7 @@ protected:
 	virtual void BeginPlay() override;
 
 	void LoadActions();
+	bool bActionsLoaded = false;
 	void BuildMappingContext();
 };
 

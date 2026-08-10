@@ -75,27 +75,34 @@ void APhotonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		return;
 	}
 
-	auto Bind = [EIC, PC](FName Name, ETriggerEvent Event, auto Fn, APhotonCharacter* Self)
+	int32 Bound = 0, Missing = 0;
+	auto Bind = [EIC, PC, &Bound, &Missing](FName Name, ETriggerEvent Event, auto Fn, APhotonCharacter* Self)
 	{
 		if (UInputAction* Action = PC->FindAction(Name))
 		{
 			EIC->BindAction(Action, Event, Self, Fn);
+			++Bound;
 		}
 		else
 		{
+			++Missing;
 			UE_LOG(LogTemp, Warning, TEXT("[Photon] no action %s to bind"), *Name.ToString());
 		}
 	};
 
 	Bind("IA_Move", ETriggerEvent::Triggered, &APhotonCharacter::OnMove, this);
 	Bind("IA_Look", ETriggerEvent::Triggered, &APhotonCharacter::OnLook, this);
+	Bind("IA_LookStick", ETriggerEvent::Triggered, &APhotonCharacter::OnLookStick, this);
 	Bind("IA_Jump", ETriggerEvent::Started, &APhotonCharacter::OnJumpStart, this);
 	Bind("IA_Jump", ETriggerEvent::Completed, &APhotonCharacter::OnJumpStop, this);
 	Bind("IA_CrouchSlide", ETriggerEvent::Started, &APhotonCharacter::OnCrouchToggle, this);
 	Bind("IA_Sprint", ETriggerEvent::Started, &APhotonCharacter::OnSprintStart, this);
 	Bind("IA_Sprint", ETriggerEvent::Completed, &APhotonCharacter::OnSprintStop, this);
 
-	UE_LOG(LogTemp, Display, TEXT("[Photon] input bound on %s"), *GetName());
+	// Counted, not assumed. The first version logged "input bound" unconditionally and was reported as
+	// verified while all eight binds were failing.
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY binds ok=%d missing=%d on %s"),
+		Bound, Missing, *GetName());
 }
 
 void APhotonCharacter::OnMove(const FInputActionValue& Value)
@@ -113,17 +120,30 @@ void APhotonCharacter::OnMove(const FInputActionValue& Value)
 
 void APhotonCharacter::OnLook(const FInputActionValue& Value)
 {
+	// Mouse. Enhanced Input delivers a per-frame delta here, so scaling by DeltaTime would make
+	// sensitivity depend on frame rate — the classic mouse-feel bug. Applied raw.
 	const FVector2D Axis = Value.Get<FVector2D>();
 	if (Axis.IsNearlyZero())
 	{
 		return;
 	}
-	// Mouse arrives as a per-frame delta and must not be multiplied by DeltaTime; a stick arrives as a
-	// held magnitude and must be. Enhanced Input hands both through one action, so the rate applies to
-	// the gamepad path via the frame delta and the mouse path is scaled directly.
-	const float Delta = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f;
-	AddControllerYawInput(Axis.X * MouseLookScale + Axis.X * GamepadLookRate * Delta * 0.f);
+	AddControllerYawInput(Axis.X * MouseLookScale);
 	AddControllerPitchInput(-Axis.Y * MouseLookScale);
+}
+
+void APhotonCharacter::OnLookStick(const FInputActionValue& Value)
+{
+	// Stick. This is a held magnitude, not a delta, so it is a *rate* and must be integrated over
+	// DeltaTime. The first version routed both sources through one handler and left the gamepad term
+	// multiplied by zero, which made right-stick look completely dead while mouse look felt correct.
+	const FVector2D Axis = Value.Get<FVector2D>();
+	if (Axis.IsNearlyZero())
+	{
+		return;
+	}
+	const float Delta = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f;
+	AddControllerYawInput(Axis.X * GamepadLookRate * Delta);
+	AddControllerPitchInput(-Axis.Y * GamepadLookRate * Delta);
 }
 
 void APhotonCharacter::OnJumpStart(const FInputActionValue&) { Jump(); }
@@ -179,12 +199,28 @@ void APhotonPlayerController::LoadActions()
 			UE_LOG(LogTemp, Warning, TEXT("[Photon] missing input action asset: %s"), *Path);
 		}
 	}
+	// Stick look gets its own action because it is a rate while the mouse is a delta, and one action
+	// cannot carry both without one of them feeling wrong. Created here rather than in
+	// BuildMappingContext because the pawn binds before this controller's BeginPlay, so anything added
+	// later is invisible to it — that ordering already cost one round of "missing=1".
+	if (!Actions.Contains(TEXT("IA_LookStick")))
+	{
+		UInputAction* StickLook = NewObject<UInputAction>(this, TEXT("IA_LookStick"));
+		StickLook->ValueType = EInputActionValueType::Axis2D;
+		Actions.Add(TEXT("IA_LookStick"), StickLook);
+	}
+
+	bActionsLoaded = true;
 	UE_LOG(LogTemp, Display, TEXT("[Photon] loaded %d/%d input actions"),
 		Actions.Num(), UE_ARRAY_COUNT(GPhotonActionNames));
 }
 
-UInputAction* APhotonPlayerController::FindAction(FName Name) const
+UInputAction* APhotonPlayerController::FindAction(FName Name)
 {
+	if (!bActionsLoaded)
+	{
+		LoadActions();
+	}
 	const TObjectPtr<UInputAction>* Found = Actions.Find(Name);
 	return Found ? Found->Get() : nullptr;
 }
@@ -198,14 +234,15 @@ void APhotonPlayerController::BuildMappingContext()
 {
 	RuntimeContext = NewObject<UInputMappingContext>(this, TEXT("IMC_PhotonRuntime"));
 
+
 	// Keyboard/mouse and gamepad live in the *same* context, so both are always live and there is no
 	// input-mode switch to get wrong. The reference build's InputManager worked this way too.
 	struct FBinding { const TCHAR* Action; FKey Key; };
 	const FBinding Bindings[] = {
 		// Look and 2D movement axes. Gamepad sticks and the mouse are 2D keys, so no modifiers needed.
 		{ TEXT("IA_Move"), EKeys::Gamepad_Left2D },
-		{ TEXT("IA_Look"), EKeys::Gamepad_Right2D },
 		{ TEXT("IA_Look"), EKeys::Mouse2D },
+		{ TEXT("IA_LookStick"), EKeys::Gamepad_Right2D },
 
 		{ TEXT("IA_Fire"), EKeys::LeftMouseButton },
 		{ TEXT("IA_Fire"), EKeys::Gamepad_RightTrigger },
