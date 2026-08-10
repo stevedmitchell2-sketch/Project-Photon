@@ -146,3 +146,64 @@ Unchanged from `docs/UNREAL_MIGRATION_PLAN.md` §4: the instanced batching, the 
 `onBeforeCompile` patch, procedural normal generation, the capture harness, the Zustand persistence
 migrations, `MuzzleRegistry`, and the 24-slot avatar pool. All exist to work around the current
 runtime.
+
+---
+
+## Addendum — toolchain proven, `map_key` blocker isolated
+
+**The build works.** MSVC 14.44.35207 + Windows SDK 10.0.22621.0, `Result: Succeeded`,
+`UnrealEditor-Photon.dll` links and loads (`InternalLoadLibrary: 'Photon'`). `PhotonCore.cpp`
+compiled clean on its first pass.
+
+Generated and confirmed present in-engine by `Tools/bootstrap_stage0.py`:
+
+- 15 Enhanced Input actions and `IMC_Photon`
+- `DA_PH6_PhotonRifle`, `DA_PH9_Swift` as real `UPhotonWeaponData` assets
+- `PH6_PhotonRifle` static mesh + material, imported from the FBX
+
+### The one open blocker: key bindings cannot be authored from Python
+
+Probed rather than guessed (`Tools/probe_key.py`):
+
+```
+dir(unreal.Key): ['assign','cast','copy','export_text','get_editor_property',
+                  'import_text','set_editor_properties','set_editor_property', ...]
+unreal.Key("SpaceBar")                 -> call() takes at most 0 arguments (1 given)
+unreal.Key() + set_editor_property     -> constructs, but stays empty: Struct 'Key' {}
+context.map_key(action, <empty key>)   -> no exception, mappings count = 0
+```
+
+`FKey` exposes no constructor taking a key name and `set_editor_property("key_name", ...)` does not
+populate it, so `map_key` silently maps nothing. **This is the important part: it does not raise.**
+An earlier run of the bootstrap reported mappings as applied when the count was zero — a false
+positive of exactly the kind this project has been bitten by before, caught only by asserting on
+`len(mappings)` afterwards rather than trusting the absence of an exception.
+
+Two viable routes, in preference order:
+
+1. **Author the 14 bindings in the editor UI.** Open `IMC_Photon`, add each mapping. It is a
+   one-time five-minute job, and the assets it edits are already generated and saved. Practical and
+   low-risk.
+2. Build `FEnhancedActionKeyMapping` structs in C++ and populate `IMC_Photon->Mappings` from an
+   editor-only commandlet, where `EKeys::SpaceBar` etc. are directly available. More work, but keeps
+   the whole bootstrap scriptable.
+
+Either way `bootstrap_stage0.py` remains the source of truth for the actions and data assets; only
+the binding step moves.
+
+### Environment traps worth carrying
+
+- **UE's argument parser treats `\100` as an octal escape.** `...\Desktop\100 men vs gorilla\...`
+  silently became `Desktop@ men vs gorilla`, and the script "could not be found". Use forward slashes
+  in every path passed to UE from this repository.
+- `unreal.log` writes to `Saved/Logs`, not stdout. Commandlet results must be read from the log.
+- `Fab` ships enabled and fails to load against this engine install, taking editor startup down with
+  it. Disabled in `PhotonUE.uproject`.
+
+### Next milestone — unchanged in substance
+
+Nothing below has been started, and none of it is blocked by the above:
+`APhotonCharacter` (CMC subclass with a slide movement mode), `APhotonPlayerController`,
+`APhotonGameMode`/`GameState`/`PlayerState`, `UPhotonInventoryComponent` (PH-6 / PH-9 switching),
+`APhotonWeapon`, grey-box level, then runtime verification of move / look / fire / switch on both a
+controller and keyboard+mouse.
