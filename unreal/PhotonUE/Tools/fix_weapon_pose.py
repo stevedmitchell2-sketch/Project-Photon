@@ -13,14 +13,20 @@ draws, and nothing assigned a material to slot 0, so it falls back to WorldGridM
 """
 import unreal
 
+# Unreal is X-forward, Y-right, Z-up. three.js was -Z-forward, which is why the reference build needed
+# a ~93 degree yawOffset on this mesh. The mesh's long axis is +X, so in Unreal it is ALREADY pointing
+# downrange and needs no yaw at all. Carrying the 88 degree yaw across from the old engine rotated the
+# rifle fully broadside across the centre of the screen — the exact symptom observed.
+#
+# Scale also drops again: 0.55 still filled the frame. 0.34 on a 98 cm mesh reads as a held weapon.
 HIP = unreal.Transform(
-    location=unreal.Vector(42.0, 13.0, -11.0),
-    rotation=unreal.Rotator(roll=2.0, pitch=-1.5, yaw=88.0),
-    scale=unreal.Vector(0.55, 0.55, 0.55))
+    location=unreal.Vector(46.0, 15.0, -13.0),
+    rotation=unreal.Rotator(roll=0.0, pitch=-1.0, yaw=2.0),
+    scale=unreal.Vector(0.34, 0.34, 0.34))
 ADS = unreal.Transform(
-    location=unreal.Vector(46.0, 0.0, -8.0),
-    rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=90.0),
-    scale=unreal.Vector(0.55, 0.55, 0.55))
+    location=unreal.Vector(52.0, 2.0, -9.0),
+    rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0),
+    scale=unreal.Vector(0.34, 0.34, 0.34))
 
 mesh = unreal.EditorAssetLibrary.load_asset("/Game/Photon/Weapons/PH6_PhotonRifle")
 unreal.log("PHOTONPOSE mesh=%s" % (mesh is not None))
