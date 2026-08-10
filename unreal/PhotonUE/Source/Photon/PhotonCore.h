@@ -148,10 +148,24 @@ public:
 	 * Values are the reference build's HIP/ADS poses converted to centimetres.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Presentation")
-	FTransform HipTransform = FTransform(FRotator(5.7f, 3.2f, 3.4f), FVector(28.8f, 17.0f, -15.1f));
+	FTransform HipTransform = FTransform(
+		FRotator(-1.5f, 2.f, 0.f), FVector(44.f, 14.f, -12.f), FVector(0.34f));
 
 	UPROPERTY(EditDefaultsOnly, Category = "Presentation")
-	FTransform AdsTransform = FTransform(FRotator(0.7f, 0.f, 0.f), FVector(26.4f, 0.6f, -13.0f));
+	FTransform AdsTransform = FTransform(
+		FRotator(0.f, 0.f, 0.f), FVector(50.f, 3.f, -10.f), FVector(0.34f));
+
+	/** Muzzle flash / bolt origin in mesh local space. Used when no SOCKET_muzzle exists. */
+	UPROPERTY(EditDefaultsOnly, Category = "Presentation")
+	FVector MuzzleOffset = FVector(52.f, 0.f, 2.f);
+
+	/** View-model kick applied on each shot, in weapon-local space (cm / degrees). */
+	UPROPERTY(EditDefaultsOnly, Category = "Presentation")
+	FVector RecoilKickOffset = FVector(-2.8f, 0.f, 0.45f);
+
+	/** Multiplier from RecoilPitch (degrees) to mesh pitch kick. */
+	UPROPERTY(EditDefaultsOnly, Category = "Presentation")
+	float RecoilMeshPitchScale = 3.5f;
 
 	// --- Feel ---
 	UPROPERTY(EditDefaultsOnly, Category = "Feel") float CameraShake = 0.35f;

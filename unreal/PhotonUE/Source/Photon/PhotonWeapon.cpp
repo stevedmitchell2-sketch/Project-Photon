@@ -29,7 +29,6 @@ APhotonWeapon::APhotonWeapon()
 
 	MuzzleFlash = CreateDefaultSubobject<UPointLightComponent>(TEXT("MuzzleFlash"));
 	MuzzleFlash->SetupAttachment(Mesh);
-	MuzzleFlash->SetRelativeLocation(MuzzleOffset);
 	MuzzleFlash->SetIntensity(0.f);
 	MuzzleFlash->SetAttenuationRadius(180.f);
 	MuzzleFlash->SetLightColor(FLinearColor(0.55f, 0.85f, 1.f));
@@ -52,9 +51,14 @@ void APhotonWeapon::InitialiseFromData(const UPhotonWeaponData* InData)
 	// sits correctly without code changes.
 	HipPose = Data->HipTransform;
 	UpdateWeaponPose();
-	if (MuzzleFlash)
+	UpdateMuzzleAttachment();
+}
+
+void APhotonWeapon::UpdateMuzzleAttachment()
+{
+	if (MuzzleFlash && Data)
 	{
-		MuzzleFlash->SetRelativeLocation(MuzzleOffset);
+		MuzzleFlash->SetRelativeLocation(Data->MuzzleOffset);
 	}
 }
 
@@ -101,8 +105,11 @@ void APhotonWeapon::ApplyRecoil(APhotonCharacter* Shooter)
 		PC->AddYawInput(FMath::FRandRange(-Data->RecoilYaw, Data->RecoilYaw));
 	}
 	// Kick the view model back along local -X (down the barrel) with a slight pitch bump.
-	WeaponRecoilOffset += FVector(-2.8f, FMath::FRandRange(-0.35f, 0.35f), 0.45f);
-	WeaponRecoilRotation += FRotator(-Data->RecoilPitch * 3.5f, FMath::FRandRange(-1.2f, 1.2f), 0.f);
+	const FVector Kick = Data->RecoilKickOffset;
+	WeaponRecoilOffset += FVector(Kick.X, FMath::FRandRange(-Kick.Y, Kick.Y), Kick.Z);
+	WeaponRecoilRotation += FRotator(
+		-Data->RecoilPitch * Data->RecoilMeshPitchScale,
+		FMath::FRandRange(-1.2f, 1.2f), 0.f);
 	UpdateWeaponPose();
 	SetActorTickEnabled(true);
 }
@@ -138,7 +145,9 @@ FVector APhotonWeapon::GetMuzzleWorld() const
 	{
 		return Mesh->GetSocketLocation(TEXT("SOCKET_muzzle"));
 	}
-	return Mesh ? Mesh->GetComponentTransform().TransformPosition(MuzzleOffset) : GetActorLocation();
+	return Mesh && Data
+		? Mesh->GetComponentTransform().TransformPosition(Data->MuzzleOffset)
+		: GetActorLocation();
 }
 
 float APhotonWeapon::GetCooldownRemaining() const

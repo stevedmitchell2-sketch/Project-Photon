@@ -35,15 +35,6 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Photon") TObjectPtr<const UPhotonWeaponData> Data;
 
-	/**
-	 * Muzzle offset in the mesh's local space.
-	 *
-	 * The PH-6 GLB ships with no `SOCKET_muzzle` — a gap carried over from the reference build, where
-	 * it meant first-person bolts never left the barrel. This offset is the stand-in; once a socket is
-	 * authored on the static mesh, `GetMuzzleWorld` should prefer it.
-	 */
-	UPROPERTY(EditDefaultsOnly, Category = "Photon") FVector MuzzleOffset = FVector(52.f, 0.f, 2.f);
-
 	/** Configures mesh and pose from the data asset. Safe to call once, at spawn. */
 	void InitialiseFromData(const UPhotonWeaponData* InData);
 
@@ -64,6 +55,8 @@ public:
 	/** Self-test accessors — not gameplay API. */
 	bool HasMuzzleFlashLight() const { return MuzzleFlash != nullptr; }
 	bool HasActiveRecoil() const { return !WeaponRecoilOffset.IsNearlyZero() || !WeaponRecoilRotation.IsNearlyZero(0.05f); }
+	FVector GetMuzzleOffsetLocal() const { return Data ? Data->MuzzleOffset : FVector::ZeroVector; }
+	float GetHipUniformScale() const { return Data ? Data->HipTransform.GetScale3D().X : 0.f; }
 
 	int32 ShotsFired = 0;
 
@@ -79,6 +72,7 @@ protected:
 	void PulseMuzzleFlash();
 	void ApplyRecoil(APhotonCharacter* Shooter);
 	void UpdateWeaponPose();
+	void UpdateMuzzleAttachment();
 	void EndMuzzleFlash();
 };
 

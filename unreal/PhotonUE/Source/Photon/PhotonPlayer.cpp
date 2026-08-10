@@ -271,6 +271,18 @@ void APhotonCharacter::RunSelfTest()
 			PH6->Data->FireInterval, PH6->Data->Damage, PH9->Data->FireInterval, PH9->Data->Damage);
 	}
 
+	// Presentation is data-driven: hip scale keeps the GLB out of the crosshair; muzzle/kick live on data.
+	Check(TEXT("ph6_hip_scale_viewmodel"), PH6 && PH6->GetHipUniformScale() > 0.2f &&
+		PH6->GetHipUniformScale() < 0.6f);
+	Check(TEXT("ph9_hip_scale_viewmodel"), PH9 && PH9->GetHipUniformScale() > 0.2f &&
+		PH9->GetHipUniformScale() < 0.6f);
+	Check(TEXT("ph6_muzzle_offset_from_data"), PH6 && PH6->GetMuzzleOffsetLocal().X > 10.f);
+	Check(TEXT("ph9_muzzle_offset_from_data"), PH9 && PH9->GetMuzzleOffsetLocal().X > 10.f);
+	Check(TEXT("ph6_recoil_kick_data_present"), PH6 && PH6->Data &&
+		PH6->Data->RecoilKickOffset.X < 0.f);
+	Check(TEXT("ph9_recoil_kick_data_present"), PH9 && PH9->Data &&
+		PH9->Data->RecoilKickOffset.X < 0.f);
+
 	const int32 Before = PH9 ? PH9->ShotsFired : -1;
 	Check(TEXT("fire_ph9_accepted"), PH9 && PH9->TryFire(this));
 	Check(TEXT("shot_counter_advanced"), PH9 && PH9->ShotsFired == Before + 1);
