@@ -25,6 +25,139 @@ const REST_POSITION = new THREE.Vector3(0.16, -0.15, -0.5);
 const ADS_POSITION = new THREE.Vector3(0, -0.075, -0.42);
 
 /**
+ * The vertical FOV the first-person transform was composed at.
+ *
+ * Everything below — rest offset, scale, how close the muzzle sits to the reticle — is a *framing*
+ * decision, and framing is a function of FOV. Tuned at one FOV and left uncompensated, the weapon
+ * shrinks as a player widens their FOV and balloons as they narrow it, which is exactly the "world
+ * object that happens to be near the camera" look this pass exists to remove.
+ */
+const VIEW_MODEL_REFERENCE_FOV = 65;
+
+/**
+ * How far the view model is allowed to be rescaled to hold its apparent size.
+ *
+ * Compensation grows the mesh about the root origin, so an unbounded factor at a very wide FOV would
+ * push the receiver through the near plane — the failure this file spends most of its budget
+ * avoiding. The clamp is the guard; `NEAR_PLANE_MARGIN` below is what it was sized against.
+ */
+const FOV_COMPENSATION_RANGE: readonly [number, number] = [0.6, 1.2];
+
+/**
+ * Hip and ADS are two authored poses, not one pose at two sizes.
+ *
+ * The brief is explicit that ADS must read as the weapon being physically brought into the sight
+ * line, so each state carries its own offset *and* its own resting rotation. Interpolating between
+ * them is what produces the movement; scaling a single pose would only produce a zoom.
+ */
+const HIP = {
+  position: new THREE.Vector3(0.17, -0.151, -0.288),
+  /** Muzzle-up so the weapon lies diagonally across the corner rather than flat across the edge. */
+  pitch: 0.10,
+  /** Slight toe-in, so the barrel converges toward the reticle instead of running parallel to it. */
+  yaw: 0.055,
+  roll: 0.06,
+} as const;
+
+/**
+ * ADS.
+ *
+ * Relative to `HIP` the weapon swings inboard (x 0.17 -> 0.006) and back (z -0.40 -> -0.34 effective),
+ * losing its cant and roll, so the player ends up looking *along* the receiver instead of at the side
+ * of it. That change of viewing axis — not a size change — is what reads as aiming.
+ *
+ * ## Why the bore sits just below the aim point
+ *
+ * Solving for the muzzle landing exactly on the reticle put the barrel *on* the aim point, and the
+ * reticle raycast then hit geometry on all five probes: with no sight raised above the bore, aligning
+ * the bore necessarily occludes what it is aligned with. Real weapons buy that clearance with sight
+ * height, and the PH-6 has no `SOCKET_sight` to raise.
+ *
+ * So the weapon is held low enough that its *rail* — the highest thing on it, and the real occluder —
+ * passes below the aim point: bore at 0.345 NDC below centre, probes clear at 0, 16 and 28 px. An
+ * intermediate 0.181 still failed, because clearing the muzzle is not the same as clearing the optic
+ * above it. What survives is the read that matters: the player looks straight down the receiver, the
+ * barrel recedes toward the reticle and the front sight post is visible against it.
+ *
+ * An authored `SOCKET_sight` is what would let the bore come up to centre properly, by giving the
+ * sight line real height over the bore instead of borrowing it from this offset. See the socket note
+ * below.
+ */
+const ADS = {
+  position: new THREE.Vector3(0.006, -0.130, -0.264),
+  pitch: 0.012,
+  yaw: 0.0,
+  roll: 0.0,
+} as const;
+
+/**
+ * Recoil.
+ *
+ * The PH-6 discharges energy, so the read is a mechanical thump and a settle rather than a firearm's
+ * muzzle climb: a short push back along the barrel, a small nose-up rotation, and a trace of lateral
+ * variance so repeated shots do not stack into a perfectly vertical ladder.
+ *
+ * `halfLife` is seconds, so recovery to 10% is `halfLife * log2(10)` ≈ 3.32 half-lives — 133 ms at
+ * 0.040, inside the 100–180 ms the brief asks for. The back-push is deliberately small: it moves the
+ * receiver *toward* the near plane, and `NEAR_PLANE_MARGIN` is what pays for it.
+ */
+const RECOIL = { back: 0.030, pitch: 0.075, yaw: 0.020, halfLife: 0.040, perShot: 0.75 } as const;
+
+/** Look-inertia: the weapon lags the camera, which is most of what gives it apparent mass. */
+const LOOK = { gain: 6, max: 0.10, halfLife: 0.09, positionYaw: 1.0, rotationYaw: 1.5, roll: 0.85 } as const;
+
+/** Idle breathing. Two incommensurate periods, so the cycle never visibly repeats. */
+const IDLE = { x: 0.0035, y: 0.0042, rateA: 1.15, rateB: 0.73, roll: 0.006 } as const;
+
+/** Movement. `bobX`/`bobY` come from the movement system; these only decide how much reaches the weapon. */
+const MOVEMENT = { bobX: 1.0, bobY: 1.0, strafeX: 0.020, strafeRoll: 0.055, accelZ: 0.022 } as const;
+
+/** Sprint and slide lower the weapon out of the sight line without hiding it. */
+const SPRINT = { y: 0.10, z: 0.030, pitch: 0.30, yaw: 0.32, roll: 0.24, enter: 6.4, range: 2.4 } as const;
+
+/** How much of all of the above survives at full ADS. Aiming is meant to feel tight. */
+const ADS_SWAY_SUPPRESSION = 0.82;
+
+/**
+ * Closest any weapon vertex may come to the camera, in metres, against a 0.05 near plane.
+ *
+ * This is the constraint that sets the scale, and it is not negotiable by eye: the rifle is 0.98 m
+ * long, and at the size that "looks right" its receiver crosses the near plane and is sliced open
+ * mid-recoil.
+ *
+ * Measured against the real code path at the shipped scale, not simulated: 0.104 m at rest, 0.075 m
+ * under sustained fire (the worst state), 0.090 m sprinting — the sprint pose lowers the weapon and
+ * so moves it away. 0.065 is therefore a floor with the true worst case above it and the 0.05 near
+ * plane below. Raising `IMPORTED_SCALE` without re-measuring will clip the receiver while firing.
+ */
+const NEAR_PLANE_MARGIN = 0.065;
+
+/**
+ * First-person framing for the **imported** PH-6.
+ *
+ * The procedural fallback and the authored asset are different objects with different sizes and
+ * different origins, so one set of numbers cannot serve both. The procedural rifle was built around
+ * `REST_POSITION` and `VIEW_MODEL_SCALE`; the imported mesh is 0.98 m long with its origin at the
+ * bounding-box centre, and reusing those values put it across the middle of the screen.
+ *
+ * ## The grip offset
+ *
+ * The asset has no `SOCKET_grip`, so there is nothing to anchor to and the model pivots about its
+ * bounding-box centre — which makes sway rotate the whole rifle around its midpoint like a propeller
+ * rather than around the hand. `IMPORTED_GRIP` shifts the mesh inside its own group so the grip sits
+ * at the pivot: back along the barrel axis, and down to hand height.
+ *
+ * This is a runtime stand-in, deliberately. When `SOCKET_grip` is authored in Blender the socket
+ * should replace these numbers — see the asset note in the manifest entry.
+ */
+const IMPORTED_SCALE = 0.62;
+/** Mesh offset inside the rotated group, putting the grip on the pivot rather than the bbox centre. */
+// Forward is -Z. The first pass used +0.26 and pushed the whole rifle behind the camera, which
+// rendered an empty frame — a reminder that this offset is in the parent's space, not the rotated
+// mesh's. -0.18 brings the grip onto the pivot instead of the bounding-box centre.
+const IMPORTED_GRIP = new THREE.Vector3(0, -0.03, -0.18);
+
+/**
  * View-model scale.
  *
  * The rifle is authored at roughly life size (~0.9 m long), which at 0.4 m from a 95-degree camera
@@ -40,8 +173,24 @@ export function ViewModel({ colorblind }: Props) {
   const root = useRef<THREE.Group>(null);
   const emitter = useRef<THREE.Mesh>(null);
   const muzzle = useRef<THREE.PointLight>(null);
-  const sway = useRef({ yaw: 0, pitch: 0, kick: 0, muzzleLife: 0 });
+  const sway = useRef({
+    yaw: 0,
+    pitch: 0,
+    kick: 0,
+    muzzleLife: 0,
+    /** Damped strafe input, so lateral roll eases in rather than snapping with the key. */
+    strafe: 0,
+    /** Damped forward acceleration, which is what makes starting and stopping read as weight. */
+    accel: 0,
+    prevSpeed: 0,
+    /** Per-shot lateral kick, re-rolled on each shot so a burst does not climb a straight line. */
+    kickYaw: 0,
+  });
+  /** Read inside the frame loop, which cannot call hooks. */
+  const importedRef = useRef(false);
   const railPhase = useRef(0);
+  /** Throttles the dev near-plane guard, and keeps it to one warning per mount. */
+  const nearCheck = useRef({ at: 0, warned: false });
 
   /**
    * The imported hero rifle, when one exists.
@@ -51,6 +200,23 @@ export function ViewModel({ colorblind }: Props) {
    * integration step; no code below changes.
    */
   const imported = useAsset('hero_rifle');
+
+  /**
+   * A private copy of the rifle, because `LoadedAsset.scene` is shared and this one is React-managed.
+   *
+   * Mounting the shared scene here rendered **nothing at all**, and the transform numbers below were
+   * being applied to an empty group for as long as that lasted. `<primitive>` hands the object to the
+   * reconciler, and on unmount R3F recursively detaches its children — so the first remount of this
+   * component (a colourblind toggle, a fast-refresh, StrictMode's double-mount) permanently emptied
+   * `imported.scene`. The avatars kept working only because they clone per slot and parent
+   * imperatively, which is why the asset looked healthy in third person while the view model was bare.
+   *
+   * An Object3D has exactly one parent, so a shared asset can never be mounted in two places. Clone
+   * here and the ownership question disappears; `dispose={null}` then stops the reconciler disposing
+   * geometry and materials that the clone only borrows and 24 avatars are still drawing with.
+   */
+  const gun = useMemo(() => (imported ? (imported.scene.clone(true) as THREE.Group) : null), [imported]);
+  importedRef.current = gun !== null;
 
   /**
    * Addressable parts, scanned from whichever subtree is present.
@@ -153,40 +319,129 @@ export function ViewModel({ colorblind }: Props) {
 
     group.visible = actor.alive;
 
-    // Follow the camera exactly, then apply local-space offsets.
+    // Follow the camera exactly, then apply local-space offsets. Nothing below writes to the camera:
+    // the camera decides where the player is aiming and the weapon only reacts to it, which is why
+    // sway can be this liberal without ever pulling the reticle off target.
     group.position.copy(camera.position);
     group.quaternion.copy(camera.quaternion);
 
-    // Sway: the view model chases the camera's angular velocity with a spring-ish lag.
-    const yawDelta = actor.input.lookYaw;
-    const pitchDelta = actor.input.lookPitch;
-    sway.current.yaw = damp(sway.current.yaw, clamp(-yawDelta * 6, -0.12, 0.12), 0.09, dt);
-    sway.current.pitch = damp(sway.current.pitch, clamp(-pitchDelta * 6, -0.12, 0.12), 0.09, dt);
-
+    const s = sway.current;
     const ads = actor.weapon.adsBlend;
-    const target = TMP_A.copy(REST_POSITION).lerp(ADS_POSITION, ads);
+    const useImported = importedRef.current;
 
-    // Recoil pushes the weapon back and up along its own axis.
-    sway.current.kick = damp(sway.current.kick, 0, 0.055, dt);
-    if (actor.fx.firedThisTick) sway.current.kick = Math.min(1, sway.current.kick + 0.75);
+    /**
+     * Hold apparent size constant against the player's FOV setting.
+     *
+     * Compensating against the *live* FOV covers both the player's FOV setting and the ADS zoom. The
+     * first version divided out `view.fovScale` to let ADS magnify the weapon "naturally", and the
+     * capture showed why that is wrong: a 65 -> 47 degree zoom is 1.47x linear, the weapon went from
+     * 12% of the frame to 48%, and the raycast found it covering the reticle on all five probes.
+     *
+     * With the zoom compensated, apparent size is decided by the ADS *pose* below rather than
+     * inherited from the sight's magnification — which is the whole point of a view-model treatment.
+     */
+    const perspective = camera as THREE.PerspectiveCamera;
+    const liveFov = perspective.isPerspectiveCamera ? perspective.fov : VIEW_MODEL_REFERENCE_FOV;
+    const fovCompensation = clamp(
+      Math.tan((liveFov * Math.PI) / 360) / Math.tan((VIEW_MODEL_REFERENCE_FOV * Math.PI) / 360),
+      FOV_COMPENSATION_RANGE[0],
+      FOV_COMPENSATION_RANGE[1],
+    );
+    group.scale.setScalar((useImported ? IMPORTED_SCALE : VIEW_MODEL_SCALE) * fovCompensation);
 
-    target.x += sway.current.yaw * (1 - ads * 0.7) + view.bobX * (1 - ads * 0.8);
-    target.y += sway.current.pitch * (1 - ads * 0.7) + view.bobY * (1 - ads * 0.8);
-    target.z += sway.current.kick * 0.055;
-
-    // Sprinting and sliding lower the weapon out of the sight line.
+    // --- Handling inputs ---------------------------------------------------------------------
+    // Look inertia: the weapon chases the camera's angular velocity with a lag.
+    s.yaw = damp(s.yaw, clamp(-actor.input.lookYaw * LOOK.gain, -LOOK.max, LOOK.max), LOOK.halfLife, dt);
+    s.pitch = damp(s.pitch, clamp(-actor.input.lookPitch * LOOK.gain, -LOOK.max, LOOK.max), LOOK.halfLife, dt);
+    // Strafe and acceleration, both damped so they express momentum rather than key state.
+    s.strafe = damp(s.strafe, clamp(actor.input.moveX, -1, 1), 0.11, dt);
     const speed = view.speed;
-    const lowered = actor.stance === 'slide' ? 1 : clamp((speed - 6.4) / 2.4, 0, 1) * (1 - ads);
-    target.y -= lowered * 0.12;
-    target.z += lowered * 0.05;
+    const accelRaw = dt > 0 ? clamp((speed - s.prevSpeed) / dt / 30, -1, 1) : 0;
+    s.prevSpeed = speed;
+    s.accel = damp(s.accel, accelRaw, 0.10, dt);
+
+    // Recoil decays toward rest; each shot adds to it and re-rolls the lateral component.
+    s.kick = damp(s.kick, 0, RECOIL.halfLife, dt);
+    s.kickYaw = damp(s.kickYaw, 0, RECOIL.halfLife, dt);
+    if (actor.fx.firedThisTick) {
+      s.kick = Math.min(1, s.kick + RECOIL.perShot);
+      s.kickYaw = (Math.random() * 2 - 1) * RECOIL.yaw;
+    }
+
+    // Sprinting and sliding lower the weapon out of the sight line — moved aside, never hidden.
+    const lowered =
+      actor.stance === 'slide' ? 1 : clamp((speed - SPRINT.enter) / SPRINT.range, 0, 1) * (1 - ads);
+
+    // How much handling motion survives at this ADS blend.
+    const loose = 1 - ads * ADS_SWAY_SUPPRESSION;
+    // Breathing only reads when the player is otherwise still.
+    const stillness = clamp(1 - speed / 2.5, 0, 1) * loose;
+    const t = clock.elapsedTime;
+
+    // --- Position ----------------------------------------------------------------------------
+    // The procedural fallback is a different object with different proportions, so it keeps the
+    // poses it was built around. `HIP`/`ADS` describe the imported PH-6 only.
+    const target = useImported
+      ? TMP_A.copy(HIP.position).lerp(ADS.position, ads)
+      : TMP_A.copy(REST_POSITION).lerp(ADS_POSITION, ads);
+    target.x +=
+      (s.yaw * LOOK.positionYaw + view.bobX * MOVEMENT.bobX + s.strafe * MOVEMENT.strafeX) * loose +
+      Math.sin(t * IDLE.rateB) * IDLE.x * stillness;
+    target.y +=
+      (s.pitch + view.bobY * MOVEMENT.bobY) * loose + Math.sin(t * IDLE.rateA) * IDLE.y * stillness;
+    target.z += s.kick * RECOIL.back + lowered * SPRINT.z + s.accel * MOVEMENT.accelZ;
+    target.y -= lowered * SPRINT.y;
 
     group.translateX(target.x);
     group.translateY(target.y);
     group.translateZ(target.z);
 
-    group.rotateX(-sway.current.kick * 0.16 - lowered * 0.35);
-    group.rotateY(sway.current.yaw * 1.6 - lowered * 0.4);
-    group.rotateZ(sway.current.yaw * 0.9 + lowered * 0.3);
+    // --- Rotation ----------------------------------------------------------------------------
+    // Base pose first, so hip and ADS differ in attitude and not merely in offset; handling rides
+    // on top of whichever pose the blend has landed on.
+    const basePitch = useImported ? HIP.pitch + (ADS.pitch - HIP.pitch) * ads : 0;
+    const baseYaw = useImported ? HIP.yaw + (ADS.yaw - HIP.yaw) * ads : 0;
+    const baseRoll = useImported ? HIP.roll + (ADS.roll - HIP.roll) * ads : 0;
+
+    group.rotateX(basePitch + s.kick * RECOIL.pitch - lowered * SPRINT.pitch + s.pitch * loose);
+    group.rotateY(baseYaw + s.yaw * LOOK.rotationYaw * loose + s.kickYaw - lowered * SPRINT.yaw);
+    group.rotateZ(
+      baseRoll +
+        (s.yaw * LOOK.roll + s.strafe * MOVEMENT.strafeRoll) * loose +
+        Math.sin(t * IDLE.rateB) * IDLE.roll * stillness +
+        lowered * SPRINT.roll,
+    );
+
+    /**
+     * Dev guard on the near plane.
+     *
+     * Near-plane clipping is the one failure here that never announces itself: the weapon simply
+     * loses its receiver at the frame edge during recoil, which reads as a modelling fault rather
+     * than a transform one. Anyone raising `IMPORTED_SCALE` or a recoil push should hear about it
+     * immediately. The world AABB is a looser bound than the real vertices, so this errs toward
+     * warning early — which is the right direction for a guard.
+     */
+    if (import.meta.env.DEV && t - nearCheck.current.at > 0.5) {
+      nearCheck.current.at = t;
+      TMP_BOX.setFromObject(group);
+      let closest = Infinity;
+      for (let i = 0; i < 8; i++) {
+        TMP_B.set(
+          i & 1 ? TMP_BOX.max.x : TMP_BOX.min.x,
+          i & 2 ? TMP_BOX.max.y : TMP_BOX.min.y,
+          i & 4 ? TMP_BOX.max.z : TMP_BOX.min.z,
+        );
+        closest = Math.min(closest, -camera.worldToLocal(TMP_B).z);
+      }
+      if (closest < NEAR_PLANE_MARGIN && !nearCheck.current.warned) {
+        nearCheck.current.warned = true;
+        console.warn(
+          `[viewmodel] weapon came within ${closest.toFixed(3)} m of the camera, inside the ` +
+            `${NEAR_PLANE_MARGIN} m margin (near plane ${camera.near}). Lower IMPORTED_SCALE, or ` +
+            `the recoil/sprint z push, or expect the receiver to be clipped open while firing.`,
+        );
+      }
+    }
 
     // Charge cells: lit for remaining shots, dark once spent, refilling during a recharge.
     const config = WEAPONS[actor.weapon.id];
@@ -224,7 +479,6 @@ export function ViewModel({ colorblind }: Props) {
      * does, done in the world, and it is the animation that most makes the rifle feel powered
      * rather than held.
      */
-    const t = clock.elapsedTime;
     const charging = actor.weapon.recharging;
     railPhase.current = charging
       ? actor.weapon.rechargeProgress
@@ -282,7 +536,7 @@ export function ViewModel({ colorblind }: Props) {
   // An imported hero rifle replaces the primitives entirely. Everything else in this component —
   // sway, kick, ADS blend, charge rails, core pulse, muzzle light — is unchanged and drives it
   // through the same name-addressed parts.
-  if (imported) {
+  if (imported && gun) {
     /**
      * The manifest's `yawOffset` has to be applied here too.
      *
@@ -297,9 +551,9 @@ export function ViewModel({ colorblind }: Props) {
      */
     const yaw = imported.entry.yawOffset ?? 0;
     return (
-      <group ref={root} scale={VIEW_MODEL_SCALE}>
-        <group rotation={[0, yaw, 0]}>
-          <primitive object={imported.scene} />
+      <group ref={root}>
+        <group rotation={[0, yaw, 0]} position={IMPORTED_GRIP}>
+          <primitive object={gun} dispose={null} />
         </group>
         <pointLight ref={muzzle} color={glow} intensity={0} distance={5} decay={2} />
       </group>
@@ -307,7 +561,7 @@ export function ViewModel({ colorblind }: Props) {
   }
 
   return (
-    <group ref={root} scale={VIEW_MODEL_SCALE}>
+    <group ref={root}>
       {/*
         PH-6 Photon Rifle — procedural fallback.
         ------------------
@@ -472,3 +726,5 @@ export function ViewModel({ colorblind }: Props) {
 }
 
 const TMP_A = new THREE.Vector3();
+const TMP_B = new THREE.Vector3();
+const TMP_BOX = new THREE.Box3();

@@ -98,8 +98,15 @@ export const defaultGraphicsSettings = (): GraphicsSettings => ({
    *
    * The 80 arm was withheld by the capture guard at 18.7 mm drift against a 15 mm tolerance, so
    * ~107 horizontal is untested and may yet be the better landing point.
+   *
+   * **65 is where the first-person pass landed.** At the 1.6 aspect that is ~90.6 degrees
+   * horizontal, the console-shooter target, and 102 was still wide enough to flatten the weapon
+   * into the corner of the frame. The narrower frustum is also what buys the view model its
+   * presence: it magnifies the weapon by tan(37.5)/tan(32.5) = 1.20 linear — about 45% more screen
+   * area — at no near-plane cost, because nothing moved. Widening this back out will shrink the
+   * weapon unless `VIEW_MODEL_REFERENCE_FOV` moves with it.
    */
-  fov: 75,
+  fov: 65,
   renderScale: 1,
   bloom: true,
   // Must match the `balanced` preset — this is the value a fresh install starts on.

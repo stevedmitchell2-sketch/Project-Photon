@@ -117,10 +117,18 @@ export const useSettings = create<SettingsState>()(
        *
        * Anyone who genuinely wants a wide FOV can set it again; nobody chose 120 on purpose.
        */
-      version: 2,
+      version: 3,
+      /**
+       * Retire a persisted `graphics.fov` so a changed default actually reaches existing players.
+       *
+       * Bumped to 3 for the first-person pass: the whole weapon composition is tuned at 65 vertical,
+       * and anyone carrying a stored 95 or 75 would have seen a weapon framed for a FOV they are not
+       * running. Dropping only `fov` keeps every other preference the player has set — this deletes
+       * one key, it is not a settings reset.
+       */
       migrate: (persisted, fromVersion) => {
         const p = persisted as Partial<SettingsState> | undefined;
-        if (!p || fromVersion >= 2 || !p.graphics) return p as SettingsState;
+        if (!p || fromVersion >= 3 || !p.graphics) return p as SettingsState;
         const graphics = { ...p.graphics };
         delete (graphics as Partial<GraphicsSettings>).fov;
         return { ...p, graphics } as SettingsState;
