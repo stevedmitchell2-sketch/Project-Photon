@@ -7,8 +7,9 @@ VERIFIED**, **UNVERIFIED** (code exists, behaviour never observed), **BLOCKED**,
 
 ## 1. Current commit
 
-- Branch `main`, tip **`4b6e125`** — "Unreal: import the PH-6 from GLB so it arrives with its materials"
-- Working tree clean. **83 commits ahead of origin, unpushed** (by standing instruction — do not push
+- Branch `main`, tip **`344ed5d`** — this handoff commit. The last functional change is `4b6e125`
+  ("Unreal: import the PH-6 from GLB so it arrives with its materials").
+- Working tree clean. **84 commits ahead of origin, unpushed** (by standing instruction — do not push
   without asking).
 - Two runtimes coexist. `src/` is the **Three.js reference build** (~26,200 lines, 145 passing tests)
   and is the authority for gameplay design and tuning values. `unreal/PhotonUE/` is the migration
