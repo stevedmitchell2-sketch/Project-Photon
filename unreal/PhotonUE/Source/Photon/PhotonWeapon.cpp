@@ -160,6 +160,19 @@ float APhotonWeapon::GetCooldownRemaining() const
 	return FMath::Max(0.f, Data->FireInterval - Elapsed);
 }
 
+void APhotonWeapon::NotifyFireReleased()
+{
+	bBurstAwaitingRelease = false;
+}
+
+void APhotonWeapon::AdvanceCooldownForTest()
+{
+	if (Data && GetWorld())
+	{
+		LastFireTime = GetWorld()->GetTimeSeconds() - Data->FireInterval - 0.01f;
+	}
+}
+
 bool APhotonWeapon::SpawnProjectile(APhotonCharacter* Shooter, const FRotator& Aim, float YawSpreadDegrees)
 {
 	if (!Data || !Shooter || !GetWorld())
@@ -208,6 +221,10 @@ bool APhotonWeapon::TryFire(APhotonCharacter* Shooter)
 	{
 		return false;
 	}
+	if (Data->FireMode != EPhotonFireMode::Automatic && bBurstAwaitingRelease)
+	{
+		return false;
+	}
 	LastFireTime = GetWorld()->GetTimeSeconds();
 	LastTriggerProjectiles = 0;
 
@@ -234,6 +251,11 @@ bool APhotonWeapon::TryFire(APhotonCharacter* Shooter)
 	if (LastTriggerProjectiles == 0)
 	{
 		return false;
+	}
+
+	if (Data->FireMode != EPhotonFireMode::Automatic)
+	{
+		bBurstAwaitingRelease = true;
 	}
 
 	++ShotsFired;
@@ -312,8 +334,7 @@ void UPhotonInventoryComponent::BuildLoadout()
 			continue;
 		}
 		W->InitialiseFromData(D);
-		// Attached to the camera-parented WeaponRoot, so the view model follows look rotation without
-		// the world mesh being involved. This is what the reference build could not do with one camera.
+		// Attached to the hand proxy on the TEMPORARY FIRST-PERSON PRESENTATION PROXY hierarchy.
 		W->AttachToComponent(Owner->WeaponRoot, FAttachmentTransformRules::KeepRelativeTransform);
 		W->SetActorHiddenInGame(true);
 		Weapons.Add(W);

@@ -52,8 +52,15 @@ public:
 	/** Projectiles spawned by the last TryFire call (burst weapons may spawn multiple). */
 	int32 LastTriggerProjectiles = 0;
 
+	/** Clears burst latch so the next trigger press may fire again. Called on fire input release. */
+	void NotifyFireReleased();
+
 	/** Seconds until the next shot is permitted; 0 when ready. */
 	float GetCooldownRemaining() const;
+
+	/** Self-test accessors — not gameplay API. */
+	bool IsBurstAwaitingRelease() const { return bBurstAwaitingRelease; }
+	void AdvanceCooldownForTest();
 
 	/** Self-test accessors — not gameplay API. */
 	bool HasMuzzleFlashLight() const { return MuzzleFlash != nullptr; }
@@ -67,6 +74,8 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 
 	float LastFireTime = -1000.f;
+	/** Burst/semi: latched after a trigger press until NotifyFireReleased. Blocks held-trigger repeat. */
+	bool bBurstAwaitingRelease = false;
 	FTransform HipPose;
 	FVector WeaponRecoilOffset = FVector::ZeroVector;
 	FRotator WeaponRecoilRotation = FRotator::ZeroRotator;
