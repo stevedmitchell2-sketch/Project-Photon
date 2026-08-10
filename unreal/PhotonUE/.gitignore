@@ -1,9 +1,11 @@
+# Build and derived output only. Content/ IS tracked on purpose: without the levels, Input Actions,
+# weapon Data Assets and the imported PH-6 mesh, a fresh clone has no runnable project. The Python
+# scripts in Tools/ can regenerate all of it, but a collaborator should not have to run four scripts
+# before the project opens.
 Binaries/
 Intermediate/
 Saved/
 DerivedDataCache/
 .vs/
 *.sln
-Content/
-Saved/
 *.txt
