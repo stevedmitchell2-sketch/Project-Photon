@@ -30,6 +30,10 @@
 		{
 			"Name": "PythonScriptPlugin",
 			"Enabled": true
+		},
+		{
+			"Name": "Fab",
+			"Enabled": false
 		}
 	]
 }

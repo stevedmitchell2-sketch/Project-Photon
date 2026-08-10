@@ -58,15 +58,15 @@ def _make(path, name, cls, factory=None):
 # work simultaneously without a mode switch — the reference build's InputManager already worked this
 # way (one bindings table, mouse pseudo-codes alongside key codes) and it is the right model.
 INPUT_ACTIONS = [
-    ("IA_Move", unreal.InputActionValueType.AXIS2_D),
-    ("IA_Look", unreal.InputActionValueType.AXIS2_D),
+    ("IA_Move", unreal.InputActionValueType.AXIS2D),
+    ("IA_Look", unreal.InputActionValueType.AXIS2D),
     ("IA_Fire", unreal.InputActionValueType.BOOLEAN),
     ("IA_ADS", unreal.InputActionValueType.BOOLEAN),
     ("IA_Jump", unreal.InputActionValueType.BOOLEAN),
     ("IA_CrouchSlide", unreal.InputActionValueType.BOOLEAN),
     ("IA_ReloadInteract", unreal.InputActionValueType.BOOLEAN),
     ("IA_WeaponSwitch", unreal.InputActionValueType.BOOLEAN),
-    ("IA_WeaponSelect", unreal.InputActionValueType.AXIS1_D),
+    ("IA_WeaponSelect", unreal.InputActionValueType.AXIS1D),
     ("IA_Grenade", unreal.InputActionValueType.BOOLEAN),
     ("IA_GrenadeAlt", unreal.InputActionValueType.BOOLEAN),
     ("IA_Sprint", unreal.InputActionValueType.BOOLEAN),
@@ -80,41 +80,49 @@ def build_input():
     path = "{}/Input".format(CONTENT)
     actions = {}
     for name, value_type in INPUT_ACTIONS:
-        action = _make(path, name, unreal.InputAction, unreal.InputActionFactory())
+        action = _make(path, name, unreal.InputAction, None)
         if action:
             action.set_editor_property("value_type", value_type)
             unreal.EditorAssetLibrary.save_loaded_asset(action)
             actions[name] = action
 
-    context = _make(path, "IMC_Photon", unreal.InputMappingContext,
-                    unreal.InputMappingContextFactory())
+    context = _make(path, "IMC_Photon", unreal.InputMappingContext, None)
 
-    # NOTE: `map_key` is the 5.x helper; on some engine versions the mapping array must be built
-    # manually via `mappings`. If this raises, that is the first thing to change.
+    # Probed against UE 5.8 rather than assumed: `unreal.Keys` does not exist, keys are constructed
+    # as `unreal.Key(key_name=...)`, and `map_key` is present on InputMappingContext.
+    #
+    # Gamepad_Left2D / Gamepad_Right2D are the 2D stick keys, so movement and look need no modifiers.
+    # WASD would: four 1D keys plus negate/swizzle modifiers per key. Left for the editor pass rather
+    # than half-done here — the sticks are the controller-first requirement.
     keys = {
-        "IA_Fire": [unreal.InputCoreProcessor  # placeholder to force an explicit review on first run
-                    ] if False else [unreal.Keys.GAMEPAD_RIGHT_TRIGGER, unreal.Keys.LEFT_MOUSE_BUTTON],
-        "IA_ADS": [unreal.Keys.GAMEPAD_LEFT_TRIGGER, unreal.Keys.RIGHT_MOUSE_BUTTON],
-        "IA_Jump": [unreal.Keys.GAMEPAD_FACE_BUTTON_BOTTOM, unreal.Keys.SPACE_BAR],
-        "IA_CrouchSlide": [unreal.Keys.GAMEPAD_FACE_BUTTON_RIGHT, unreal.Keys.C],
-        "IA_ReloadInteract": [unreal.Keys.GAMEPAD_FACE_BUTTON_LEFT, unreal.Keys.R],
-        "IA_WeaponSwitch": [unreal.Keys.GAMEPAD_FACE_BUTTON_TOP, unreal.Keys.Q],
-        "IA_Grenade": [unreal.Keys.GAMEPAD_LEFT_SHOULDER, unreal.Keys.G],
-        "IA_GrenadeAlt": [unreal.Keys.GAMEPAD_RIGHT_SHOULDER, unreal.Keys.H],
-        "IA_Sprint": [unreal.Keys.GAMEPAD_LEFT_THUMBSTICK, unreal.Keys.LEFT_SHIFT],
-        "IA_Melee": [unreal.Keys.GAMEPAD_RIGHT_THUMBSTICK, unreal.Keys.V],
-        "IA_Pause": [unreal.Keys.GAMEPAD_SPECIAL_RIGHT, unreal.Keys.ESCAPE],
-        "IA_Scoreboard": [unreal.Keys.GAMEPAD_SPECIAL_LEFT, unreal.Keys.TAB],
+        "IA_Move":  ["Gamepad_Left2D"],
+        "IA_Look":  ["Gamepad_Right2D", "Mouse2D"],
+        "IA_Fire":  ["Gamepad_RightTrigger", "LeftMouseButton"],
+        "IA_ADS":   ["Gamepad_LeftTrigger", "RightMouseButton"],
+        "IA_Jump":  ["Gamepad_FaceButton_Bottom", "SpaceBar"],
+        "IA_CrouchSlide":    ["Gamepad_FaceButton_Right", "C"],
+        "IA_ReloadInteract": ["Gamepad_FaceButton_Left", "R"],
+        "IA_WeaponSwitch":   ["Gamepad_FaceButton_Top", "Q"],
+        "IA_Grenade":        ["Gamepad_LeftShoulder", "G"],
+        "IA_GrenadeAlt":     ["Gamepad_RightShoulder", "H"],
+        "IA_Sprint":         ["Gamepad_LeftThumbstick", "LeftShift"],
+        "IA_Melee":          ["Gamepad_RightThumbstick", "V"],
+        "IA_Pause":          ["Gamepad_Special_Right", "Escape"],
+        "IA_Scoreboard":     ["Gamepad_Special_Left", "Tab"],
     }
-    for action_name, key_list in keys.items():
+    mapped = 0
+    for action_name, key_names in keys.items():
         action = actions.get(action_name)
         if not action:
+            unreal.log_warning("no action for {}".format(action_name))
             continue
-        for key in key_list:
+        for key_name in key_names:
             try:
-                context.map_key(action, key)
-            except Exception as exc:  # noqa: BLE001 — API shape varies by engine version
-                unreal.log_warning("map_key failed for {} / {}: {}".format(action_name, key, exc))
+                context.map_key(action, unreal.Key(key_name=key_name))
+                mapped += 1
+            except Exception as exc:  # noqa: BLE001
+                unreal.log_warning("map_key failed {} / {}: {}".format(action_name, key_name, exc))
+    unreal.log("PHOTON mapped {} key bindings".format(mapped))
 
     unreal.EditorAssetLibrary.save_loaded_asset(context)
     return actions, context
