@@ -1,8 +1,13 @@
 #include "PhotonCore.h"
 
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/StaticMesh.h"
+#include "UObject/ConstructorHelpers.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 // UNVERIFIED: no C++ toolchain on this machine, so this has never been compiled.
 // See docs/UNREAL_STAGE0.md.
@@ -76,6 +81,33 @@ APhotonProjectile::APhotonProjectile()
 	// Zero gravity keeps aim honest. The reference build kept gravity as per-weapon data for future
 	// arcing weapons and never used it; same here.
 	Movement->ProjectileGravityScale = 0.f;
+
+	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
+	Body->SetupAttachment(Collision);
+	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Body->SetCastShadow(false);
+	if (UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")))
+	{
+		Body->SetStaticMesh(Sphere);
+	}
+	// The engine sphere is 100 cm; a bolt reads best at roughly a hand's width, stretched along travel.
+	Body->SetRelativeScale3D(FVector(0.34f, 0.11f, 0.11f));
+
+	Glow = CreateDefaultSubobject<UPointLightComponent>(TEXT("Glow"));
+	Glow->SetupAttachment(Collision);
+	Glow->SetIntensity(2600.f);
+	Glow->SetAttenuationRadius(340.f);
+	Glow->SetCastShadows(false);
+}
+
+bool APhotonProjectile::HasVisibleRepresentation() const
+{
+	return Body != nullptr && Body->GetStaticMesh() != nullptr && Body->IsVisible();
+}
+
+float APhotonProjectile::GetSpeed() const
+{
+	return Movement ? Movement->Velocity.Size() : 0.f;
 }
 
 void APhotonProjectile::InitialiseFrom(const UPhotonWeaponData* Data, EPhotonTeam InTeam,
@@ -90,8 +122,32 @@ void APhotonProjectile::InitialiseFrom(const UPhotonWeaponData* Data, EPhotonTea
 	SetInstigator(InInstigator ? InInstigator->GetPawn() : nullptr);
 
 	Collision->SetSphereRadius(Data->ProjectileRadius);
+	// Team colour drives the bolt, so red and blue fire are distinguishable at a glance. Both the light
+	// and the body take it; the body needs a dynamic material instance to accept a colour at all.
+	const FLinearColor Colour = PhotonTeamColor(InTeam);
+	if (Glow)
+	{
+		Glow->SetLightColor(Colour);
+	}
+	if (Body)
+	{
+		if (UMaterialInstanceDynamic* MID = Body->CreateAndSetMaterialInstanceDynamic(0))
+		{
+			MID->SetVectorParameterValue(TEXT("Color"), Colour);
+			MID->SetVectorParameterValue(TEXT("BaseColor"), Colour);
+		}
+		// A faster weapon gets a longer bolt, so PH-6 and PH-9 fire is visually distinguishable.
+		const float Stretch = FMath::GetMappedRangeValueClamped(
+			FVector2D(15000.f, 45000.f), FVector2D(0.26f, 0.62f), Data->ProjectileSpeed);
+		Body->SetRelativeScale3D(FVector(Stretch, 0.11f, 0.11f));
+	}
+	// InitialSpeed is only read by UProjectileMovementComponent::BeginPlay, which has already run by
+	// the time the weapon configures the bolt — setting it here did nothing and the self-test caught it
+	// as a 1 cm/s projectile. Velocity has to be assigned directly.
 	Movement->InitialSpeed = Data->ProjectileSpeed;
 	Movement->MaxSpeed = Data->ProjectileSpeed;
+	Movement->Velocity = GetActorForwardVector() * Data->ProjectileSpeed;
+	Movement->UpdateComponentVelocity();
 	SetLifeSpan(Data->ProjectileLifetime);
 }
 

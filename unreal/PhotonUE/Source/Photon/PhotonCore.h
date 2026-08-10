@@ -11,6 +11,8 @@ class USoundBase;
 class UStaticMesh;
 class UProjectileMovementComponent;
 class USphereComponent;
+class UStaticMeshComponent;
+class UPointLightComponent;
 
 /**
  * Project Photon — Unreal Stage 0 core types.
@@ -202,11 +204,28 @@ protected:
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USphereComponent> Collision;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<UProjectileMovementComponent> Movement;
 
+	/**
+	 * The bolt's body and its glow.
+	 *
+	 * A mesh plus a small team-coloured point light rather than a Niagara system: this is a laser-tag
+	 * bolt, and the light is what makes it readable against dark arena geometry at gameplay distance
+	 * without authoring a particle asset. Cheap enough to have dozens in flight.
+	 */
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
+	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> Glow;
+
 	/** Replicated so late-joining clients tint the bolt correctly rather than showing it neutral. */
 	UPROPERTY(Replicated) EPhotonTeam Team = EPhotonTeam::None;
 
 	UPROPERTY() TObjectPtr<const UPhotonWeaponData> SourceData;
 	FVector SpawnLocation = FVector::ZeroVector;
+
+public:
+	/** True only when the bolt has geometry that is actually being drawn. */
+	bool HasVisibleRepresentation() const;
+	float GetSpeed() const;
+	FVector GetSpawnLocation() const { return SpawnLocation; }
+protected:
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

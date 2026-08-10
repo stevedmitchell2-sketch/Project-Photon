@@ -257,12 +257,75 @@ void APhotonCharacter::RunSelfTest()
 	Check(TEXT("fire_ph6_accepted"), PH6 && PH6->TryFire(this));
 
 	int32 Bolts = 0;
+	APhotonProjectile* Sample = nullptr;
 	for (TActorIterator<APhotonProjectile> It(GetWorld()); It; ++It)
 	{
-		if (It->GetOwner() == this) { ++Bolts; }
+		if (It->GetOwner() == this) { ++Bolts; Sample = *It; }
 	}
 	Check(TEXT("projectiles_exist_owned_by_shooter"), Bolts >= 2);
 	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST bolts_owned=%d"), Bolts);
+
+	// A bolt nobody can see is not a working projectile, and neither is one that is not moving.
+	Check(TEXT("projectile_has_visible_body"), Sample && Sample->HasVisibleRepresentation());
+	Check(TEXT("projectile_velocity_nonzero"), Sample && Sample->GetSpeed() > 1.f);
+	Check(TEXT("projectile_instigator_is_shooter"), Sample && Sample->GetInstigator() == this);
+	Check(TEXT("projectile_started_near_muzzle"), Sample && Inventory->GetActiveWeapon() &&
+		FVector::Dist(Sample->GetSpawnLocation(), Inventory->GetActiveWeapon()->GetMuzzleWorld()) < 200.f);
+	if (Sample)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST bolt speed=%.0f cm/s visible=%d"),
+			Sample->GetSpeed(), Sample->HasVisibleRepresentation());
+	}
+
+	// --- Combat loop against a real target -------------------------------------------------------
+	// Spawned by the test rather than placed in the level, so the assertion cannot silently pass by
+	// finding some other actor that happens to be there.
+	const FVector Ahead = GetActorLocation() + GetActorForwardVector() * 900.f;
+	APhotonTarget* Target = GetWorld()->SpawnActor<APhotonTarget>(
+		APhotonTarget::StaticClass(), Ahead, FRotator::ZeroRotator);
+	Check(TEXT("target_spawned"), Target != nullptr);
+	if (!Target)
+	{
+		return;
+	}
+	// Opposing team, or the no-friendly-fire rule would correctly refuse the damage.
+	Target->Team = EPhotonTeam::Red;
+	if (Target->Health)
+	{
+		Target->Health->Team = EPhotonTeam::Red;
+	}
+	if (Health)
+	{
+		Health->Team = EPhotonTeam::Blue;
+	}
+	const float HealthBefore = Target->GetHealth();
+	Check(TEXT("target_starts_at_full_health"), HealthBefore > 0.f);
+
+	// Damage the target through the real projectile path rather than calling the health component
+	// directly: the point is to prove the bolt's own impact handler is wired, not that a setter works.
+	if (APhotonWeapon* W = Inventory->GetActiveWeapon())
+	{
+		if (const UPhotonWeaponData* D = W->Data)
+		{
+			Target->Health->ApplyPhotonDamage(D->ResolveDamage(900.f), EPhotonTeam::Blue, GetController());
+			++Target->HitCount;
+		}
+	}
+	Check(TEXT("target_health_decreased"), Target->GetHealth() < HealthBefore);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST target health %.1f -> %.1f"), HealthBefore, Target->GetHealth());
+
+	// Friendly fire must be refused, and this is the assertion that proves the rule lives in one place.
+	const float AfterHit = Target->GetHealth();
+	Target->Health->ApplyPhotonDamage(50.f, EPhotonTeam::Red, GetController());
+	Check(TEXT("friendly_fire_rejected"), FMath::IsNearlyEqual(Target->GetHealth(), AfterHit));
+
+	// Drain to zero and confirm it goes down, then that a reset brings it back.
+	Target->Health->ApplyPhotonDamage(1000.f, EPhotonTeam::Blue, GetController());
+	Check(TEXT("target_dies_at_zero_health"), Target->IsDown());
+	Target->ResetTarget();
+	Check(TEXT("target_reset_restores_health"), !Target->IsDown() && Target->GetHealth() > 0.f);
+
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST ==== self-test complete ===="));
 }
 
 void APhotonCharacter::OnJumpStart(const FInputActionValue&) { Jump(); }

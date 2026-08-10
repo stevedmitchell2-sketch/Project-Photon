@@ -6,6 +6,8 @@
 #include "Net/UnrealNetwork.h"
 #include "PhotonCore.h"
 #include "PhotonPlayer.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "TimerManager.h"
 
 // ---------------------------------------------------------------------------------------------
 // APhotonWeapon
@@ -265,4 +267,78 @@ void UPhotonInventoryComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UPhotonInventoryComponent, ActiveIndex);
+}
+
+// ---------------------------------------------------------------------------------------------
+// APhotonTarget
+// ---------------------------------------------------------------------------------------------
+
+APhotonTarget::APhotonTarget()
+{
+	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true;
+
+	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
+	if (UStaticMesh* Cyl = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+	{
+		Mesh->SetStaticMesh(Cyl);
+	}
+	// A slim standing pylon rather than a crate: this is a competition venue, not a shooting range.
+	Mesh->SetRelativeScale3D(FVector(0.45f, 0.45f, 1.8f));
+	// Must block the bolt's BlockAllDynamic profile or nothing can ever hit it.
+	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Mesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	Mesh->SetNotifyRigidBodyCollision(true);
+	RootComponent = Mesh;
+
+	Health = CreateDefaultSubobject<UPhotonHealthComponent>(TEXT("Health"));
+}
+
+void APhotonTarget::BeginPlay()
+{
+	Super::BeginPlay();
+	if (Health)
+	{
+		Health->Team = Team;
+		Health->OnDied.AddDynamic(this, &APhotonTarget::HandleDied);
+	}
+	Skin = Mesh ? Mesh->CreateAndSetMaterialInstanceDynamic(0) : nullptr;
+	if (Skin)
+	{
+		const FLinearColor C = PhotonTeamColor(Team) * 0.35f;
+		Skin->SetVectorParameterValue(TEXT("Color"), C);
+		Skin->SetVectorParameterValue(TEXT("BaseColor"), C);
+	}
+}
+
+float APhotonTarget::GetHealth() const { return Health ? Health->Health : 0.f; }
+bool APhotonTarget::IsDown() const { return Health ? Health->bDead : false; }
+
+void APhotonTarget::ResetTarget()
+{
+	if (Health)
+	{
+		Health->ResetForRespawn();
+	}
+	HitCount = 0;
+	SetActorHiddenInGame(false);
+	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+}
+
+void APhotonTarget::HandleDied(AController*)
+{
+	// Disabled rather than destroyed, so the same actor can be reset and reused during testing.
+	SetActorHiddenInGame(true);
+	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY target down after %d hits"), HitCount);
+}
+
+void APhotonTarget::Flash()
+{
+	if (Skin)
+	{
+		const FLinearColor C = PhotonTeamColor(Team) * 0.35f;
+		Skin->SetVectorParameterValue(TEXT("Color"), C);
+		Skin->SetVectorParameterValue(TEXT("BaseColor"), C);
+	}
 }

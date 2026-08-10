@@ -3,11 +3,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/ActorComponent.h"
+#include "PhotonCore.h"   // EPhotonTeam, UPhotonHealthComponent
 #include "PhotonWeapon.generated.h"
 
 class UPhotonWeaponData;
 class UStaticMeshComponent;
 class APhotonCharacter;
+class UPhotonHealthComponent;
 
 /**
  * One weapon in the player's hands.
@@ -106,4 +108,42 @@ protected:
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+};
+
+/**
+ * A shootable practice target.
+ *
+ * Deliberately thin and deliberately temporary: it exists so the combat loop can be verified against
+ * something that actually takes damage, not as a permanent gameplay dependency. It reuses
+ * `UPhotonHealthComponent` rather than carrying its own health, so friendly-fire rules and the
+ * authority check are inherited rather than reimplemented — which is the whole reason health lives on
+ * a component.
+ */
+UCLASS()
+class PHOTON_API APhotonTarget : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	APhotonTarget();
+
+	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UStaticMeshComponent> Mesh;
+	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonHealthComponent> Health;
+
+	/** Which team the target belongs to; drives its colour and who may damage it. */
+	UPROPERTY(EditAnywhere, Category = "Photon") EPhotonTeam Team = EPhotonTeam::Blue;
+
+	int32 HitCount = 0;
+
+	UFUNCTION(BlueprintCallable, Category = "Photon") float GetHealth() const;
+	UFUNCTION(BlueprintCallable, Category = "Photon") bool IsDown() const;
+	UFUNCTION(BlueprintCallable, Category = "Photon") void ResetTarget();
+
+protected:
+	virtual void BeginPlay() override;
+	UFUNCTION() void HandleDied(AController* Killer);
+	void Flash();
+
+	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> Skin;
+	FTimerHandle FlashTimer;
 };
