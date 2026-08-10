@@ -22,7 +22,9 @@ FLinearColor PhotonTeamColor(EPhotonTeam Team)
 	case EPhotonTeam::Green:  return FLinearColor(0.28f, 1.00f, 0.55f);
 	case EPhotonTeam::Blue:   return FLinearColor(0.30f, 0.66f, 1.00f);
 	case EPhotonTeam::Yellow: return FLinearColor(1.00f, 0.82f, 0.30f);
-	default:                  return FLinearColor(0.70f, 0.78f, 0.86f);
+	// Unaffiliated energy is Photon cyan, not neutral grey. The previous near-white made bolts fired
+	// by a teamless player read as colourless specks against the arena instead of as Photon energy.
+	default:                  return FLinearColor(0.35f, 0.82f, 1.00f);
 	}
 }
 
@@ -220,12 +222,20 @@ void APhotonGrenade::Explode()
 	{
 		Glow->SetIntensity(0.f);
 	}
+	if (Body)
+	{
+		// The shell is consumed by the detonation; leaving it visible reads as a grenade sitting
+		// inside its own explosion.
+		Body->SetVisibility(false);
+	}
 	Movement->StopMovementImmediately();
 
 	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY grenade exploded team=%d radius=%.0f"),
 		static_cast<int32>(Team), Data ? Data->ExplosionRadius : 0.f);
 
-	SetLifeSpan(0.05f);
+	// 0.05s is three frames at 60Hz — the flash was being destroyed before it could register as an
+	// explosion. Damage has already been applied above, so this only extends the visual.
+	SetLifeSpan(0.22f);
 }
 
 float APhotonGrenade::GetSpeed() const
@@ -315,7 +325,9 @@ void APhotonProjectile::InitialiseFrom(const UPhotonWeaponData* Data, EPhotonTea
 	}
 	if (Body)
 	{
-		PhotonVisuals::ApplyEnergyTint(Body, Colour);
+		// Bright enough to read at speed, but not so bright that the tonemapper clips it: at 12 the
+		// bolt saturated to a white dot and lost the team colour entirely.
+		PhotonVisuals::ApplyEnergyTint(Body, Colour, 4.f);
 		// A faster weapon gets a longer bolt, so PH-6 and PH-9 fire is visually distinguishable.
 		const float Stretch = FMath::GetMappedRangeValueClamped(
 			FVector2D(15000.f, 45000.f), FVector2D(0.26f, 0.62f), Data->ProjectileSpeed);
