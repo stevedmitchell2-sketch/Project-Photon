@@ -37,7 +37,7 @@ sun = unreal.EditorLevelLibrary.spawn_actor_from_class(
 sun.set_actor_label("KeyLight")
 sc = sun.light_component
 sc.set_mobility(unreal.ComponentMobility.MOVABLE)
-sc.set_intensity(10.0)          # lux; 4.0 was effectively dusk
+sc.set_intensity(6.0)           # lux; 4.0 read as dusk, 10.0 was blinding with the fills
 sc.set_light_color(unreal.LinearColor(1.0, 0.965, 0.902, 1.0))
 try:
     sc.set_editor_property("atmosphere_sun_light", True)
@@ -53,7 +53,7 @@ sky = unreal.EditorLevelLibrary.spawn_actor_from_class(
 sky.set_actor_label("SkyFill")
 skc = sky.light_component
 skc.set_mobility(unreal.ComponentMobility.MOVABLE)
-skc.set_intensity(3.0)
+skc.set_intensity(1.0)
 try:
     skc.set_editor_property("real_time_capture", True)
 except Exception as exc:
@@ -67,8 +67,8 @@ for i, (x, y) in enumerate([(0, 0), (1200, 1200), (-1200, 1200), (1200, -1200), 
     pl.set_actor_label("Fill_%d" % i)
     plc = pl.light_component
     plc.set_mobility(unreal.ComponentMobility.MOVABLE)
-    plc.set_intensity(40000.0)      # candelas
-    plc.set_attenuation_radius(2200.0)
+    plc.set_intensity(6000.0)       # candelas; 40000 blew the whole greybox to white
+    plc.set_attenuation_radius(1400.0)
     plc.set_light_color(unreal.LinearColor(0.804, 0.882, 1.0, 1.0))
 
 # The three targets were missing last run; load_class returning None is the suspected reason, so it is
