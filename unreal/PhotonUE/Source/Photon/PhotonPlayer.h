@@ -50,12 +50,23 @@ public:
 	/**
 	 * The first-person weapon root.
 	 *
-	 * Parented to the camera, so the view model inherits look rotation without the world mesh being
-	 * involved. This is the Unreal-native answer to a problem the reference build fought for a whole
-	 * session: with a dedicated FP setup the weapon is no longer clamped by the world camera's near
-	 * plane, which is what capped how large the PH-6 could be drawn. Session B hangs the mesh here.
+	 * Parented to the right-arm proxy on the TEMPORARY FIRST-PERSON PRESENTATION PROXY hierarchy
+	 * (shoulder → arm → hand → weapon). Replace the proxy with rigged arms when art is ready.
 	 */
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<USceneComponent> WeaponRoot;
+
+	/**
+	 * TEMPORARY FIRST-PERSON PRESENTATION PROXY — anchor for placeholder arm meshes.
+	 * Camera → FirstPersonPresentationRoot → arm proxies → WeaponRoot.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<USceneComponent> FirstPersonPresentationRoot;
+
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UStaticMeshComponent> RightArmProxy;
+
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UStaticMeshComponent> LeftArmProxy;
 
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonInventoryComponent> Inventory;
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPhotonHealthComponent> Health;
@@ -84,7 +95,9 @@ protected:
 	void OnCrouchToggle(const FInputActionValue& Value);
 	void OnSprintStart(const FInputActionValue& Value);
 	void OnSprintStop(const FInputActionValue& Value);
-	void OnFire(const FInputActionValue& Value);
+	void OnFireStarted(const FInputActionValue& Value);
+	void OnFireTriggered(const FInputActionValue& Value);
+	void OnFireReleased(const FInputActionValue& Value);
 	void OnWeaponSwitch(const FInputActionValue& Value);
 	void OnWeaponSelect(const FInputActionValue& Value);
 	void OnGrenade(const FInputActionValue& Value);

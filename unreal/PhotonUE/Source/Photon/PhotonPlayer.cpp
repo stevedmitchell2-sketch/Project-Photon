@@ -2,6 +2,7 @@
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -33,8 +34,42 @@ APhotonCharacter::APhotonCharacter()
 	// than a camera that happens to sit inside the character.
 	Camera->bUsePawnControlRotation = true;
 
+	// TEMPORARY FIRST-PERSON PRESENTATION PROXY — shoulder/arm/hand chain until rigged FP arms exist.
+	FirstPersonPresentationRoot = CreateDefaultSubobject<USceneComponent>(TEXT("FP_PresentationRoot"));
+	FirstPersonPresentationRoot->SetupAttachment(Camera);
+	FirstPersonPresentationRoot->SetRelativeLocation(FVector(8.f, 0.f, -14.f));
+
+	auto SetupArmProxy = [](UStaticMeshComponent* Arm, USceneComponent* Parent,
+		const FVector& Loc, const FRotator& Rot, const FVector& Scale)
+	{
+		if (!Arm)
+		{
+			return;
+		}
+		Arm->SetupAttachment(Parent);
+		Arm->SetRelativeLocation(Loc);
+		Arm->SetRelativeRotation(Rot);
+		Arm->SetRelativeScale3D(Scale);
+		Arm->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Arm->SetCastShadow(false);
+		if (UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+		{
+			Arm->SetStaticMesh(Cylinder);
+		}
+	};
+
+	RightArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArmProxy"));
+	SetupArmProxy(RightArmProxy, FirstPersonPresentationRoot,
+		FVector(6.f, 18.f, -10.f), FRotator(-15.f, 70.f, 10.f), FVector(0.07f, 0.07f, 0.38f));
+
+	LeftArmProxy = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftArmProxy"));
+	SetupArmProxy(LeftArmProxy, FirstPersonPresentationRoot,
+		FVector(6.f, -14.f, -12.f), FRotator(-10.f, 55.f, -8.f), FVector(0.06f, 0.06f, 0.32f));
+
 	WeaponRoot = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponRoot"));
-	WeaponRoot->SetupAttachment(Camera);
+	WeaponRoot->SetupAttachment(RightArmProxy);
+	WeaponRoot->SetRelativeLocation(FVector(32.f, 6.f, -4.f));
+	WeaponRoot->SetRelativeRotation(FRotator(8.f, -8.f, 0.f));
 
 	Inventory = CreateDefaultSubobject<UPhotonInventoryComponent>(TEXT("Inventory"));
 	Health = CreateDefaultSubobject<UPhotonHealthComponent>(TEXT("Health"));
@@ -43,6 +78,14 @@ APhotonCharacter::APhotonCharacter()
 	if (USkeletalMeshComponent* Body = GetMesh())
 	{
 		Body->SetOwnerNoSee(true);
+	}
+	if (RightArmProxy)
+	{
+		RightArmProxy->SetOnlyOwnerSee(true);
+	}
+	if (LeftArmProxy)
+	{
+		LeftArmProxy->SetOnlyOwnerSee(true);
 	}
 
 	UCharacterMovementComponent* Move = GetCharacterMovement();
@@ -114,7 +157,9 @@ void APhotonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	Bind("IA_CrouchSlide", ETriggerEvent::Started, &APhotonCharacter::OnCrouchToggle, this);
 	Bind("IA_Sprint", ETriggerEvent::Started, &APhotonCharacter::OnSprintStart, this);
 	Bind("IA_Sprint", ETriggerEvent::Completed, &APhotonCharacter::OnSprintStop, this);
-	Bind("IA_Fire", ETriggerEvent::Triggered, &APhotonCharacter::OnFire, this);
+	Bind("IA_Fire", ETriggerEvent::Started, &APhotonCharacter::OnFireStarted, this);
+	Bind("IA_Fire", ETriggerEvent::Triggered, &APhotonCharacter::OnFireTriggered, this);
+	Bind("IA_Fire", ETriggerEvent::Completed, &APhotonCharacter::OnFireReleased, this);
 	Bind("IA_WeaponSwitch", ETriggerEvent::Started, &APhotonCharacter::OnWeaponSwitch, this);
 	Bind("IA_WeaponSelect", ETriggerEvent::Started, &APhotonCharacter::OnWeaponSelect, this);
 	Bind("IA_Grenade", ETriggerEvent::Started, &APhotonCharacter::OnGrenade, this);
@@ -166,7 +211,43 @@ void APhotonCharacter::OnLookStick(const FInputActionValue& Value)
 	AddControllerPitchInput(-Axis.Y * GamepadLookRate * Delta);
 }
 
-void APhotonCharacter::OnFire(const FInputActionValue&)
+void APhotonCharacter::OnFireStarted(const FInputActionValue&)
+{
+	if (!Inventory)
+	{
+		return;
+	}
+	APhotonWeapon* W = Inventory->GetActiveWeapon();
+	if (!W || !W->Data)
+	{
+		return;
+	}
+	// Burst and semi-auto fire once per trigger press, not every held frame.
+	if (W->Data->FireMode != EPhotonFireMode::Automatic)
+	{
+		W->TryFire(this);
+	}
+}
+
+void APhotonCharacter::OnFireTriggered(const FInputActionValue&)
+{
+	if (!Inventory)
+	{
+		return;
+	}
+	APhotonWeapon* W = Inventory->GetActiveWeapon();
+	if (!W || !W->Data)
+	{
+		return;
+	}
+	// Automatic weapons repeat while the trigger is held.
+	if (W->Data->FireMode == EPhotonFireMode::Automatic)
+	{
+		W->TryFire(this);
+	}
+}
+
+void APhotonCharacter::OnFireReleased(const FInputActionValue&)
 {
 	if (!Inventory)
 	{
@@ -174,9 +255,7 @@ void APhotonCharacter::OnFire(const FInputActionValue&)
 	}
 	if (APhotonWeapon* W = Inventory->GetActiveWeapon())
 	{
-		// TryFire enforces the weapon's own interval and returns false when refused, so holding the
-		// trigger cannot outrun the data asset.
-		W->TryFire(this);
+		W->NotifyFireReleased();
 	}
 }
 
@@ -327,6 +406,10 @@ void APhotonCharacter::RunSelfTest()
 		PH6->Data->RecoilKickOffset.X < 0.f);
 	Check(TEXT("ph9_recoil_kick_data_present"), PH9 && PH9->Data &&
 		PH9->Data->RecoilKickOffset.X < 0.f);
+	Check(TEXT("fp_presentation_root_attached"),
+		FirstPersonPresentationRoot && FirstPersonPresentationRoot->GetAttachParent() == Camera);
+	Check(TEXT("fp_weapon_attached_to_arm_proxy"),
+		WeaponRoot && RightArmProxy && WeaponRoot->GetAttachParent() == RightArmProxy);
 
 	const int32 Before = PH9 ? PH9->ShotsFired : -1;
 	Check(TEXT("fire_ph9_accepted"), PH9 && PH9->TryFire(this));
@@ -523,7 +606,15 @@ void APhotonCharacter::RunSelfTest()
 			Check(TEXT("burst_projectiles_per_trigger"),
 				BurstWeapon->LastTriggerProjectiles >= BurstData->BurstCount);
 			Check(TEXT("burst_shot_counter_advanced"), BurstWeapon->ShotsFired == BoltsBefore + 1);
-			Check(TEXT("burst_cooldown_refuses_immediate_retrigger"), !BurstWeapon->TryFire(this));
+			Check(TEXT("burst_single_trigger_produces_exactly_one_burst"),
+				BurstWeapon->LastTriggerProjectiles == BurstData->BurstCount);
+			Check(TEXT("burst_single_trigger_stops_after_burst_count"), !BurstWeapon->TryFire(this));
+			BurstWeapon->AdvanceCooldownForTest();
+			Check(TEXT("burst_does_not_auto_repeat"),
+				BurstWeapon->IsBurstAwaitingRelease() && !BurstWeapon->TryFire(this));
+			BurstWeapon->NotifyFireReleased();
+			Check(TEXT("burst_requires_new_trigger"), BurstWeapon->TryFire(this));
+			BurstWeapon->NotifyFireReleased();
 		}
 		Inventory->EquipIndex(0);
 	}
