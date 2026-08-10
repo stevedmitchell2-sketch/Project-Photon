@@ -19,6 +19,10 @@ const SURFACE_TONE: Record<SurfaceKind, { cutoff: number; level: number; ring: n
   glass: { cutoff: 3600, level: 0.8, ring: 0.7 },
   led: { cutoff: 1200, level: 0.7, ring: 0.2 },
   trim: { cutoff: 1200, level: 0.7, ring: 0.2 },
+  // Framing is solid graphite section: darker and deader than the panel it surrounds.
+  frame: { cutoff: 780, level: 0.92, ring: 0.08 },
+  // A louvre or hatch is a thin cover over a void, so it rings where solid structure does not.
+  vent: { cutoff: 1500, level: 0.8, ring: 0.34 },
 };
 
 /**

@@ -74,7 +74,9 @@ export type Substance =
   | 'ledStrip'
   | 'holoPanel'
   | 'paintedAlloy'
-  | 'energyEmitter';
+  | 'energyEmitter'
+  | 'graphite'
+  | 'structuralCeramic';
 
 export interface SubstanceOptions {
   /** Base colour. Substances that carry team or arena colour need this; others ignore it. */
@@ -115,6 +117,44 @@ const RECIPES: Record<Substance, SubstanceRecipe> = {
         normalScale: new THREE.Vector2(0.55, 0.55),
         roughness: 0.5,
         metalness: 0.46,
+      }),
+  },
+
+  /**
+   * Graphite. Dark, technical, barely reflective — the structural framing the arena is built from.
+   *
+   * Deliberately the darkest substance in the set. Framing only reads as framing if it is a value
+   * step away from the panel it surrounds; matched in tone it just adds geometry, and the wall goes
+   * back to looking like one slab with extra bumps.
+   */
+  graphite: {
+    build: (o) =>
+      new THREE.MeshStandardMaterial({
+        color: o.color,
+        roughnessMap: textures().brushedMetal,
+        normalMap: textures().brushedMetalNormal,
+        normalScale: new THREE.Vector2(0.40, 0.40),
+        roughness: 0.74,
+        metalness: 0.38,
+      }),
+  },
+
+  /**
+   * Structural ceramic. Clean, satin, engineered — the premium surface of the venue.
+   *
+   * Low roughness variation and almost no metalness, so it holds a soft directional gradient across
+   * a large panel instead of breaking into noise. This is what makes the arena read as a built
+   * facility rather than a warehouse.
+   */
+  structuralCeramic: {
+    build: (o) =>
+      new THREE.MeshStandardMaterial({
+        color: o.color,
+        roughnessMap: textures().panelSeam,
+        normalMap: textures().panelSeamNormal,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughness: 0.55,
+        metalness: 0.08,
       }),
   },
 
@@ -356,6 +396,8 @@ export const SURFACE_SUBSTANCE: Record<SurfaceKind, Substance> = {
   glass: 'temperedGlass',
   led: 'ledStrip',
   trim: 'ledStrip',
+  frame: 'graphite',
+  vent: 'carbonFibre',
 };
 
 export function disposePhotonMaterials(): void {

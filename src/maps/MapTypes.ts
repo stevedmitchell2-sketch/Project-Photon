@@ -15,7 +15,18 @@ export type SurfaceKind =
   | 'ramp'
   | 'glass'
   | 'led'
-  | 'trim';
+  | 'trim'
+  /**
+   * Structural framing: mullions, kick plates, headers, plinths, capitals.
+   *
+   * The kind that ends the "box + strip light + box" read. A bare brush face has no hierarchy, so
+   * the eye has nothing to measure it against and every surface reads as the same slab whatever its
+   * size. Framing gives each bay an edge, a base and a top, which is what makes a wall look built
+   * rather than extruded.
+   */
+  | 'frame'
+  /** Service architecture: louvres, access hatches, equipment covers. The 10 cm-1 m scale. */
+  | 'vent';
 
 export interface Brush {
   /** Centre position in metres. */
@@ -92,6 +103,8 @@ export interface ArenaPalette {
   glass: number;
   led: number;
   trim: number;
+  frame: number;
+  vent: number;
   fog: number;
   ambient: number;
 }

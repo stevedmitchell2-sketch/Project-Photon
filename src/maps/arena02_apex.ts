@@ -1384,6 +1384,8 @@ export const ARENA_02_APEX: ArenaDefinition = {
     glass: 0x63aed2,
     led: 0x2de0ff,
     trim: 0x2de0ff,
+    frame: 0x1d232c,
+    vent: 0x272e39,
     fog: 0x0b1420,
     ambient: 0x3d5c85,
   },

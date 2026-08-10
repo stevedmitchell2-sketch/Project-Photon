@@ -2,6 +2,7 @@ import { DEG2RAD } from '@/util/math';
 import type { PhysicsWorld } from '@/physics/PhysicsWorld';
 import { ARENA_01_CLASSIC } from './arena01_classic';
 import { ARENA_02_APEX } from './arena02_apex';
+import { architecturalDetail } from './architecture';
 import type { ArenaDefinition, Brush, SurfaceKind } from './MapTypes';
 
 /**
@@ -55,6 +56,13 @@ export function buildArena(physics: PhysicsWorld, arena: ArenaDefinition): Built
     if (!brush.noCollide) {
       colliderHandles.push(addBrushCollider(physics, brush));
     }
+    addBrushInstance(batchMap, arena, brush);
+  }
+
+  // Architectural detail is derived, not authored, and is render-only: every module it returns is
+  // `noCollide`/`noNav`, so it is appended *after* the collider loop and can never alter physics,
+  // navigation or a spawn. See architecture.ts for why the arena needs it at all.
+  for (const brush of architecturalDetail(arena)) {
     addBrushInstance(batchMap, arena, brush);
   }
 
@@ -114,12 +122,24 @@ function addBrushInstance(
   });
 }
 
+/**
+ * Default emissive strength per kind.
+ *
+ * These were set when emissive was carrying the whole visual identity, and the result is that cyan
+ * outlines every edge in the venue at a strength that clips to white through bloom. Once everything
+ * glows, nothing reads as glowing, and the arena loses the depth cue that darkness provides.
+ *
+ * Cyan is meant to mean "active technology" — the landmark, the objective, boundaries and fixtures.
+ * Halving the architectural defaults keeps every one of those visible while letting the structure
+ * around them fall back to being lit rather than self-illuminated. Brushes that genuinely need to
+ * shout still can: an explicit `glow` on the brush overrides this.
+ */
 function defaultGlow(kind: SurfaceKind): number {
   switch (kind) {
     case 'led':
-      return 2.4;
+      return 1.35;
     case 'trim':
-      return 3;
+      return 1.2;
     case 'glass':
       return 0.45;
     case 'catwalk':

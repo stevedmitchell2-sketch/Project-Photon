@@ -647,6 +647,8 @@ export const ARENA_01_CLASSIC: ArenaDefinition = {
     glass: 0x63aed2,
     led: 0x2de0ff,
     trim: 0x2de0ff,
+    frame: 0x1e242d,
+    vent: 0x282f3a,
     fog: 0x0e1826,
     ambient: 0x3d5c85,
   },

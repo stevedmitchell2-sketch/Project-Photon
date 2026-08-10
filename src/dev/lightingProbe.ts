@@ -44,6 +44,8 @@ const SURFACE_MATERIAL: Record<SurfaceKind, { roughness: number; metalness: numb
   glass: { roughness: 0.08, metalness: 0.1 },
   led: { roughness: 0.9, metalness: 0 },
   trim: { roughness: 0.9, metalness: 0 },
+  frame: { roughness: 0.74, metalness: 0.38 },
+  vent: { roughness: 0.6, metalness: 0.34 },
 };
 
 export interface ProbeOptions {
