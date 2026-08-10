@@ -5,3 +5,5 @@ DerivedDataCache/
 .vs/
 *.sln
 Content/
+Saved/
+*.txt
