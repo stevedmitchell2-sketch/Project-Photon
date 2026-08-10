@@ -7,6 +7,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "InputModifiers.h"
 #include "PhotonCore.h"
 #include "PhotonWeapon.h"
 #include "TimerManager.h"
@@ -187,14 +188,22 @@ void APhotonCharacter::OnWeaponSwitch(const FInputActionValue&)
 
 void APhotonCharacter::OnWeaponSelect(const FInputActionValue& Value)
 {
-	// One action carries both 1/2 and the D-pad. The axis value distinguishes them: negative selects
-	// the previous slot, positive the next, so the same action serves keys and a D-pad without a
-	// second input path.
+	// One action carries 1/2 keys (discrete slots), D-pad (prev/next), and future binds.
 	if (!Inventory)
 	{
 		return;
 	}
 	const float Axis = Value.Get<float>();
+	if (FMath::IsNearlyEqual(Axis, 0.f, 0.01f))
+	{
+		Inventory->EquipIndex(0);
+		return;
+	}
+	if (FMath::IsNearlyEqual(Axis, 1.f, 0.01f))
+	{
+		Inventory->EquipIndex(1);
+		return;
+	}
 	if (Axis < 0.f)
 	{
 		const int32 Count = Inventory->Weapons.Num();
@@ -215,8 +224,25 @@ void APhotonCharacter::RunSelfTest()
 	};
 
 	Check(TEXT("character_spawned"), true);
-	Check(TEXT("possessed_by_controller"), Cast<APhotonPlayerController>(GetController()) != nullptr);
+	APhotonPlayerController* PC = Cast<APhotonPlayerController>(GetController());
+	Check(TEXT("possessed_by_controller"), PC != nullptr);
 	Check(TEXT("enhanced_input_component"), Cast<UEnhancedInputComponent>(InputComponent) != nullptr);
+
+	// Keyboard WASD must share IA_Move with the left stick — bind count alone missed this defect.
+	if (PC)
+	{
+		Check(TEXT("move_key_w"), PC->IsKeyMappedToAction(TEXT("IA_Move"), EKeys::W));
+		Check(TEXT("move_key_a"), PC->IsKeyMappedToAction(TEXT("IA_Move"), EKeys::A));
+		Check(TEXT("move_key_s"), PC->IsKeyMappedToAction(TEXT("IA_Move"), EKeys::S));
+		Check(TEXT("move_key_d"), PC->IsKeyMappedToAction(TEXT("IA_Move"), EKeys::D));
+		Check(TEXT("move_key_gamepad"), PC->IsKeyMappedToAction(TEXT("IA_Move"), EKeys::Gamepad_Left2D));
+	}
+
+	// Simulate keyboard/stick axes reaching OnMove — proves the handler accepts input, not just keys.
+	OnMove(FInputActionValue(FVector2D(0.f, 1.f))); // W / forward
+	Check(TEXT("move_forward_pending_input"), GetPendingMovementInputVector().SizeSquared() > 0.01f);
+	OnMove(FInputActionValue(FVector2D(-1.f, 0.f))); // A / left
+	Check(TEXT("move_left_pending_input"), GetPendingMovementInputVector().SizeSquared() > 0.01f);
 	Check(TEXT("inventory_exists"), Inventory != nullptr);
 	if (!Inventory)
 	{
@@ -255,6 +281,8 @@ void APhotonCharacter::RunSelfTest()
 	Check(TEXT("switch_back_to_ph6"), Inventory->EquipIndex(0) &&
 		Inventory->GetActiveWeaponId() == FName("photon_rifle"));
 	Check(TEXT("fire_ph6_accepted"), PH6 && PH6->TryFire(this));
+	Check(TEXT("muzzle_flash_exists"), PH6 && PH6->HasMuzzleFlashLight());
+	Check(TEXT("recoil_applied_on_fire"), PH6 && PH6->HasActiveRecoil());
 
 	int32 Bolts = 0;
 	APhotonProjectile* Sample = nullptr;
@@ -326,6 +354,11 @@ void APhotonCharacter::RunSelfTest()
 	Check(TEXT("target_reset_restores_health"), !Target->IsDown() && Target->GetHealth() > 0.f);
 
 	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST ==== self-test complete ===="));
+
+	if (APlayerController* QuitPC = Cast<APlayerController>(GetController()))
+	{
+		QuitPC->ConsoleCommand(TEXT("quit"), false);
+	}
 }
 
 void APhotonCharacter::OnJumpStart(const FInputActionValue&) { Jump(); }
@@ -412,6 +445,53 @@ int32 APhotonPlayerController::GetMappingCount() const
 	return RuntimeContext ? RuntimeContext->GetMappings().Num() : 0;
 }
 
+bool APhotonPlayerController::IsKeyMappedToAction(FName ActionName, FKey Key) const
+{
+	if (!RuntimeContext)
+	{
+		return false;
+	}
+	const TObjectPtr<UInputAction>* ActionPtr = Actions.Find(ActionName);
+	if (!ActionPtr || !ActionPtr->Get())
+	{
+		return false;
+	}
+	const UInputAction* Action = ActionPtr->Get();
+	for (const FEnhancedActionKeyMapping& Mapping : RuntimeContext->GetMappings())
+	{
+		if (Mapping.Action == Action && Mapping.Key == Key)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Map a 1D keyboard key onto IA_Move's Y axis (forward/back). */
+static void MapMoveForwardKey(UInputMappingContext* Context, UInputAction* MoveAction, FKey Key,
+	bool bNegate)
+{
+	FEnhancedActionKeyMapping& Mapping = Context->MapKey(MoveAction, Key);
+	if (bNegate)
+	{
+		Mapping.Modifiers.Add(NewObject<UInputModifierNegate>(Context));
+	}
+	UInputModifierSwizzleAxis* Swizzle = NewObject<UInputModifierSwizzleAxis>(Context);
+	Swizzle->Order = EInputAxisSwizzle::YXZ;
+	Mapping.Modifiers.Add(Swizzle);
+}
+
+/** Map a 1D keyboard key onto IA_Move's X axis (strafe). D needs no modifiers; A is negated. */
+static void MapMoveStrafeKey(UInputMappingContext* Context, UInputAction* MoveAction, FKey Key,
+	bool bNegate)
+{
+	FEnhancedActionKeyMapping& Mapping = Context->MapKey(MoveAction, Key);
+	if (bNegate)
+	{
+		Mapping.Modifiers.Add(NewObject<UInputModifierNegate>(Context));
+	}
+}
+
 void APhotonPlayerController::BuildMappingContext()
 {
 	RuntimeContext = NewObject<UInputMappingContext>(this, TEXT("IMC_PhotonRuntime"));
@@ -465,6 +545,35 @@ void APhotonPlayerController::BuildMappingContext()
 			RuntimeContext->MapKey(Action, B.Key);
 			++Requested;
 		}
+	}
+
+	// WASD feeds the same IA_Move Axis2D as Gamepad_Left2D. Swizzle puts 1D keys on Y (W/S) or X (A/D).
+	if (UInputAction* MoveAction = FindAction(TEXT("IA_Move")))
+	{
+		MapMoveForwardKey(RuntimeContext, MoveAction, EKeys::W, false);
+		MapMoveForwardKey(RuntimeContext, MoveAction, EKeys::S, true);
+		MapMoveStrafeKey(RuntimeContext, MoveAction, EKeys::A, true);
+		MapMoveStrafeKey(RuntimeContext, MoveAction, EKeys::D, false);
+		Requested += 4;
+	}
+
+	// Keys 1 and 2 select weapon slots directly; D-pad left/right still cycle.
+	if (UInputAction* SelectAction = FindAction(TEXT("IA_WeaponSelect")))
+	{
+		auto MapSelectKey = [this](UInputAction* Action, FKey Key, float SlotScalar)
+		{
+			FEnhancedActionKeyMapping& Mapping = RuntimeContext->MapKey(Action, Key);
+			UInputModifierScalar* Scalar = NewObject<UInputModifierScalar>(RuntimeContext);
+			Scalar->Scalar = FVector(SlotScalar, SlotScalar, SlotScalar);
+			Mapping.Modifiers.Add(Scalar);
+		};
+		RuntimeContext->UnmapKey(SelectAction, EKeys::One);
+		RuntimeContext->UnmapKey(SelectAction, EKeys::Two);
+		MapSelectKey(SelectAction, EKeys::One, 0.f);
+		MapSelectKey(SelectAction, EKeys::Two, 1.f);
+		RuntimeContext->UnmapKey(SelectAction, EKeys::Gamepad_DPad_Left);
+		FEnhancedActionKeyMapping& DLeft = RuntimeContext->MapKey(SelectAction, EKeys::Gamepad_DPad_Left);
+		DLeft.Modifiers.Add(NewObject<UInputModifierNegate>(RuntimeContext));
 	}
 
 	// Assert on the result rather than on MapKey not throwing. The Python path silently mapped nothing

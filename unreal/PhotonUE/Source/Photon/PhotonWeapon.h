@@ -8,6 +8,7 @@
 
 class UPhotonWeaponData;
 class UStaticMeshComponent;
+class UPointLightComponent;
 class APhotonCharacter;
 class UPhotonHealthComponent;
 
@@ -28,6 +29,9 @@ public:
 	APhotonWeapon();
 
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/** Short-lived muzzle flash — pulsed in TryFire, not a Niagara dependency. */
+	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UPointLightComponent> MuzzleFlash;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Photon") TObjectPtr<const UPhotonWeaponData> Data;
 
@@ -57,10 +61,25 @@ public:
 	/** Seconds until the next shot is permitted; 0 when ready. */
 	float GetCooldownRemaining() const;
 
+	/** Self-test accessors — not gameplay API. */
+	bool HasMuzzleFlashLight() const { return MuzzleFlash != nullptr; }
+	bool HasActiveRecoil() const { return !WeaponRecoilOffset.IsNearlyZero() || !WeaponRecoilRotation.IsNearlyZero(0.05f); }
+
 	int32 ShotsFired = 0;
 
 protected:
+	virtual void Tick(float DeltaTime) override;
+
 	float LastFireTime = -1000.f;
+	FTransform HipPose;
+	FVector WeaponRecoilOffset = FVector::ZeroVector;
+	FRotator WeaponRecoilRotation = FRotator::ZeroRotator;
+	FTimerHandle MuzzleFlashTimer;
+
+	void PulseMuzzleFlash();
+	void ApplyRecoil(APhotonCharacter* Shooter);
+	void UpdateWeaponPose();
+	void EndMuzzleFlash();
 };
 
 /**

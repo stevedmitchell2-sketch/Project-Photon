@@ -1,6 +1,7 @@
 #include "PhotonWeapon.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Net/UnrealNetwork.h"
@@ -8,6 +9,7 @@
 #include "PhotonPlayer.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TimerManager.h"
+#include "GameFramework/PlayerController.h"
 
 // ---------------------------------------------------------------------------------------------
 // APhotonWeapon
@@ -15,7 +17,8 @@
 
 APhotonWeapon::APhotonWeapon()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	bReplicates = true;
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
@@ -23,6 +26,15 @@ APhotonWeapon::APhotonWeapon()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Mesh->SetCastShadow(false);
 	RootComponent = Mesh;
+
+	MuzzleFlash = CreateDefaultSubobject<UPointLightComponent>(TEXT("MuzzleFlash"));
+	MuzzleFlash->SetupAttachment(Mesh);
+	MuzzleFlash->SetRelativeLocation(MuzzleOffset);
+	MuzzleFlash->SetIntensity(0.f);
+	MuzzleFlash->SetAttenuationRadius(180.f);
+	MuzzleFlash->SetLightColor(FLinearColor(0.55f, 0.85f, 1.f));
+	MuzzleFlash->SetCastShadows(false);
+	MuzzleFlash->SetVisibility(false);
 }
 
 void APhotonWeapon::InitialiseFromData(const UPhotonWeaponData* InData)
@@ -38,7 +50,86 @@ void APhotonWeapon::InitialiseFromData(const UPhotonWeaponData* InData)
 	}
 	// The first-person pose is authored per weapon in the data asset, so a longer or shorter weapon
 	// sits correctly without code changes.
-	Mesh->SetRelativeTransform(Data->HipTransform);
+	HipPose = Data->HipTransform;
+	UpdateWeaponPose();
+	if (MuzzleFlash)
+	{
+		MuzzleFlash->SetRelativeLocation(MuzzleOffset);
+	}
+}
+
+void APhotonWeapon::UpdateWeaponPose()
+{
+	if (!Mesh)
+	{
+		return;
+	}
+	const FTransform Kick(WeaponRecoilRotation, WeaponRecoilOffset);
+	Mesh->SetRelativeTransform(Kick * HipPose);
+}
+
+void APhotonWeapon::PulseMuzzleFlash()
+{
+	if (!MuzzleFlash || !GetWorld())
+	{
+		return;
+	}
+	MuzzleFlash->SetIntensity(12000.f);
+	MuzzleFlash->SetVisibility(true);
+	GetWorldTimerManager().ClearTimer(MuzzleFlashTimer);
+	GetWorldTimerManager().SetTimer(MuzzleFlashTimer, this, &APhotonWeapon::EndMuzzleFlash, 0.06f, false);
+}
+
+void APhotonWeapon::EndMuzzleFlash()
+{
+	if (MuzzleFlash)
+	{
+		MuzzleFlash->SetIntensity(0.f);
+		MuzzleFlash->SetVisibility(false);
+	}
+}
+
+void APhotonWeapon::ApplyRecoil(APhotonCharacter* Shooter)
+{
+	if (!Data || !Shooter)
+	{
+		return;
+	}
+	if (APlayerController* PC = Cast<APlayerController>(Shooter->GetController()))
+	{
+		PC->AddPitchInput(-Data->RecoilPitch);
+		PC->AddYawInput(FMath::FRandRange(-Data->RecoilYaw, Data->RecoilYaw));
+	}
+	// Kick the view model back along local -X (down the barrel) with a slight pitch bump.
+	WeaponRecoilOffset += FVector(-2.8f, FMath::FRandRange(-0.35f, 0.35f), 0.45f);
+	WeaponRecoilRotation += FRotator(-Data->RecoilPitch * 3.5f, FMath::FRandRange(-1.2f, 1.2f), 0.f);
+	UpdateWeaponPose();
+	SetActorTickEnabled(true);
+}
+
+void APhotonWeapon::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!Data)
+	{
+		SetActorTickEnabled(false);
+		return;
+	}
+	const float HalfLife = FMath::Max(0.01f, Data->RecoilRecoveryHalfLife);
+	const float Decay = FMath::Exp2(-DeltaTime / HalfLife);
+	WeaponRecoilOffset *= Decay;
+	WeaponRecoilRotation.Pitch *= Decay;
+	WeaponRecoilRotation.Yaw *= Decay;
+	WeaponRecoilRotation.Roll *= Decay;
+	UpdateWeaponPose();
+	if (WeaponRecoilOffset.SizeSquared() < 0.01f &&
+		WeaponRecoilRotation.IsNearlyZero(0.05f))
+	{
+		WeaponRecoilOffset = FVector::ZeroVector;
+		WeaponRecoilRotation = FRotator::ZeroRotator;
+		UpdateWeaponPose();
+		SetActorTickEnabled(false);
+	}
 }
 
 FVector APhotonWeapon::GetMuzzleWorld() const
@@ -117,6 +208,8 @@ bool APhotonWeapon::TryFire(APhotonCharacter* Shooter)
 	}
 
 	++ShotsFired;
+	PulseMuzzleFlash();
+	ApplyRecoil(Shooter);
 	UE_LOG(LogTemp, Display,
 		TEXT("[Photon] PHOTONVERIFY fired weapon=%s shot=%d bolt=%s ownerOk=%d origin=%s"),
 		*Data->WeaponId.ToString(), ShotsFired, *Bolt->GetName(),

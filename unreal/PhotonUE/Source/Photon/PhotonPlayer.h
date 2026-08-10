@@ -125,6 +125,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Photon")
 	int32 GetMappingCount() const;
 
+	/** True when the runtime context maps Key to Action — used by self-test, not as movement proof. */
+	bool IsKeyMappedToAction(FName ActionName, FKey Key) const;
+
 protected:
 	virtual void BeginPlay() override;
 
