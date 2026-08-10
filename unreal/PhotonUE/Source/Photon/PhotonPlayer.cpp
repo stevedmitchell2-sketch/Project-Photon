@@ -12,6 +12,7 @@
 #include "PhotonWeapon.h"
 #include "TimerManager.h"
 #include "EngineUtils.h"
+#include "Engine/World.h"
 
 // ---------------------------------------------------------------------------------------------
 // APhotonCharacter
@@ -292,7 +293,7 @@ void APhotonCharacter::RunSelfTest()
 	{
 		return;
 	}
-	Check(TEXT("two_weapons_spawned"), Inventory->Weapons.Num() == 2);
+	Check(TEXT("two_weapons_spawned"), Inventory->Weapons.Num() >= 2);
 	Check(TEXT("ph6_active_initially"), Inventory->GetActiveWeaponId() == FName("photon_rifle"));
 
 	Check(TEXT("switch_to_ph9"), Inventory->EquipIndex(1) &&
@@ -361,7 +362,97 @@ void APhotonCharacter::RunSelfTest()
 			Sample->GetSpeed(), Sample->HasVisibleRepresentation());
 	}
 
-	// --- Combat loop against a real target -------------------------------------------------------
+	// --- Projectile -> target impact (production OnImpact path) ----------------------------------
+	const UPhotonWeaponData* ImpactWeaponData = PH6 ? PH6->Data : nullptr;
+	const FVector ImpactDir = GetActorForwardVector().GetSafeNormal();
+	auto RunImpactBoltTest = [this, ImpactWeaponData, ImpactDir](APhotonTarget* HitTarget,
+		EPhotonTeam BoltTeam, APhotonProjectile*& OutBolt) -> bool
+	{
+		OutBolt = nullptr;
+		if (!ImpactWeaponData || !HitTarget || !GetWorld())
+		{
+			return false;
+		}
+		HitTarget->ResetTarget();
+		const FVector TargetLoc = HitTarget->GetActorLocation();
+		const FVector BoltSpawn = TargetLoc - ImpactDir * 250.f;
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = this;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		OutBolt = GetWorld()->SpawnActor<APhotonProjectile>(
+			APhotonProjectile::StaticClass(), BoltSpawn, ImpactDir.Rotation(), SpawnParams);
+		if (!OutBolt)
+		{
+			return false;
+		}
+		OutBolt->InitialiseFrom(ImpactWeaponData, BoltTeam, GetController());
+		if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(OutBolt->GetRootComponent()))
+		{
+			Root->IgnoreActorWhenMoving(this, true);
+		}
+
+		// Re-entrant World->Tick during RunSelfTest crashes TickTaskManager; use a blocking sweep
+		// to obtain a real FHitResult, then invoke the production OnImpact handler (Option B).
+		FHitResult Hit;
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(PhotonImpactTest), false, OutBolt);
+		QueryParams.AddIgnoredActor(this);
+		const float Radius = ImpactWeaponData->ProjectileRadius;
+		const bool bBlocked = GetWorld()->SweepSingleByChannel(
+			Hit, BoltSpawn, TargetLoc, FQuat::Identity, ECC_WorldDynamic,
+			FCollisionShape::MakeSphere(Radius), QueryParams);
+		if (bBlocked && Hit.GetActor() == HitTarget)
+		{
+			UPrimitiveComponent* HitComp = Cast<UPrimitiveComponent>(Hit.GetComponent());
+			OutBolt->DeliverRecordedImpact(HitTarget, HitComp, Hit);
+		}
+		return OutBolt->DidProcessImpact();
+	};
+
+	const FVector EnemyTargetLoc = GetActorLocation() + ImpactDir * 650.f;
+	APhotonTarget* ImpactEnemy = GetWorld()->SpawnActor<APhotonTarget>(
+		APhotonTarget::StaticClass(), EnemyTargetLoc, FRotator::ZeroRotator);
+	Check(TEXT("projectile_impact_target_spawned"), ImpactEnemy != nullptr);
+	if (ImpactEnemy)
+	{
+		ImpactEnemy->Team = EPhotonTeam::Red;
+		if (ImpactEnemy->Health)
+		{
+			ImpactEnemy->Health->Team = EPhotonTeam::Red;
+		}
+	}
+
+	APhotonProjectile* ImpactBolt = nullptr;
+	const float EnemyHealthBeforeImpact = ImpactEnemy ? ImpactEnemy->GetHealth() : 0.f;
+	const bool bImpactRan = ImpactEnemy && RunImpactBoltTest(ImpactEnemy, EPhotonTeam::Blue, ImpactBolt);
+	Check(TEXT("projectile_spawn_valid"), ImpactBolt != nullptr);
+	Check(TEXT("projectile_has_expected_velocity"),
+		ImpactBolt && ImpactWeaponData && ImpactBolt->GetSpeed() > ImpactWeaponData->ProjectileSpeed * 0.9f);
+	Check(TEXT("projectile_onimpact_executed"), bImpactRan && ImpactBolt && ImpactBolt->DidProcessImpact());
+	Check(TEXT("projectile_target_collision"), bImpactRan);
+	Check(TEXT("projectile_damage_applied"),
+		ImpactEnemy && ImpactEnemy->GetHealth() < EnemyHealthBeforeImpact);
+	Check(TEXT("projectile_destroyed_after_impact"), !IsValid(ImpactBolt));
+
+	const FVector FriendlyTargetLoc = EnemyTargetLoc + FVector(0.f, 350.f, 0.f);
+	APhotonTarget* ImpactFriendly = GetWorld()->SpawnActor<APhotonTarget>(
+		APhotonTarget::StaticClass(), FriendlyTargetLoc, FRotator::ZeroRotator);
+	if (ImpactFriendly && ImpactFriendly->Health)
+	{
+		ImpactFriendly->Team = EPhotonTeam::Blue;
+		ImpactFriendly->Health->Team = EPhotonTeam::Blue;
+		ImpactFriendly->ResetTarget();
+	}
+	APhotonProjectile* FriendlyBolt = nullptr;
+	const float FriendlyHealthBefore = ImpactFriendly ? ImpactFriendly->GetHealth() : 0.f;
+	const bool bFriendlyImpact = ImpactFriendly && RunImpactBoltTest(ImpactFriendly, EPhotonTeam::Blue, FriendlyBolt);
+	Check(TEXT("projectile_friendly_impact_ran"), bFriendlyImpact);
+	Check(TEXT("projectile_friendly_damage_blocked"),
+		ImpactFriendly && FMath::IsNearlyEqual(ImpactFriendly->GetHealth(), FriendlyHealthBefore));
+
+	// --- Combat loop against a real target (direct damage rule checks) ---------------------------
 	// Spawned by the test rather than placed in the level, so the assertion cannot silently pass by
 	// finding some other actor that happens to be there.
 	const FVector Ahead = GetActorLocation() + GetActorForwardVector() * 900.f;
@@ -408,6 +499,34 @@ void APhotonCharacter::RunSelfTest()
 	Check(TEXT("target_dies_at_zero_health"), Target->IsDown());
 	Target->ResetTarget();
 	Check(TEXT("target_reset_restores_health"), !Target->IsDown() && Target->GetHealth() > 0.f);
+
+	// --- Burst weapon archetype (T9) -------------------------------------------------------------
+	UPhotonWeaponData* BurstData = LoadObject<UPhotonWeaponData>(nullptr,
+		TEXT("/Game/Photon/Weapons/DA_PH10_Burst.DA_PH10_Burst"));
+	Check(TEXT("burst_weapon_data_loaded"), BurstData != nullptr);
+	Check(TEXT("burst_weapon_in_loadout"), Inventory->Weapons.Num() >= 3);
+	if (BurstData)
+	{
+		Check(TEXT("burst_fire_mode"), BurstData->FireMode == EPhotonFireMode::Burst);
+		Check(TEXT("burst_count_valid"), BurstData->BurstCount >= 2);
+		Check(TEXT("burst_presentation_scale_valid"),
+			BurstData->HipTransform.GetScale3D().X > 0.2f && BurstData->HipTransform.GetScale3D().X < 0.6f);
+	}
+	if (Inventory->Weapons.Num() >= 3 && BurstData)
+	{
+		Check(TEXT("burst_equip_succeeds"), Inventory->EquipIndex(2) &&
+			Inventory->GetActiveWeaponId() == BurstData->WeaponId);
+		if (APhotonWeapon* BurstWeapon = Inventory->GetActiveWeapon())
+		{
+			const int32 BoltsBefore = BurstWeapon->ShotsFired;
+			Check(TEXT("burst_fire_accepted"), BurstWeapon->TryFire(this));
+			Check(TEXT("burst_projectiles_per_trigger"),
+				BurstWeapon->LastTriggerProjectiles >= BurstData->BurstCount);
+			Check(TEXT("burst_shot_counter_advanced"), BurstWeapon->ShotsFired == BoltsBefore + 1);
+			Check(TEXT("burst_cooldown_refuses_immediate_retrigger"), !BurstWeapon->TryFire(this));
+		}
+		Inventory->EquipIndex(0);
+	}
 
 	// --- Grenade foundation ------------------------------------------------------------------------
 	UPhotonGrenadeData* GrenadeData = LoadObject<UPhotonGrenadeData>(nullptr,

@@ -49,6 +49,9 @@ public:
 	 */
 	bool TryFire(APhotonCharacter* Shooter);
 
+	/** Projectiles spawned by the last TryFire call (burst weapons may spawn multiple). */
+	int32 LastTriggerProjectiles = 0;
+
 	/** Seconds until the next shot is permitted; 0 when ready. */
 	float GetCooldownRemaining() const;
 
@@ -68,6 +71,8 @@ protected:
 	FVector WeaponRecoilOffset = FVector::ZeroVector;
 	FRotator WeaponRecoilRotation = FRotator::ZeroRotator;
 	FTimerHandle MuzzleFlashTimer;
+
+	bool SpawnProjectile(APhotonCharacter* Shooter, const FRotator& Aim, float YawSpreadDegrees = 0.f);
 
 	void PulseMuzzleFlash();
 	void ApplyRecoil(APhotonCharacter* Shooter);
