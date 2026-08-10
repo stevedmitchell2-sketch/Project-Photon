@@ -1,0 +1,21 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "Project Photon — Unreal Stage 0 vertical slice. Isolated spike; the Three.js runtime in ../../src remains the reference implementation.",
+	"Modules": [
+		{
+			"Name": "Photon",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [ "Engine", "EnhancedInput", "AIModule", "NavigationSystem", "Niagara", "UMG" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "EnhancedInput", "Enabled": true },
+		{ "Name": "Niagara", "Enabled": true },
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "InterchangeEditor", "Enabled": true },
+		{ "Name": "GLTFImporter", "Enabled": true }
+	]
+}
