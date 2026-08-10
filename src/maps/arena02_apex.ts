@@ -1420,13 +1420,25 @@ export const ARENA_02_APEX: ArenaDefinition = {
     // instead of competing with an evenly lit room, and foreground/midground/background finally
     // separate. The landmark was not touched: its emissive and bloom carry its brightness, which is
     // exactly the separation of visual energy from physical illumination this was aiming for.
-    { p: [-14, TRUSS_Y - 3, -14], color: 0xa8ccff, intensity: 250, distance: 60 },
-    { p: [14, TRUSS_Y - 3, 14], color: 0xa8ccff, intensity: 250, distance: 60 },
-    { p: [-14, TRUSS_Y - 3, 14], color: 0xa8ccff, intensity: 250, distance: 60 },
-    { p: [14, TRUSS_Y - 3, -14], color: 0xa8ccff, intensity: 250, distance: 60 },
+    // Pulled in from +/-14 to +/-10 and shortened from 60 m to 26 m.
+    //
+    // At 60 m these four overlapped into a single even wash across the whole deck, which is why the
+    // floor read as flat grey however the materials were tuned: a light that reaches everything
+    // equally cannot describe a surface. Inside 26 m each one lands as its own pool with falloff
+    // between, so the floor finally has gradient — and the pools sit over the deck where players
+    // actually fight rather than over the perimeter. Intensity rises to hold the same light *at* the
+    // deck, because illuminance goes as intensity/d^2 and these are now much closer to it.
+    { p: [-10, TRUSS_Y - 3, -10], color: 0xa8ccff, intensity: 300, distance: 26 },
+    { p: [10, TRUSS_Y - 3, 10], color: 0xa8ccff, intensity: 300, distance: 26 },
+    { p: [-10, TRUSS_Y - 3, 10], color: 0xa8ccff, intensity: 300, distance: 26 },
+    { p: [10, TRUSS_Y - 3, -10], color: 0xa8ccff, intensity: 300, distance: 26 },
     // The atrium: a bright column of light on the axis, which is what makes the middle the brightest
     // thing in the building and therefore the place the eye goes.
-    { p: [0, 14.0, 0], color: 0x8fefff, intensity: 900, distance: 44 },
+    // 900 at 44 m from directly overhead was the dominant term in the whole arena and the last
+    // uncontrolled flat-fill source: it reached every surface on the deck at near-equal strength,
+    // erasing the gradients the ceiling array is there to create. Kept as a soft centre fill around
+    // the core, at a radius that stops well short of the walls.
+    { p: [0, 14.0, 0], color: 0x8fefff, intensity: 300, distance: 26 },
     { p: [0, 3.0, 0], color: C_CORE, intensity: 190, distance: 22 },
     // Landmarks, each lit in its own key so they are identifiable at distance.
     { p: [-20.5, 7.0, -20.5], color: 0xd8e6ff, intensity: 420, distance: 26 },
