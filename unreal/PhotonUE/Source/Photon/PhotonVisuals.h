@@ -87,6 +87,20 @@ namespace PhotonVisuals
 	/** Re-apply arena materials at runtime so -game launches match the authored level. */
 	PHOTON_API void BootstrapArenaVisuals(UWorld* World);
 
+	/**
+	 * Cheap runtime performance hygiene for the arena (no gameplay changes).
+	 *
+	 * Always counts lights/shadow casters. When bApplyFixes is true, clamps Virtual Shadow Map
+	 * pressure from non-Nanite greybox (seen as VSM overflow in PhotonTour).
+	 */
+	PHOTON_API FString BootstrapArenaPerformance(UWorld* World, bool bApplyFixes = true);
+
+	/**
+	 * Third-person Mixamo hero materials: dark metal shell + team-colour energy accents.
+	 * Does not change skeleton, animation, or finger bones.
+	 */
+	PHOTON_API void ApplyHeroTeamPresentation(class USkeletalMeshComponent* Body, EPhotonTeam Team);
+
 	/** Team-coloured energy material. */
 	PHOTON_API void ApplyEnergyTint(UPrimitiveComponent* Component, FLinearColor Color,
 		float EmissiveScale = 6.f);

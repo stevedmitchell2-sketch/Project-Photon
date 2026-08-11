@@ -1,0 +1,11 @@
+{
+  "name": "SOCKET_weapon_right",
+  "bone_blender": "mixamorig:RightHand",
+  "bone_runtime_ue": "RightHand",
+  "location_cm": [8.0, 2.5, 0.0],
+  "rotation_deg_xyz": [0.0, 90.0, 0.0],
+  "rotation_ue_rotator": {"pitch": 90.0, "yaw": 0.0, "roll": 0.0},
+  "scale": [1.0, 1.0, 1.0],
+  "coordinate_convention": "Bone-local centimetres, Unreal right-handed. FBX import ConvertScene+ForceFrontX strips mixamorig: prefix. Created at runtime by APhotonCharacter::EnsureWeaponSocket. FP viewmodel weapon stays on Camera→WeaponRoot HipTransform; TP weapon uses this socket via ThirdPersonWeaponMesh (OwnerNoSee).",
+  "verified_selftest": true
+}

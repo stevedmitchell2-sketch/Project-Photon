@@ -1,0 +1,199 @@
+{
+  "pipeline": "no-finger-bones",
+  "source": "C:\\Users\\Home\\Downloads\\T-Pose (2).fbx",
+  "clip_source": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\public\\assets\\characters\\HeroAthlete_v01.glb",
+  "stages": [
+    {
+      "stage": "import_hero",
+      "armature": "Armature",
+      "bones": 33,
+      "bone_names": [
+        "mixamorig:Head",
+        "mixamorig:HeadTop_End",
+        "mixamorig:Hips",
+        "mixamorig:LeftArm",
+        "mixamorig:LeftFoot",
+        "mixamorig:LeftForeArm",
+        "mixamorig:LeftHand",
+        "mixamorig:LeftHandIndex1",
+        "mixamorig:LeftHandIndex2",
+        "mixamorig:LeftHandIndex3",
+        "mixamorig:LeftHandIndex4",
+        "mixamorig:LeftLeg",
+        "mixamorig:LeftShoulder",
+        "mixamorig:LeftToeBase",
+        "mixamorig:LeftToe_End",
+        "mixamorig:LeftUpLeg",
+        "mixamorig:Neck",
+        "mixamorig:RightArm",
+        "mixamorig:RightFoot",
+        "mixamorig:RightForeArm",
+        "mixamorig:RightHand",
+        "mixamorig:RightHandIndex1",
+        "mixamorig:RightHandIndex2",
+        "mixamorig:RightHandIndex3",
+        "mixamorig:RightHandIndex4",
+        "mixamorig:RightLeg",
+        "mixamorig:RightShoulder",
+        "mixamorig:RightToeBase",
+        "mixamorig:RightToe_End",
+        "mixamorig:RightUpLeg",
+        "mixamorig:Spine",
+        "mixamorig:Spine1",
+        "mixamorig:Spine2"
+      ],
+      "meshes": [
+        [
+          "PhotonHero_ForMixamo",
+          10483,
+          28
+        ]
+      ]
+    },
+    {
+      "stage": "scale",
+      "source_height_m": 221.15211314847693,
+      "factor": 0.008817460399715062,
+      "target_m": 1.95
+    },
+    {
+      "stage": "grip_rest_pose",
+      "applied": [
+        "mixamorig:RightHand",
+        "mixamorig:RightHandIndex1",
+        "mixamorig:RightHandIndex2",
+        "mixamorig:RightHandIndex3",
+        "mixamorig:LeftHand",
+        "mixamorig:LeftHandIndex1",
+        "mixamorig:LeftHandIndex2",
+        "mixamorig:LeftHandIndex3"
+      ]
+    },
+    {
+      "stage": "socket",
+      "socket": {
+        "bone": "mixamorig:RightHand",
+        "name": "SOCKET_weapon_right",
+        "location_cm": [
+          8.0,
+          2.5,
+          0.0
+        ],
+        "rotation_deg_xyz": [
+          0.0,
+          90.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "coordinate_convention": "Blender bone-local before FBX export; UE Import with ConvertScene / ForceFrontX. Position in centimetres. Weapon attach: KeepWorld or socket relative; FP viewmodel still uses Camera\u2192WeaponRoot HipTransform (not this socket).",
+        "resolved_bone": "mixamorig:RightHand",
+        "blender_location_m": [
+          0.07999999821186066,
+          0.02499999850988388,
+          0.0
+        ]
+      }
+    },
+    {
+      "stage": "clip_copy",
+      "source": "Breathing Idle",
+      "dest": "A_PhotonHero_Idle",
+      "fcurves": 330,
+      "skipped_missing_bones": 240
+    },
+    {
+      "stage": "clip_copy",
+      "source": "Walking",
+      "dest": "A_PhotonHero_Walk",
+      "fcurves": 330,
+      "skipped_missing_bones": 240
+    },
+    {
+      "stage": "clip_copy",
+      "source": "Running",
+      "dest": "A_PhotonHero_Run",
+      "fcurves": 330,
+      "skipped_missing_bones": 240
+    },
+    {
+      "stage": "clip_copy",
+      "source": "Fast Run",
+      "dest": "A_PhotonHero_Sprint",
+      "fcurves": 330,
+      "skipped_missing_bones": 240
+    },
+    {
+      "stage": "export",
+      "path": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonHero_SK.fbx",
+      "bytes": 4025100
+    },
+    {
+      "stage": "fp_arms_extract",
+      "verts": 4101,
+      "arm_groups": 14
+    },
+    {
+      "stage": "export",
+      "path": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonFPArms_SK.fbx",
+      "bytes": 911612
+    }
+  ],
+  "warnings": [],
+  "errors": [],
+  "exports": {
+    "hero_sk": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonHero_SK.fbx",
+    "fp_arms_sk": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonFPArms_SK.fbx"
+  },
+  "socket": {
+    "bone": "mixamorig:RightHand",
+    "name": "SOCKET_weapon_right",
+    "location_cm": [
+      8.0,
+      2.5,
+      0.0
+    ],
+    "rotation_deg_xyz": [
+      0.0,
+      90.0,
+      0.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "coordinate_convention": "Blender bone-local before FBX export; UE Import with ConvertScene / ForceFrontX. Position in centimetres. Weapon attach: KeepWorld or socket relative; FP viewmodel still uses Camera\u2192WeaponRoot HipTransform (not this socket).",
+    "resolved_bone": "mixamorig:RightHand",
+    "blender_location_m": [
+      0.07999999821186066,
+      0.02499999850988388,
+      0.0
+    ]
+  },
+  "skinning": {
+    "verts": 10483,
+    "weighted": 10483,
+    "pct": 100.0
+  },
+  "rig": {
+    "bone_count": 33,
+    "chains": {
+      "index": true,
+      "thumb": false,
+      "middle": false,
+      "ring": false,
+      "pinky": false
+    }
+  },
+  "height_axis": "z",
+  "clips": [
+    "A_PhotonHero_Idle",
+    "A_PhotonHero_Walk",
+    "A_PhotonHero_Run",
+    "A_PhotonHero_Sprint"
+  ]
+}

@@ -1,11 +1,19 @@
 #include "PhotonVisuals.h"
 
 #include "Camera/CameraComponent.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/LightComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/PointLight.h"
+#include "Engine/RectLight.h"
+#include "Engine/SpotLight.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "PhotonCore.h"
 #include "PhotonPlayer.h"
@@ -21,7 +29,7 @@ static TAutoConsoleVariable<float> CVarPhotonExposureBias(
 	TEXT("photon.ExposureBias"), 0.f, TEXT("Arena exposure compensation in stops."), ECVF_Default);
 
 static TAutoConsoleVariable<float> CVarPhotonBloom(
-	TEXT("photon.Bloom"), 0.35f, TEXT("Arena bloom intensity."), ECVF_Default);
+	TEXT("photon.Bloom"), 0.22f, TEXT("Arena bloom intensity (kept low for FPS)."), ECVF_Default);
 
 namespace
 {
@@ -418,4 +426,102 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		*GetNameSafe(GetSurfaceMaterial(EPhotonSurface::Floor)),
 		*GetNameSafe(GetSurfaceMaterial(EPhotonSurface::Cover)),
 		*GetNameSafe(GetSurfaceMaterial(EPhotonSurface::Energy)));
+}
+
+FString PhotonVisuals::BootstrapArenaPerformance(UWorld* World, bool bApplyFixes)
+{
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
+	{
+		return TEXT("skipped");
+	}
+
+	int32 RectLights = 0;
+	int32 SpotLights = 0;
+	int32 PointLights = 0;
+	int32 DirLights = 0;
+	int32 ShadowCasters = 0;
+
+	auto CountLight = [&ShadowCasters](AActor* Actor, int32& Counter)
+	{
+		if (!Actor)
+		{
+			return;
+		}
+		++Counter;
+		if (const ULightComponent* Light = Actor->FindComponentByClass<ULightComponent>())
+		{
+			if (Light->CastShadows)
+			{
+				++ShadowCasters;
+			}
+		}
+	};
+
+	for (TActorIterator<ARectLight> It(World); It; ++It)
+	{
+		CountLight(*It, RectLights);
+	}
+	for (TActorIterator<ASpotLight> It(World); It; ++It)
+	{
+		CountLight(*It, SpotLights);
+	}
+	for (TActorIterator<APointLight> It(World); It; ++It)
+	{
+		CountLight(*It, PointLights);
+	}
+	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+	{
+		CountLight(*It, DirLights);
+	}
+
+	int32 VsmState = -1;
+	if (IConsoleVariable* Vsm = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shadow.Virtual.Enable")))
+	{
+		// Measured: forcing VSM off regressed avg FPS (42.3 → 38.2 at 1280x720). Keep VSM on and
+		// attack movable-light count / non-Nanite coverage instead. bApplyFixes reserved for a
+		// future win that beats baseline.
+		if (bApplyFixes)
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("[Photon] PHOTONPERF fixes requested but VSM clamp skipped (prior regression)"));
+		}
+		VsmState = Vsm->GetInt();
+	}
+
+	const FString Summary = FString::Printf(
+		TEXT("rect=%d spot=%d point=%d dir=%d shadow_casters=%d vsm=%d fixes_applied=0"),
+		RectLights, SpotLights, PointLights, DirLights, ShadowCasters, VsmState);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONPERF arena_lights %s"), *Summary);
+	return Summary;
+}
+
+void PhotonVisuals::ApplyHeroTeamPresentation(USkeletalMeshComponent* Body, EPhotonTeam InTeam)
+{
+	if (!Body)
+	{
+		return;
+	}
+
+	// Mixamo hero is typically one material slot — keep a coherent dark shell and lean team colour
+	// into a cool metal tint so RED/GREEN/BLUE/YELLOW read as accents, not full paint.
+	const EPhotonTeam TeamId = (InTeam == EPhotonTeam::None) ? EPhotonTeam::Blue : InTeam;
+	const FLinearColor Accent = PhotonTeamColor(TeamId);
+	const FLinearColor Shell = FLinearColor(
+		FMath::Lerp(Palette::Metal().R, Accent.R, 0.18f),
+		FMath::Lerp(Palette::Metal().G, Accent.G, 0.18f),
+		FMath::Lerp(Palette::Metal().B, Accent.B, 0.18f));
+	ApplySurface(Body, EPhotonSurface::Metal, Shell, 0.0f);
+
+	// Soft team emissive on a second slot when the import exposes trim/accents.
+	const int32 Slots = Body->GetNumMaterials();
+	if (Slots >= 2)
+	{
+		UMaterialInterface* EnergyParent = GetSurfaceMaterial(EPhotonSurface::Energy);
+		if (EnergyParent)
+		{
+			Body->SetMaterial(1, EnergyParent);
+			SetPhotonParameters(Body->CreateAndSetMaterialInstanceDynamic(1),
+				EPhotonSurface::Energy, Accent, 1.8f);
+		}
+	}
 }

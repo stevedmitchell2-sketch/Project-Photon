@@ -1,0 +1,537 @@
+{
+  "stages": [
+    {
+      "stage": "inspect_glove_raw",
+      "armatures": [],
+      "meshes": [
+        {
+          "name": "tripo_part_0",
+          "verts": 5565,
+          "groups": 0,
+          "dims": [
+            0.336,
+            0.4506,
+            0.404
+          ]
+        },
+        {
+          "name": "tripo_part_1",
+          "verts": 5046,
+          "groups": 0,
+          "dims": [
+            0.2997,
+            0.4386,
+            0.3561
+          ]
+        },
+        {
+          "name": "tripo_part_10",
+          "verts": 564,
+          "groups": 0,
+          "dims": [
+            0.0805,
+            0.0747,
+            0.137
+          ]
+        },
+        {
+          "name": "tripo_part_11",
+          "verts": 952,
+          "groups": 0,
+          "dims": [
+            0.095,
+            0.2615,
+            0.2089
+          ]
+        },
+        {
+          "name": "tripo_part_12",
+          "verts": 768,
+          "groups": 0,
+          "dims": [
+            0.1556,
+            0.1212,
+            0.1134
+          ]
+        },
+        {
+          "name": "tripo_part_13",
+          "verts": 676,
+          "groups": 0,
+          "dims": [
+            0.1125,
+            0.1274,
+            0.1369
+          ]
+        },
+        {
+          "name": "tripo_part_14",
+          "verts": 535,
+          "groups": 0,
+          "dims": [
+            0.1146,
+            0.1057,
+            0.0506
+          ]
+        },
+        {
+          "name": "tripo_part_15",
+          "verts": 543,
+          "groups": 0,
+          "dims": [
+            0.078,
+            0.1428,
+            0.0762
+          ]
+        },
+        {
+          "name": "tripo_part_16",
+          "verts": 851,
+          "groups": 0,
+          "dims": [
+            0.1979,
+            0.2292,
+            0.0636
+          ]
+        },
+        {
+          "name": "tripo_part_17",
+          "verts": 414,
+          "groups": 0,
+          "dims": [
+            0.0477,
+            0.0716,
+            0.0541
+          ]
+        },
+        {
+          "name": "tripo_part_18",
+          "verts": 492,
+          "groups": 0,
+          "dims": [
+            0.0582,
+            0.1672,
+            0.124
+          ]
+        },
+        {
+          "name": "tripo_part_19",
+          "verts": 406,
+          "groups": 0,
+          "dims": [
+            0.0796,
+            0.0905,
+            0.0452
+          ]
+        },
+        {
+          "name": "tripo_part_2",
+          "verts": 1221,
+          "groups": 0,
+          "dims": [
+            0.1493,
+            0.2299,
+            0.1474
+          ]
+        },
+        {
+          "name": "tripo_part_20",
+          "verts": 526,
+          "groups": 0,
+          "dims": [
+            0.1489,
+            0.1499,
+            0.0908
+          ]
+        },
+        {
+          "name": "tripo_part_21",
+          "verts": 483,
+          "groups": 0,
+          "dims": [
+            0.087,
+            0.0808,
+            0.1028
+          ]
+        },
+        {
+          "name": "tripo_part_22",
+          "verts": 236,
+          "groups": 0,
+          "dims": [
+            0.0638,
+            0.0779,
+            0.0268
+          ]
+        },
+        {
+          "name": "tripo_part_23",
+          "verts": 539,
+          "groups": 0,
+          "dims": [
+            0.1513,
+            0.1248,
+            0.079
+          ]
+        },
+        {
+          "name": "tripo_part_24",
+          "verts": 539,
+          "groups": 0,
+          "dims": [
+            0.1006,
+            0.1034,
+            0.0709
+          ]
+        },
+        {
+          "name": "tripo_part_25",
+          "verts": 638,
+          "groups": 0,
+          "dims": [
+            0.0713,
+            0.1109,
+            0.0759
+          ]
+        },
+        {
+          "name": "tripo_part_26",
+          "verts": 416,
+          "groups": 0,
+          "dims": [
+            0.1045,
+            0.1098,
+            0.0618
+          ]
+        },
+        {
+          "name": "tripo_part_27",
+          "verts": 281,
+          "groups": 0,
+          "dims": [
+            0.0309,
+            0.0556,
+            0.0888
+          ]
+        },
+        {
+          "name": "tripo_part_28",
+          "verts": 308,
+          "groups": 0,
+          "dims": [
+            0.0695,
+            0.1193,
+            0.0734
+          ]
+        },
+        {
+          "name": "tripo_part_29",
+          "verts": 327,
+          "groups": 0,
+          "dims": [
+            0.1288,
+            0.0948,
+            0.1058
+          ]
+        },
+        {
+          "name": "tripo_part_3",
+          "verts": 1377,
+          "groups": 0,
+          "dims": [
+            0.1671,
+            0.2399,
+            0.1078
+          ]
+        },
+        {
+          "name": "tripo_part_30",
+          "verts": 258,
+          "groups": 0,
+          "dims": [
+            0.0455,
+            0.0731,
+            0.0908
+          ]
+        },
+        {
+          "name": "tripo_part_31",
+          "verts": 233,
+          "groups": 0,
+          "dims": [
+            0.0665,
+            0.0385,
+            0.1039
+          ]
+        },
+        {
+          "name": "tripo_part_32",
+          "verts": 185,
+          "groups": 0,
+          "dims": [
+            0.0599,
+            0.0574,
+            0.0286
+          ]
+        },
+        {
+          "name": "tripo_part_33",
+          "verts": 173,
+          "groups": 0,
+          "dims": [
+            0.0483,
+            0.0624,
+            0.0429
+          ]
+        },
+        {
+          "name": "tripo_part_34",
+          "verts": 222,
+          "groups": 0,
+          "dims": [
+            0.1139,
+            0.1605,
+            0.0742
+          ]
+        },
+        {
+          "name": "tripo_part_35",
+          "verts": 143,
+          "groups": 0,
+          "dims": [
+            0.0503,
+            0.0388,
+            0.0418
+          ]
+        },
+        {
+          "name": "tripo_part_36",
+          "verts": 136,
+          "groups": 0,
+          "dims": [
+            0.0349,
+            0.0517,
+            0.0258
+          ]
+        },
+        {
+          "name": "tripo_part_37",
+          "verts": 127,
+          "groups": 0,
+          "dims": [
+            0.026,
+            0.0489,
+            0.0382
+          ]
+        },
+        {
+          "name": "tripo_part_38",
+          "verts": 122,
+          "groups": 0,
+          "dims": [
+            0.0311,
+            0.0341,
+            0.0389
+          ]
+        },
+        {
+          "name": "tripo_part_39",
+          "verts": 115,
+          "groups": 0,
+          "dims": [
+            0.0292,
+            0.0337,
+            0.0366
+          ]
+        },
+        {
+          "name": "tripo_part_4",
+          "verts": 699,
+          "groups": 0,
+          "dims": [
+            0.1725,
+            0.1265,
+            0.0552
+          ]
+        },
+        {
+          "name": "tripo_part_40",
+          "verts": 108,
+          "groups": 0,
+          "dims": [
+            0.0366,
+            0.0411,
+            0.0276
+          ]
+        },
+        {
+          "name": "tripo_part_41",
+          "verts": 105,
+          "groups": 0,
+          "dims": [
+            0.0261,
+            0.0351,
+            0.0352
+          ]
+        },
+        {
+          "name": "tripo_part_42",
+          "verts": 109,
+          "groups": 0,
+          "dims": [
+            0.0522,
+            0.0384,
+            0.0534
+          ]
+        },
+        {
+          "name": "tripo_part_43",
+          "verts": 85,
+          "groups": 0,
+          "dims": [
+            0.039,
+            0.0299,
+            0.0183
+          ]
+        },
+        {
+          "name": "tripo_part_44",
+          "verts": 93,
+          "groups": 0,
+          "dims": [
+            0.0656,
+            0.0677,
+            0.0166
+          ]
+        },
+        {
+          "name": "tripo_part_45",
+          "verts": 68,
+          "groups": 0,
+          "dims": [
+            0.0279,
+            0.0308,
+            0.0205
+          ]
+        },
+        {
+          "name": "tripo_part_46",
+          "verts": 68,
+          "groups": 0,
+          "dims": [
+            0.0299,
+            0.0307,
+            0.0246
+          ]
+        },
+        {
+          "name": "tripo_part_47",
+          "verts": 51,
+          "groups": 0,
+          "dims": [
+            0.0372,
+            0.0178,
+            0.031
+          ]
+        },
+        {
+          "name": "tripo_part_5",
+          "verts": 775,
+          "groups": 0,
+          "dims": [
+            0.1407,
+            0.1417,
+            0.1064
+          ]
+        },
+        {
+          "name": "tripo_part_6",
+          "verts": 613,
+          "groups": 0,
+          "dims": [
+            0.1132,
+            0.1201,
+            0.0897
+          ]
+        },
+        {
+          "name": "tripo_part_7",
+          "verts": 682,
+          "groups": 0,
+          "dims": [
+            0.0785,
+            0.1753,
+            0.0901
+          ]
+        },
+        {
+          "name": "tripo_part_8",
+          "verts": 640,
+          "groups": 0,
+          "dims": [
+            0.1393,
+            0.1367,
+            0.0827
+          ]
+        },
+        {
+          "name": "tripo_part_9",
+          "verts": 515,
+          "groups": 0,
+          "dims": [
+            0.07,
+            0.1029,
+            0.0887
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "export",
+      "path": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\ViewmodelPrep\\SM_PhotonGlove.fbx",
+      "bytes": 6291772
+    },
+    {
+      "stage": "inspect_robot_raw",
+      "armatures": [
+        [
+          "Armature",
+          30
+        ]
+      ],
+      "meshes": [
+        {
+          "name": "tripo_node_e6912847",
+          "verts": 24933,
+          "groups": 19,
+          "dims": [
+            0.5865,
+            0.9792,
+            0.2642
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "robot_dim_before",
+      "dim": 0.9792084097862244
+    },
+    {
+      "stage": "export",
+      "path": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\ViewmodelPrep\\SM_PhotonRobotArmRight.fbx",
+      "bytes": 5390764
+    },
+    {
+      "stage": "export",
+      "path": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\ViewmodelPrep\\SM_PhotonRobotArmLeft.fbx",
+      "bytes": 5395020
+    }
+  ],
+  "warnings": [],
+  "errors": [],
+  "exports": {
+    "glove": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\ViewmodelPrep\\SM_PhotonGlove.fbx",
+    "robot_arm_right": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\ViewmodelPrep\\SM_PhotonRobotArmRight.fbx",
+    "robot_arm_left": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\ViewmodelPrep\\SM_PhotonRobotArmLeft.fbx"
+  }
+}

@@ -56,17 +56,58 @@ public:
 	TObjectPtr<USceneComponent> FirstPersonPresentationRoot;
 
 	/**
-	 * First-person arms, from /Game/Photon/Meshes/SM_PhotonArm*.
+	 * Legacy static FP arm proxies (/Game/Photon/Meshes/SM_PhotonArm*).
 	 *
-	 * Authored by Tools/photon_mesh_kit.py at human proportions — a 30 cm sleeved forearm tapering
-	 * into a cuff, and a gloved hand with a thumb and finger block. They replace the two engine
-	 * cylinders that used to sit here, which read as grey pipes because that is what they were.
+	 * Kept as a fallback when SK_PhotonFPArms is not imported yet. When the authored skeletal
+	 * arms load successfully they are hidden — the no-finger-bones pipeline does not depend on them.
 	 */
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
 	TObjectPtr<class UStaticMeshComponent> RightArm;
 
 	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
 	TObjectPtr<class UStaticMeshComponent> LeftArm;
+
+	/**
+	 * Closed-grip gloves (Tripo SM_PhotonGlove*) placed at the hip-grip points.
+	 * Whole-hand meshes — no finger-bone animation. Weapon stays on Camera → WeaponRoot.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UStaticMeshComponent> RightGlove;
+
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UStaticMeshComponent> LeftGlove;
+
+	/** Camera-space grip targets (cm) — shared with weapon recoil so gloves track the kick. */
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|Presentation")
+	FVector RightGripCamera = FVector(40.f, 14.f, -14.f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|Presentation")
+	FVector LeftGripCamera = FVector(56.f, 8.f, -10.f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|Presentation")
+	FVector RightGloveScale = FVector(0.38f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|Presentation")
+	FVector LeftGloveScale = FVector(0.38f);
+
+	/**
+	 * Optional skinned FP arms from the hero extract (SK_PhotonFPArms).
+	 * Prefer robot forearm static meshes + gloves for readability; this stays as fallback.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class USkeletalMeshComponent> FirstPersonArms;
+
+	/**
+	 * Third-person weapon mesh attached to SOCKET_weapon_right on GetMesh().
+	 *
+	 * Local player uses Camera→WeaponRoot for the viewmodel; this mesh is OwnerNoSee so others
+	 * still see a weapon in the hero's hand without depending on finger bones.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Presentation")
+	TObjectPtr<class UStaticMeshComponent> ThirdPersonWeaponMesh;
+
+	/** Deterministic TP weapon socket name on SK_PhotonHero / mixamorig:RightHand. */
+	static const FName WeaponSocketName;
 
 	/**
 	 * Lights the viewmodel and nothing else.
@@ -100,7 +141,24 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	/** Loads SK_PhotonHero / SK_PhotonFPArms, sockets, and locomotion clips when present. */
+	void SetupHeroPresentation();
+	/** Ensures SOCKET_weapon_right exists on the hero skeletal mesh (authored offsets). */
+	void EnsureWeaponSocket(class USkeletalMesh* MeshAsset);
+	/** Translates skinned FP arms so RightHand lands on the hip-grip point (camera space). */
+	void AlignFirstPersonArmsToGrip();
+	/**
+	 * Parents gloves to WeaponViewMesh (absolute scale) and tucks robot forearms so the FP
+	 * silhouette reads as glove-on-weapon, not floating imported pieces.
+	 */
+	void AlignFpViewmodelPresentation();
+	/** Speed-based single-node clip selection (idle / walk / run / sprint). No AnimBP required. */
+	void UpdateHeroLocomotion();
+	void PlayHeroClip(class UAnimSequence* Clip, bool bLoop);
+	void SyncThirdPersonWeaponMesh();
 
 	void OnMove(const FInputActionValue& Value);
 	/** Mouse look: the value is already a per-frame delta, so it must NOT be scaled by DeltaTime. */
@@ -120,6 +178,13 @@ protected:
 	void OnGrenade(const FInputActionValue& Value);
 
 	bool bSprintHeld = false;
+	bool bHeroPresentationReady = false;
+
+	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> HeroAnimIdle;
+	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> HeroAnimWalk;
+	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> HeroAnimRun;
+	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> HeroAnimSprint;
+	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> ActiveHeroClip;
 };
 
 /**
@@ -231,5 +296,18 @@ protected:
 	void StepPhotonTour();
 	void CaptureTourShot();
 
+	/** -PhotonPerf: sample FPS / frame times after the level settles, then exit. */
+	void StartPhotonPerfSample();
+	void TickPhotonPerfSample();
+	void FinishPhotonPerfSample();
+
 	int32 TourIndex = 0;
+
+	bool bPhotonPerfActive = false;
+	float PhotonPerfSampleLeft = 0.f;
+	int32 PhotonPerfFrames = 0;
+	double PhotonPerfSumMs = 0.0;
+	double PhotonPerfMinMs = 1.0e9;
+	double PhotonPerfMaxMs = 0.0;
+	FTimerHandle PhotonPerfTickHandle;
 };

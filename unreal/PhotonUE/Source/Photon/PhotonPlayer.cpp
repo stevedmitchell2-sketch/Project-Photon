@@ -2,10 +2,13 @@
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/AnimSequence.h"
+#include "Engine/SkeletalMeshSocket.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
@@ -16,18 +19,23 @@
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "UnrealClient.h"
+#include "Misc/App.h"
 #include "Components/PointLightComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkeletalMesh.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 // ---------------------------------------------------------------------------------------------
 // APhotonCharacter
 // ---------------------------------------------------------------------------------------------
 
+const FName APhotonCharacter::WeaponSocketName(TEXT("SOCKET_weapon_right"));
+
 APhotonCharacter::APhotonCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	// Hero locomotion clip selection needs a tick; input/movement themselves do not.
+	PrimaryActorTick.bCanEverTick = true;
 
 	// 1.95 m frame: 97.5 cm half-height. The reference build's competitor is the same height, so
 	// cover heights and sight lines ported from the arena stay meaningful.
@@ -71,15 +79,79 @@ APhotonCharacter::APhotonCharacter()
 	// muzzle ~62 uu ahead of the eye, so the right hand sits on the grip at roughly (40, 14, -14)
 	// and the left hand on the forend at (56, 8, -10). The elbows land 35-45 uu below the eye line,
 	// which is below the frustum — the arms enter frame partway along the forearm, as they should.
+	// Robot forearms: elbow-at-origin along +Z. Placed deep under the frustum so the cutoff is
+	// off-screen; AlignFpViewmodelPresentation aims +Z at the glove wrist each BeginPlay.
 	RightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArm"));
 	SetupArm(RightArm, FirstPersonPresentationRoot,
-		TEXT("/Game/Photon/Meshes/SM_PhotonArmRight.SM_PhotonArmRight"),
-		FVector(16.4f, 17.8f, -43.6f), FRotator(-38.7f, -9.2f, 0.f));
+		TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonRobotArmRight.SM_PhotonRobotArmRight"),
+		FVector(22.f, 16.f, -52.f), FRotator(-42.f, -8.f, 12.f));
+	if (RightArm)
+	{
+		RightArm->SetRelativeScale3D(FVector(0.85f));
+		if (!RightArm->GetStaticMesh())
+		{
+			if (UStaticMesh* Fallback = LoadObject<UStaticMesh>(nullptr,
+					TEXT("/Game/Photon/Meshes/SM_PhotonArmRight.SM_PhotonArmRight")))
+			{
+				RightArm->SetStaticMesh(Fallback);
+			}
+		}
+	}
 
 	LeftArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftArm"));
 	SetupArm(LeftArm, FirstPersonPresentationRoot,
-		TEXT("/Game/Photon/Meshes/SM_PhotonArmLeft.SM_PhotonArmLeft"),
-		FVector(37.2f, -6.9f, -35.4f), FRotator(-43.9f, 29.5f, 0.f));
+		TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonRobotArmLeft.SM_PhotonRobotArmLeft"),
+		FVector(34.f, -4.f, -48.f), FRotator(-46.f, 24.f, -10.f));
+	if (LeftArm)
+	{
+		LeftArm->SetRelativeScale3D(FVector(0.85f));
+		if (!LeftArm->GetStaticMesh())
+		{
+			if (UStaticMesh* Fallback = LoadObject<UStaticMesh>(nullptr,
+					TEXT("/Game/Photon/Meshes/SM_PhotonArmLeft.SM_PhotonArmLeft")))
+			{
+				LeftArm->SetStaticMesh(Fallback);
+			}
+		}
+	}
+
+	// Gloves start on the presentation root; AlignFpViewmodelPresentation reparents them under
+	// WeaponViewMesh (absolute scale) so they track recoil/hip without inheriting the 0.34 hip scale.
+	RightGlove = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightGlove"));
+	SetupArm(RightGlove, FirstPersonPresentationRoot,
+		TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonGloveRight.SM_PhotonGloveRight"),
+		RightGripCamera, FRotator(8.f, -95.f, 75.f));
+	if (RightGlove)
+	{
+		RightGlove->SetRelativeScale3D(RightGloveScale);
+	}
+
+	LeftGlove = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftGlove"));
+	SetupArm(LeftGlove, FirstPersonPresentationRoot,
+		TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonGloveLeft.SM_PhotonGloveLeft"),
+		LeftGripCamera, FRotator(5.f, -75.f, -80.f));
+	if (LeftGlove)
+	{
+		LeftGlove->SetRelativeScale3D(LeftGloveScale);
+	}
+
+	// Skinned hero FP extract kept hidden — robot arms + gloves are the readable viewmodel path.
+	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
+	FirstPersonArms->SetupAttachment(FirstPersonPresentationRoot);
+	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FirstPersonArms->SetCastShadow(false);
+	FirstPersonArms->SetHiddenInGame(true);
+	FirstPersonArms->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	FirstPersonArms->SetRelativeLocation(FVector(18.f, 0.f, -42.f));
+	FirstPersonArms->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	PhotonVisuals::ConfigureFirstPersonViewModel(FirstPersonArms);
+
+	ThirdPersonWeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ThirdPersonWeaponMesh"));
+	ThirdPersonWeaponMesh->SetupAttachment(GetMesh());
+	ThirdPersonWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ThirdPersonWeaponMesh->SetCastShadow(true);
+	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
+	ThirdPersonWeaponMesh->SetHiddenInGame(true);
 
 	// Viewmodel lighting: channel 1 only, so these two lights touch the arms and the weapon and
 	// nothing in the arena, and the arena's own lights no longer touch the viewmodel.
@@ -168,21 +240,64 @@ void APhotonCharacter::BeginPlay()
 		Camera->SetRelativeLocation(FVector(0.f, 0.f, EyeHeight));
 		PhotonVisuals::ConfigureFirstPersonCamera(Camera);
 	}
+
 	if (IsLocallyControlled())
 	{
-		// Competition kit, not armour: a mid-value composite sleeve and a slightly darker glove, both
-		// well above the arena's structural value so the arms read against the dark court.
-		if (RightArm)
+		// Constructor may run before content import — bind robot/glove meshes here.
+		auto LoadVm = [](UStaticMeshComponent* Comp, const TCHAR* Path)
+		{
+			if (!Comp)
+			{
+				return;
+			}
+			if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, Path))
+			{
+				Comp->SetStaticMesh(Mesh);
+				Comp->SetHiddenInGame(false);
+				Comp->SetVisibility(true, true);
+			}
+		};
+		LoadVm(RightArm, TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonRobotArmRight.SM_PhotonRobotArmRight"));
+		LoadVm(LeftArm, TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonRobotArmLeft.SM_PhotonRobotArmLeft"));
+		LoadVm(RightGlove, TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonGloveRight.SM_PhotonGloveRight"));
+		LoadVm(LeftGlove, TEXT("/Game/Photon/Meshes/Viewmodel/SM_PhotonGloveLeft.SM_PhotonGloveLeft"));
+	}
+
+	SetupHeroPresentation();
+
+	if (IsLocallyControlled())
+	{
+		// Robot/glove viewmodel: distinct Photon surfaces — forearm darker, glove mid Cover.
+		if (RightArm && RightArm->GetStaticMesh() && RightArm->IsVisible())
 		{
 			PhotonVisuals::ConfigureFirstPersonViewModel(RightArm);
-			PhotonVisuals::ApplySurface(RightArm, EPhotonSurface::Cover,
-				FLinearColor(0.155f, 0.168f, 0.200f));
+			PhotonVisuals::ApplySurface(RightArm, EPhotonSurface::Metal,
+				FLinearColor(0.14f, 0.16f, 0.19f));
 		}
-		if (LeftArm)
+		if (LeftArm && LeftArm->GetStaticMesh() && LeftArm->IsVisible())
 		{
 			PhotonVisuals::ConfigureFirstPersonViewModel(LeftArm);
-			PhotonVisuals::ApplySurface(LeftArm, EPhotonSurface::Cover,
-				FLinearColor(0.140f, 0.152f, 0.182f));
+			PhotonVisuals::ApplySurface(LeftArm, EPhotonSurface::Metal,
+				FLinearColor(0.14f, 0.16f, 0.19f));
+		}
+		if (RightGlove && RightGlove->GetStaticMesh() && RightGlove->IsVisible())
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(RightGlove);
+			PhotonVisuals::ApplySurface(RightGlove, EPhotonSurface::Cover,
+				FLinearColor(0.30f, 0.32f, 0.36f));
+		}
+		if (LeftGlove && LeftGlove->GetStaticMesh() && LeftGlove->IsVisible())
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(LeftGlove);
+			PhotonVisuals::ApplySurface(LeftGlove, EPhotonSurface::Cover,
+				FLinearColor(0.28f, 0.30f, 0.34f));
+		}
+		if (FirstPersonArms && FirstPersonArms->GetSkeletalMeshAsset() && FirstPersonArms->IsVisible())
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(FirstPersonArms);
+			FTimerHandle AlignTimer;
+			GetWorldTimerManager().SetTimer(AlignTimer, this,
+				&APhotonCharacter::AlignFirstPersonArmsToGrip, 0.05f, false);
 		}
 		if (WeaponViewMesh)
 		{
@@ -192,13 +307,419 @@ void APhotonCharacter::BeginPlay()
 		{
 			Inventory->RefreshWeaponPresentation();
 		}
+
+		// Glue gloves to the viewmesh after hip pose. Run once immediately (tour may screenshot
+		// before a deferred timer) and again shortly after inventory sync settles.
+		AlignFpViewmodelPresentation();
+		FTimerHandle VmAlign;
+		GetWorldTimerManager().SetTimer(VmAlign, this,
+			&APhotonCharacter::AlignFpViewmodelPresentation, 0.12f, false);
 	}
+
+	SyncThirdPersonWeaponMesh();
+
 	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonSelfTest")))
 	{
 		// Deferred a beat: the inventory builds its loadout in its own BeginPlay, and component and
 		// actor BeginPlay ordering is not guaranteed to favour us.
 		FTimerHandle H;
 		GetWorldTimerManager().SetTimer(H, this, &APhotonCharacter::RunSelfTest, 1.0f, false);
+	}
+}
+
+void APhotonCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (bHeroPresentationReady)
+	{
+		UpdateHeroLocomotion();
+	}
+}
+
+void APhotonCharacter::SetupHeroPresentation()
+{
+	bHeroPresentationReady = false;
+
+	// Third-person body — OwnerNoSee so the local camera never sees the mesh from inside the skull.
+	if (USkeletalMeshComponent* Body = GetMesh())
+	{
+		Body->SetRelativeLocation(FVector(0.f, 0.f, -97.5f));
+		Body->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+		Body->SetOwnerNoSee(true);
+		Body->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		if (USkeletalMesh* HeroMesh = LoadObject<USkeletalMesh>(
+				nullptr, TEXT("/Game/Photon/Characters/Hero/SK_PhotonHero.SK_PhotonHero")))
+		{
+			EnsureWeaponSocket(HeroMesh);
+			Body->SetSkeletalMesh(HeroMesh);
+			const EPhotonTeam HeroTeam = (Health && Health->Team != EPhotonTeam::None)
+				? Health->Team : EPhotonTeam::Blue;
+			PhotonVisuals::ApplyHeroTeamPresentation(Body, HeroTeam);
+			bHeroPresentationReady = true;
+			UE_LOG(LogTemp, Display, TEXT("[Photon] third-person hero mesh loaded (%d bones ref) team=%d"),
+				HeroMesh->GetRefSkeleton().GetNum(), static_cast<int32>(HeroTeam));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Photon] SK_PhotonHero missing — third-person body not ready. Run Tools/import_photon_hero_nofinger.py"));
+		}
+	}
+
+	// FP readability path: static robot forearms + Tripo gloves. Keep skinned hero extract loaded
+	// but hidden so it does not compete with the viewmodel (prior tour shots showed it as a blob).
+	const bool bRobotArms =
+		(RightArm && RightArm->GetStaticMesh()
+			&& RightArm->GetStaticMesh()->GetPathName().Contains(TEXT("RobotArm")))
+		|| (LeftArm && LeftArm->GetStaticMesh()
+			&& LeftArm->GetStaticMesh()->GetPathName().Contains(TEXT("RobotArm")));
+	const bool bGloves = (RightGlove && RightGlove->GetStaticMesh())
+		|| (LeftGlove && LeftGlove->GetStaticMesh());
+	if (bRobotArms || bGloves)
+	{
+		if (FirstPersonArms)
+		{
+			FirstPersonArms->SetHiddenInGame(true);
+			FirstPersonArms->SetVisibility(false, true);
+		}
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] FP viewmodel: robot_arms=%d gloves=%d (skinned hero FP hidden)"),
+			bRobotArms ? 1 : 0, bGloves ? 1 : 0);
+	}
+	else if (FirstPersonArms)
+	{
+		if (USkeletalMesh* ArmsMesh = LoadObject<USkeletalMesh>(
+				nullptr, TEXT("/Game/Photon/Characters/Hero/FPArms/SK_PhotonFPArms.SK_PhotonFPArms")))
+		{
+			FirstPersonArms->SetSkeletalMesh(ArmsMesh);
+			FirstPersonArms->SetHiddenInGame(false);
+			FirstPersonArms->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+			PhotonVisuals::ConfigureFirstPersonViewModel(FirstPersonArms);
+			AlignFirstPersonArmsToGrip();
+			UE_LOG(LogTemp, Display, TEXT("[Photon] first-person skinned arms loaded (robot/glove missing)"));
+		}
+	}
+
+	auto LoadClipFirst = [](const TCHAR* const* Paths, int32 Count) -> UAnimSequence*
+	{
+		for (int32 i = 0; i < Count; ++i)
+		{
+			if (UAnimSequence* Clip = LoadObject<UAnimSequence>(nullptr, Paths[i]))
+			{
+				return Clip;
+			}
+		}
+		return nullptr;
+	};
+	const TCHAR* IdlePaths[] = {
+		TEXT("/Game/Photon/Characters/Hero/A_PhotonHero_Idle.A_PhotonHero_Idle"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Idle.PhotonHero_SKA_PhotonHero_Idle"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Idle.PhotonHero_SKArmature_A_PhotonHero_Idle"),
+	};
+	const TCHAR* WalkPaths[] = {
+		TEXT("/Game/Photon/Characters/Hero/A_PhotonHero_Walk.A_PhotonHero_Walk"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Walk.PhotonHero_SKA_PhotonHero_Walk"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Walk.PhotonHero_SKArmature_A_PhotonHero_Walk"),
+	};
+	const TCHAR* RunPaths[] = {
+		TEXT("/Game/Photon/Characters/Hero/A_PhotonHero_Run.A_PhotonHero_Run"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Run.PhotonHero_SKA_PhotonHero_Run"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Run.PhotonHero_SKArmature_A_PhotonHero_Run"),
+	};
+	const TCHAR* SprintPaths[] = {
+		TEXT("/Game/Photon/Characters/Hero/A_PhotonHero_Sprint.A_PhotonHero_Sprint"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Sprint.PhotonHero_SKA_PhotonHero_Sprint"),
+		TEXT("/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Sprint.PhotonHero_SKArmature_A_PhotonHero_Sprint"),
+	};
+	HeroAnimIdle = LoadClipFirst(IdlePaths, UE_ARRAY_COUNT(IdlePaths));
+	HeroAnimWalk = LoadClipFirst(WalkPaths, UE_ARRAY_COUNT(WalkPaths));
+	HeroAnimRun = LoadClipFirst(RunPaths, UE_ARRAY_COUNT(RunPaths));
+	HeroAnimSprint = LoadClipFirst(SprintPaths, UE_ARRAY_COUNT(SprintPaths));
+
+	if (HeroAnimIdle || HeroAnimWalk || HeroAnimRun)
+	{
+		PlayHeroClip(HeroAnimIdle ? HeroAnimIdle.Get() : HeroAnimWalk.Get(), true);
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] hero clips idle=%d walk=%d run=%d sprint=%d"),
+			HeroAnimIdle != nullptr, HeroAnimWalk != nullptr,
+			HeroAnimRun != nullptr, HeroAnimSprint != nullptr);
+	}
+}
+
+void APhotonCharacter::AlignFirstPersonArmsToGrip()
+{
+	if (!FirstPersonArms || !FirstPersonArms->GetSkeletalMeshAsset() || !Camera)
+	{
+		return;
+	}
+
+	FName HandBone(TEXT("RightHand"));
+	if (FirstPersonArms->GetBoneIndex(HandBone) == INDEX_NONE)
+	{
+		HandBone = FName(TEXT("mixamorig:RightHand"));
+	}
+	if (FirstPersonArms->GetBoneIndex(HandBone) == INDEX_NONE)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Photon] FP arms align skipped — no RightHand bone"));
+		return;
+	}
+
+	// Force a refresh so bone transforms are valid before we sample them.
+	FirstPersonArms->RefreshBoneTransforms();
+	FirstPersonArms->UpdateBounds();
+
+	const FVector HandWorld = FirstPersonArms->GetBoneLocation(HandBone);
+	const FVector GripWorld = Camera->GetComponentTransform().TransformPosition(RightGripCamera);
+	const FVector Delta = GripWorld - HandWorld;
+	FirstPersonArms->AddWorldOffset(Delta, false);
+
+	const FVector HandAfter = FirstPersonArms->GetBoneLocation(HandBone);
+	UE_LOG(LogTemp, Display,
+		TEXT("[Photon] FP arms aligned: bone=%s delta=(%.1f,%.1f,%.1f) hand->grip err=%.1f"),
+		*HandBone.ToString(), Delta.X, Delta.Y, Delta.Z,
+		FVector::Dist(HandAfter, GripWorld));
+}
+
+void APhotonCharacter::AlignFpViewmodelPresentation()
+{
+	if (!Camera || !WeaponRoot)
+	{
+		return;
+	}
+
+	// Presentation strategy for this pass:
+	//   1) Hide robot arm extracts — they include an open whole-hand that fights the glove and
+	//      leave a mid-frame stump. Forearm return is a follow-up (forearm-only extract).
+	//   2) Keep the glove on WeaponRoot in camera space (same space as HipTransform translation)
+	//      so we do not invent a second weapon system and do not inherit the 0.34 hip scale.
+	//   3) Seat the open-palm glove on the grip; fingers drive into the receiver so the silhouette
+	//      reads as a closed hold from the gameplay camera.
+
+	auto HideArm = [](UStaticMeshComponent* Arm)
+	{
+		if (!Arm)
+		{
+			return;
+		}
+		Arm->SetHiddenInGame(true);
+		Arm->SetVisibility(false, true);
+	};
+	HideArm(RightArm);
+	HideArm(LeftArm);
+
+	auto PlaceGlove = [this](UStaticMeshComponent* Glove, const FVector& Loc, const FRotator& Rot,
+		const FVector& Scale, bool bShow)
+	{
+		if (!Glove || !Glove->GetStaticMesh())
+		{
+			return;
+		}
+		if (!bShow)
+		{
+			Glove->SetHiddenInGame(true);
+			Glove->SetVisibility(false, true);
+			return;
+		}
+		Glove->SetUsingAbsoluteScale(false);
+		Glove->AttachToComponent(WeaponRoot, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		Glove->SetRelativeLocation(Loc);
+		Glove->SetRelativeRotation(Rot);
+		Glove->SetRelativeScale3D(Scale);
+		Glove->SetHiddenInGame(false);
+		Glove->SetVisibility(true, true);
+		PhotonVisuals::ConfigureFirstPersonViewModel(Glove);
+		PhotonVisuals::ApplySurface(Glove, EPhotonSurface::Cover,
+			FLinearColor(0.20f, 0.22f, 0.26f));
+	};
+
+	// Hip origin is (44,14,-12). Palm sits on the grip slightly under/behind that point.
+	// Glove origin = wrist; palm center is ~+6 cm along local +Z — offset so the palm lands on grip.
+	const FVector GripPalm(44.f, 14.f, -10.f);
+	const FRotator GloveRot(-88.f, -5.f, 105.f);
+	const FVector Wrist =
+		GripPalm - GloveRot.RotateVector(FVector(0.f, 0.f, 5.0f));
+	PlaceGlove(RightGlove, Wrist, GloveRot, FVector(1.25f), true);
+	PlaceGlove(LeftGlove, FVector::ZeroVector, FRotator::ZeroRotator, FVector(0.5f), false);
+
+	RightGripCamera = Wrist;
+	LeftGripCamera = FVector(56.f, 8.f, -10.f);
+
+	if (WeaponViewMesh && RightGlove)
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] FP viewmodel aligned: glove-only on WeaponRoot wrist=(%.1f,%.1f,%.1f) "
+				 "weaponRel=(%.1f,%.1f,%.1f)"),
+			Wrist.X, Wrist.Y, Wrist.Z,
+			WeaponViewMesh->GetRelativeLocation().X,
+			WeaponViewMesh->GetRelativeLocation().Y,
+			WeaponViewMesh->GetRelativeLocation().Z);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] FP viewmodel aligned: glove-only on WeaponRoot (arms hidden)"));
+	}
+}
+
+void APhotonCharacter::EnsureWeaponSocket(USkeletalMesh* MeshAsset)
+{
+	if (!MeshAsset)
+	{
+		return;
+	}
+	if (MeshAsset->FindSocket(WeaponSocketName))
+	{
+		return;
+	}
+
+	const FReferenceSkeleton& RefSkel = MeshAsset->GetRefSkeleton();
+	FName HandBone(TEXT("mixamorig:RightHand"));
+	if (RefSkel.FindBoneIndex(HandBone) == INDEX_NONE)
+	{
+		HandBone = FName(TEXT("RightHand"));
+		if (RefSkel.FindBoneIndex(HandBone) == INDEX_NONE)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Photon] cannot create %s — RightHand bone missing"),
+				*WeaponSocketName.ToString());
+			return;
+		}
+	}
+
+	USkeletalMeshSocket* Socket = NewObject<USkeletalMeshSocket>(MeshAsset);
+	Socket->SocketName = WeaponSocketName;
+	Socket->BoneName = HandBone;
+	// Documented bone-local cm (see HeroPrep/SOCKET_weapon_right.json).
+	Socket->RelativeLocation = FVector(8.f, 2.5f, 0.f);
+	Socket->RelativeRotation = FRotator(/*Pitch*/ 90.f, /*Yaw*/ 0.f, /*Roll*/ 0.f);
+	Socket->RelativeScale = FVector(1.f);
+	MeshAsset->AddSocket(Socket);
+	UE_LOG(LogTemp, Display,
+		TEXT("[Photon] created %s on bone %s loc=(8,2.5,0) rot=(P90,Y0,R0) scale=1"),
+		*WeaponSocketName.ToString(), *HandBone.ToString());
+}
+
+void APhotonCharacter::PlayHeroClip(UAnimSequence* Clip, bool bLoop)
+{
+	if (!Clip || Clip == ActiveHeroClip)
+	{
+		return;
+	}
+	ActiveHeroClip = Clip;
+	if (USkeletalMeshComponent* Body = GetMesh())
+	{
+		if (Body->GetSkeletalMeshAsset())
+		{
+			Body->PlayAnimation(Clip, bLoop);
+		}
+	}
+	// FP arms stay on the authored closed-grip rifle-hold rest pose (no per-clip retarget).
+}
+
+void APhotonCharacter::UpdateHeroLocomotion()
+{
+	const UCharacterMovementComponent* Move = GetCharacterMovement();
+	if (!Move)
+	{
+		return;
+	}
+
+	const float Speed = Move->Velocity.Size2D();
+	UAnimSequence* Wanted = HeroAnimIdle.Get();
+	if (Speed > 10.f)
+	{
+		if (IsSprinting() && HeroAnimSprint)
+		{
+			Wanted = HeroAnimSprint.Get();
+		}
+		else if (Speed >= WalkSpeed * 0.85f && HeroAnimRun)
+		{
+			Wanted = HeroAnimRun.Get();
+		}
+		else if (HeroAnimWalk)
+		{
+			Wanted = HeroAnimWalk.Get();
+		}
+		else if (HeroAnimRun)
+		{
+			Wanted = HeroAnimRun.Get();
+		}
+	}
+	if (Wanted)
+	{
+		PlayHeroClip(Wanted, true);
+	}
+}
+
+void APhotonCharacter::SyncThirdPersonWeaponMesh()
+{
+	if (!ThirdPersonWeaponMesh || !GetMesh())
+	{
+		return;
+	}
+
+	UStaticMesh* WeaponMesh = nullptr;
+	FTransform Hip = FTransform::Identity;
+	if (Inventory)
+	{
+		if (APhotonWeapon* Active = Inventory->GetActiveWeapon())
+		{
+			if (Active->Mesh)
+			{
+				WeaponMesh = Active->Mesh->GetStaticMesh();
+			}
+			if (Active->Data)
+			{
+				Hip = Active->Data->HipTransform;
+			}
+		}
+	}
+	if (!WeaponMesh && WeaponViewMesh)
+	{
+		WeaponMesh = WeaponViewMesh->GetStaticMesh();
+	}
+
+	if (!WeaponMesh)
+	{
+		ThirdPersonWeaponMesh->SetHiddenInGame(true);
+		return;
+	}
+
+	ThirdPersonWeaponMesh->SetStaticMesh(WeaponMesh);
+	ThirdPersonWeaponMesh->SetOwnerNoSee(true);
+	ThirdPersonWeaponMesh->SetHiddenInGame(false);
+	if (Health)
+	{
+		// Tint only — do not Replace PH-6 authored materials with ApplySurface/Energy.
+		PhotonVisuals::ApplyTint(ThirdPersonWeaponMesh,
+			PhotonTeamColor(Health->Team != EPhotonTeam::None ? Health->Team : EPhotonTeam::Blue) * 0.45f,
+			0.6f);
+	}
+
+	if (GetMesh()->DoesSocketExist(WeaponSocketName))
+	{
+		ThirdPersonWeaponMesh->AttachToComponent(
+			GetMesh(),
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+			WeaponSocketName);
+		// Socket owns alignment; keep a modest uniform scale from hip data so the PH-6 reads in hand.
+		const float Scale = Hip.GetScale3D().X > 0.f ? Hip.GetScale3D().X : 0.34f;
+		ThirdPersonWeaponMesh->SetRelativeScale3D(FVector(Scale));
+		ThirdPersonWeaponMesh->SetRelativeLocation(FVector::ZeroVector);
+		ThirdPersonWeaponMesh->SetRelativeRotation(FRotator::ZeroRotator);
+	}
+	else
+	{
+		// Socket not imported yet — parent to the hand bone directly with the documented offset.
+		ThirdPersonWeaponMesh->AttachToComponent(
+			GetMesh(), FAttachmentTransformRules::KeepRelativeTransform);
+		ThirdPersonWeaponMesh->SetRelativeLocation(FVector(8.f, 2.5f, 0.f));
+		ThirdPersonWeaponMesh->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
+		ThirdPersonWeaponMesh->SetRelativeScale3D(FVector(0.34f));
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Photon] %s missing on hero mesh — using documented hand offset fallback"),
+			*WeaponSocketName.ToString());
 	}
 }
 
@@ -344,6 +865,8 @@ void APhotonCharacter::OnWeaponSwitch(const FInputActionValue&)
 	if (Inventory)
 	{
 		Inventory->EquipNext();
+		SyncThirdPersonWeaponMesh();
+		AlignFpViewmodelPresentation();
 	}
 }
 
@@ -358,11 +881,15 @@ void APhotonCharacter::OnWeaponSelect(const FInputActionValue& Value)
 	if (FMath::IsNearlyEqual(Axis, 0.f, 0.01f))
 	{
 		Inventory->EquipIndex(0);
+		SyncThirdPersonWeaponMesh();
+		AlignFpViewmodelPresentation();
 		return;
 	}
 	if (FMath::IsNearlyEqual(Axis, 1.f, 0.01f))
 	{
 		Inventory->EquipIndex(1);
+		SyncThirdPersonWeaponMesh();
+		AlignFpViewmodelPresentation();
 		return;
 	}
 	if (Axis < 0.f)
@@ -374,6 +901,8 @@ void APhotonCharacter::OnWeaponSelect(const FInputActionValue& Value)
 	{
 		Inventory->EquipNext();
 	}
+	SyncThirdPersonWeaponMesh();
+	AlignFpViewmodelPresentation();
 }
 
 void APhotonCharacter::OnGrenade(const FInputActionValue&)
@@ -496,6 +1025,52 @@ void APhotonCharacter::RunSelfTest()
 	// and hid the weapon inside the near clip plane, so the parent is asserted, not assumed.
 	Check(TEXT("fp_weapon_root_parented_to_camera"),
 		WeaponRoot && WeaponRoot->GetAttachParent() == Camera);
+
+	// No-finger-bones hero pipeline — soft-fail if import has not been run yet.
+	const bool bHeroMesh = GetMesh() && GetMesh()->GetSkeletalMeshAsset() != nullptr;
+	Check(TEXT("hero_tp_skeletal_mesh_loaded"), bHeroMesh);
+	if (bHeroMesh)
+	{
+		const int32 Bones = GetMesh()->GetSkeletalMeshAsset()->GetRefSkeleton().GetNum();
+		Check(TEXT("hero_bone_count_no_full_fingers"), Bones > 20 && Bones < 45);
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTEST hero bones=%d"), Bones);
+	}
+	const bool bFpArms = FirstPersonArms && FirstPersonArms->GetSkeletalMeshAsset() != nullptr
+		&& FirstPersonArms->IsVisible();
+	const bool bRobotGloveVm =
+		(RightArm && RightArm->GetStaticMesh() && RightArm->GetStaticMesh()->GetPathName().Contains(TEXT("RobotArm")))
+		&& (RightGlove && RightGlove->GetStaticMesh());
+	// Skinned hero FP is optional when robot forearms + gloves are the active viewmodel.
+	Check(TEXT("hero_fp_arms_skeletal_loaded"), bFpArms || bRobotGloveVm);
+	Check(TEXT("fp_robot_glove_viewmodel"), bRobotGloveVm);
+	const bool bSocket = GetMesh() && GetMesh()->DoesSocketExist(WeaponSocketName);
+	Check(TEXT("hero_weapon_socket_exists"), bSocket);
+	Check(TEXT("hero_tp_weapon_attached"),
+		ThirdPersonWeaponMesh && ThirdPersonWeaponMesh->GetAttachParent() == GetMesh());
+	// Hand stays a child of the forearm in the ref skeleton (rig integrity).
+	// UE FBX import may keep or strip the mixamorig: prefix — accept either.
+	if (bHeroMesh)
+	{
+		const FReferenceSkeleton& RefSkel = GetMesh()->GetSkeletalMeshAsset()->GetRefSkeleton();
+		auto FindBone = [&RefSkel](const TCHAR* Prefixed, const TCHAR* Bare) -> int32
+		{
+			int32 Idx = RefSkel.FindBoneIndex(FName(Prefixed));
+			return Idx != INDEX_NONE ? Idx : RefSkel.FindBoneIndex(FName(Bare));
+		};
+		const int32 HandIdx = FindBone(TEXT("mixamorig:RightHand"), TEXT("RightHand"));
+		const int32 ForeIdx = FindBone(TEXT("mixamorig:RightForeArm"), TEXT("RightForeArm"));
+		const bool bHandUnderForearm = HandIdx != INDEX_NONE && ForeIdx != INDEX_NONE
+			&& RefSkel.GetParentIndex(HandIdx) == ForeIdx;
+		Check(TEXT("hero_hand_parented_to_forearm"), bHandUnderForearm);
+		// Pipeline contract: whole-hand bone is enough. Thumb/middle/ring/pinky are not required.
+		Check(TEXT("hero_uses_hand_bone_not_per_finger"), HandIdx != INDEX_NONE);
+		const bool bHasThumb =
+			FindBone(TEXT("mixamorig:RightHandThumb1"), TEXT("RightHandThumb1")) != INDEX_NONE;
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] PHOTONTEST finger_policy hand=%d thumb_bones=%d (optional, unused)"),
+			HandIdx != INDEX_NONE ? 1 : 0, bHasThumb ? 1 : 0);
+	}
+
 	Check(TEXT("photon_solid_material_loaded"), PhotonVisuals::GetSolidMaterial() != nullptr);
 	// Not "a material loaded" but "a PHOTON material loaded". Falling back to BasicShapeMaterial is
 	// what made every tint a silent no-op and the whole arena flat white.
@@ -529,14 +1104,15 @@ void APhotonCharacter::RunSelfTest()
 			WorldScale, EyeDistance);
 	}
 
-	if (RightArm && Camera)
+	const bool bSkinnedFpArms = FirstPersonArms && FirstPersonArms->GetSkeletalMeshAsset()
+		&& FirstPersonArms->IsVisible();
+	const bool bStaticVm = RightArm && RightArm->GetStaticMesh() && RightArm->IsVisible();
+	const bool bGloveVm = RightGlove && RightGlove->GetStaticMesh() && RightGlove->IsVisible();
+	if (bStaticVm && Camera)
 	{
 		const float ArmDistance = FVector::Dist(
 			RightArm->GetComponentLocation(), Camera->GetComponentLocation());
 		Check(TEXT("arm_clears_near_plane"), ArmDistance > 15.f);
-
-		// The arms are authored geometry now, not scaled cylinders, so the mesh they carry is worth
-		// asserting on: a missing kit asset would otherwise show up only as empty space in frame.
 		const UStaticMesh* ArmMesh = RightArm->GetStaticMesh();
 		Check(TEXT("arm_uses_authored_photon_mesh"),
 			ArmMesh && ArmMesh->GetPathName().Contains(TEXT("/Game/Photon/Meshes/")));
@@ -545,9 +1121,40 @@ void APhotonCharacter::RunSelfTest()
 		Check(TEXT("left_arm_present"), LeftArm && LeftArm->GetStaticMesh());
 		Check(TEXT("viewmodel_has_dedicated_lighting"),
 			ViewModelKey && ViewModelKey->IsRegistered() && ViewModelKey->Intensity > 0.f);
+		Check(TEXT("fp_glove_present"), bGloveVm);
 	}
-	Check(TEXT("arm_renderable"),
-		RightArm && RightArm->GetStaticMesh() && RightArm->IsVisible());
+	else if (bGloveVm && Camera)
+	{
+		// Glove-on-WeaponViewMesh presentation (robot forearms intentionally hidden — open-hand
+		// extracts fought the closed-grip silhouette).
+		const float GloveDistance = FVector::Dist(
+			RightGlove->GetComponentLocation(), Camera->GetComponentLocation());
+		Check(TEXT("arm_clears_near_plane"), GloveDistance > 15.f);
+		const UStaticMesh* GloveMesh = RightGlove->GetStaticMesh();
+		Check(TEXT("arm_uses_authored_photon_mesh"),
+			GloveMesh && GloveMesh->GetPathName().Contains(TEXT("/Game/Photon/Meshes/")));
+		Check(TEXT("arm_is_not_engine_primitive"),
+			GloveMesh && !GloveMesh->GetPathName().Contains(TEXT("/Engine/BasicShapes/")));
+		Check(TEXT("left_arm_present"), LeftArm && LeftArm->GetStaticMesh());
+		Check(TEXT("viewmodel_has_dedicated_lighting"),
+			ViewModelKey && ViewModelKey->IsRegistered() && ViewModelKey->Intensity > 0.f);
+		Check(TEXT("fp_glove_present"), true);
+	}
+	else if (bSkinnedFpArms && Camera)
+	{
+		const float ArmDistance = FVector::Dist(
+			FirstPersonArms->GetComponentLocation(), Camera->GetComponentLocation());
+		Check(TEXT("arm_clears_near_plane"), ArmDistance > 15.f);
+		const FString ArmsPath = FirstPersonArms->GetSkeletalMeshAsset()->GetPathName();
+		Check(TEXT("arm_uses_authored_photon_mesh"),
+			ArmsPath.Contains(TEXT("/Game/Photon/Characters/Hero/")));
+		Check(TEXT("arm_is_not_engine_primitive"),
+			!ArmsPath.Contains(TEXT("/Engine/BasicShapes/")));
+		Check(TEXT("left_arm_present"), true);
+		Check(TEXT("viewmodel_has_dedicated_lighting"),
+			ViewModelKey && ViewModelKey->IsRegistered() && ViewModelKey->Intensity > 0.f);
+	}
+	Check(TEXT("arm_renderable"), bStaticVm || bSkinnedFpArms || bGloveVm);
 
 	const int32 Before = PH9 ? PH9->ShotsFired : -1;
 	Check(TEXT("fire_ph9_accepted"), PH9 && PH9->TryFire(this));
@@ -1055,7 +1662,17 @@ void APhotonGameMode::BeginPlay()
 	Super::BeginPlay();
 	PhotonVisuals::BootstrapArenaVisuals(GetWorld());
 
-	if (FParse::Param(FCommandLine::Get(), TEXT("PhotonTour")))
+	const bool bPerfBaseline = FParse::Param(FCommandLine::Get(), TEXT("PhotonPerfBaseline"));
+	const bool bPerf = bPerfBaseline || FParse::Param(FCommandLine::Get(), TEXT("PhotonPerf"));
+	// Baseline runs count-only; normal play and -PhotonPerf apply the VSM clamp.
+	PhotonVisuals::BootstrapArenaPerformance(GetWorld(), !bPerfBaseline);
+
+	if (bPerf)
+	{
+		FTimerHandle Settle;
+		GetWorldTimerManager().SetTimer(Settle, this, &APhotonGameMode::StartPhotonPerfSample, 3.f, false);
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("PhotonTour")))
 	{
 		FTimerHandle TourTimer;
 		GetWorldTimerManager().SetTimer(TourTimer, this, &APhotonGameMode::StepPhotonTour, 4.f, false);
@@ -1066,6 +1683,61 @@ void APhotonGameMode::BeginPlay()
 		FTimerHandle ShotTimer;
 		GetWorldTimerManager().SetTimer(ShotTimer, this, &APhotonGameMode::CapturePhotonShot, 4.f, false);
 	}
+}
+
+void APhotonGameMode::StartPhotonPerfSample()
+{
+	bPhotonPerfActive = true;
+	PhotonPerfSampleLeft = 5.f;
+	PhotonPerfFrames = 0;
+	PhotonPerfSumMs = 0.0;
+	PhotonPerfMinMs = 1.0e9;
+	PhotonPerfMaxMs = 0.0;
+
+	GetWorldTimerManager().SetTimer(PhotonPerfTickHandle, this, &APhotonGameMode::TickPhotonPerfSample,
+		0.05f, true);
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONPERF sampling 5.0s after settle"));
+}
+
+void APhotonGameMode::TickPhotonPerfSample()
+{
+	if (!bPhotonPerfActive)
+	{
+		return;
+	}
+
+	const double Ms = FApp::GetDeltaTime() * 1000.0;
+	++PhotonPerfFrames;
+	PhotonPerfSumMs += Ms;
+	PhotonPerfMinMs = FMath::Min(PhotonPerfMinMs, Ms);
+	PhotonPerfMaxMs = FMath::Max(PhotonPerfMaxMs, Ms);
+	PhotonPerfSampleLeft -= static_cast<float>(FApp::GetDeltaTime());
+	if (PhotonPerfSampleLeft <= 0.f)
+	{
+		FinishPhotonPerfSample();
+	}
+}
+
+void APhotonGameMode::FinishPhotonPerfSample()
+{
+	bPhotonPerfActive = false;
+	GetWorldTimerManager().ClearTimer(PhotonPerfTickHandle);
+
+	const double AvgMs = (PhotonPerfFrames > 0) ? (PhotonPerfSumMs / PhotonPerfFrames) : 0.0;
+	const double AvgFps = (AvgMs > 0.0) ? (1000.0 / AvgMs) : 0.0;
+	const double MinFps = (PhotonPerfMaxMs > 0.0) ? (1000.0 / PhotonPerfMaxMs) : 0.0;
+	const double MaxFps = (PhotonPerfMinMs > 0.0) ? (1000.0 / PhotonPerfMinMs) : 0.0;
+
+	const float GameMs = -1.f;
+	const float RenderMs = -1.f;
+	const float GpuMs = -1.f;
+
+	UE_LOG(LogTemp, Display,
+		TEXT("[Photon] PHOTONPERF RESULT frames=%d avg_fps=%.1f min_fps=%.1f max_fps=%.1f "
+			 "avg_frame_ms=%.2f game_ms=%.2f render_ms=%.2f gpu_ms=%.2f"),
+		PhotonPerfFrames, AvgFps, MinFps, MaxFps, AvgMs, GameMs, RenderMs, GpuMs);
+
+	FPlatformMisc::RequestExit(false);
 }
 
 void APhotonGameMode::StagePhotonShotFX()

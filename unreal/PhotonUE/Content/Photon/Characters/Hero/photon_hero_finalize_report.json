@@ -1,0 +1,32 @@
+{
+  "renames": [
+    {
+      "from": "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Idle.PhotonHero_SKA_PhotonHero_Idle",
+      "to": "/Game/Photon/Characters/Hero/A_PhotonHero_Idle"
+    },
+    {
+      "from": "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Run.PhotonHero_SKA_PhotonHero_Run",
+      "to": "/Game/Photon/Characters/Hero/A_PhotonHero_Run"
+    },
+    {
+      "from": "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Sprint.PhotonHero_SKA_PhotonHero_Sprint",
+      "to": "/Game/Photon/Characters/Hero/A_PhotonHero_Sprint"
+    },
+    {
+      "from": "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Walk.PhotonHero_SKA_PhotonHero_Walk",
+      "to": "/Game/Photon/Characters/Hero/A_PhotonHero_Walk"
+    }
+  ],
+  "anims": [
+    "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Idle.PhotonHero_SKA_PhotonHero_Idle",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Run.PhotonHero_SKA_PhotonHero_Run",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Sprint.PhotonHero_SKA_PhotonHero_Sprint",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKA_PhotonHero_Walk.PhotonHero_SKA_PhotonHero_Walk",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Idle.PhotonHero_SKArmature_A_PhotonHero_Idle",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Run.PhotonHero_SKArmature_A_PhotonHero_Run",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Sprint.PhotonHero_SKArmature_A_PhotonHero_Sprint",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKArmature_A_PhotonHero_Walk.PhotonHero_SKArmature_A_PhotonHero_Walk",
+    "/Game/Photon/Characters/Hero/PhotonHero_SKArmature_Armature_mixamo_com_Layer0.PhotonHero_SKArmature_Armature_mixamo_com_Layer0"
+  ],
+  "errors": []
+}

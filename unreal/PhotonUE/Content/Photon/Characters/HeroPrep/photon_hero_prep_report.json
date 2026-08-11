@@ -1,0 +1,356 @@
+{
+  "stages": [
+    {
+      "stage": "import",
+      "meshes": [
+        "tripo_node_2259b18c"
+      ],
+      "armatures": [],
+      "vertex_groups": 0
+    },
+    {
+      "stage": "textures",
+      "linked": 5
+    },
+    {
+      "stage": "materials",
+      "maps": {
+        "basecolor": true,
+        "normal": true,
+        "roughness": true,
+        "metallic": true
+      }
+    },
+    {
+      "stage": "scale",
+      "height_before": 0.977,
+      "scale": 199.58299
+    },
+    {
+      "stage": "snap_origin",
+      "delta": [
+        0.043,
+        0.031,
+        0.0
+      ],
+      "height": 195.0
+    },
+    {
+      "stage": "hero",
+      "verts": 10483,
+      "polys": 10186,
+      "tris": 20261,
+      "materials": [
+        "tripo_mat_2259b18c"
+      ],
+      "bbox_min": [
+        -97.415,
+        -17.922,
+        0.0
+      ],
+      "bbox_max": [
+        97.415,
+        17.922,
+        195.0
+      ],
+      "size": [
+        194.831,
+        35.844,
+        195.0
+      ],
+      "loose_parts": 26
+    },
+    {
+      "stage": "extract_Right",
+      "tip_index": 1011,
+      "method": "capsule+tip_ball+weld",
+      "flood_cm": 55.0,
+      "weld_cm": 0.55,
+      "kept_verts_pre_join": 1439,
+      "verts": 1194,
+      "polys": 1245,
+      "tris": 2354,
+      "materials": [
+        "tripo_mat_2259b18c"
+      ],
+      "bbox_min": [
+        -97.415,
+        -13.164,
+        139.214
+      ],
+      "bbox_max": [
+        -43.196,
+        12.826,
+        155.742
+      ],
+      "size": [
+        54.22,
+        25.99,
+        16.528
+      ],
+      "loose_parts": 1
+    },
+    {
+      "stage": "orient_Right",
+      "side": "Right",
+      "length_cm": 56.57,
+      "zmin": -3.22,
+      "zmax": 53.35
+    },
+    {
+      "stage": "densify_Right",
+      "action": "subdivide_simple",
+      "before": 2354,
+      "verts": 4883,
+      "polys": 4844,
+      "tris": 9688,
+      "materials": [
+        "tripo_mat_2259b18c"
+      ],
+      "bbox_min": [
+        -3.439,
+        -7.896,
+        -3.219
+      ],
+      "bbox_max": [
+        10.161,
+        6.624,
+        53.349
+      ],
+      "size": [
+        13.6,
+        14.52,
+        56.568
+      ],
+      "loose_parts": 1
+    },
+    {
+      "stage": "hand_analysis_Right",
+      "ok": true,
+      "length_cm": 56.57,
+      "distal_verts": 1010,
+      "tip_verts": 235,
+      "tip_lobes": 31,
+      "loose_parts": 1,
+      "tris": 9688
+    },
+    {
+      "stage": "extract_Left",
+      "tip_index": 699,
+      "method": "capsule+tip_ball+weld",
+      "flood_cm": 55.0,
+      "weld_cm": 0.55,
+      "kept_verts_pre_join": 1485,
+      "verts": 1149,
+      "polys": 1229,
+      "tris": 2267,
+      "materials": [
+        "tripo_mat_2259b18c"
+      ],
+      "bbox_min": [
+        43.789,
+        -13.132,
+        139.133
+      ],
+      "bbox_max": [
+        97.415,
+        11.351,
+        155.728
+      ],
+      "size": [
+        53.627,
+        24.483,
+        16.595
+      ],
+      "loose_parts": 1
+    },
+    {
+      "stage": "orient_Left",
+      "side": "Left",
+      "length_cm": 55.89,
+      "zmin": -3.24,
+      "zmax": 52.65
+    },
+    {
+      "stage": "densify_Left",
+      "action": "subdivide_simple",
+      "before": 2267,
+      "verts": 4762,
+      "polys": 4725,
+      "tris": 9450,
+      "materials": [
+        "tripo_mat_2259b18c"
+      ],
+      "bbox_min": [
+        -10.38,
+        -7.136,
+        -3.239
+      ],
+      "bbox_max": [
+        3.369,
+        7.31,
+        52.65
+      ],
+      "size": [
+        13.75,
+        14.446,
+        55.889
+      ],
+      "loose_parts": 1
+    },
+    {
+      "stage": "hand_analysis_Left",
+      "ok": true,
+      "length_cm": 55.89,
+      "distal_verts": 926,
+      "tip_verts": 220,
+      "tip_lobes": 25,
+      "loose_parts": 1,
+      "tris": 9450
+    },
+    {
+      "stage": "validation",
+      "passed": true
+    }
+  ],
+  "warnings": [
+    "Right elbow_cap skipped: Right elbow_cap destroyed mesh (2354\u219266 tris)",
+    "Left elbow_cap skipped: Left elbow_cap destroyed mesh (2267\u219266 tris)"
+  ],
+  "errors": [],
+  "validation": {
+    "hero_height": {
+      "pass": true,
+      "detail": "195.0 vs 195.0"
+    },
+    "hero_materials": {
+      "pass": true,
+      "detail": "['tripo_mat_2259b18c']"
+    },
+    "right_tris_min": {
+      "pass": true,
+      "detail": 9688
+    },
+    "right_tris_max": {
+      "pass": true,
+      "detail": 9688
+    },
+    "right_connected": {
+      "pass": true,
+      "detail": 1
+    },
+    "right_hand": {
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "length_cm": 56.57,
+        "distal_verts": 1010,
+        "tip_verts": 235,
+        "tip_lobes": 31,
+        "loose_parts": 1,
+        "tris": 9688
+      }
+    },
+    "right_length": {
+      "pass": true,
+      "detail": 56.57
+    },
+    "right_finger_lobes": {
+      "pass": true,
+      "detail": 31
+    },
+    "left_tris_min": {
+      "pass": true,
+      "detail": 9450
+    },
+    "left_tris_max": {
+      "pass": true,
+      "detail": 9450
+    },
+    "left_connected": {
+      "pass": true,
+      "detail": 1
+    },
+    "left_hand": {
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "length_cm": 55.89,
+        "distal_verts": 926,
+        "tip_verts": 220,
+        "tip_lobes": 25,
+        "loose_parts": 1,
+        "tris": 9450
+      }
+    },
+    "left_length": {
+      "pass": true,
+      "detail": 55.89
+    },
+    "left_finger_lobes": {
+      "pass": true,
+      "detail": 25
+    }
+  },
+  "exports": {
+    "hero": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonHero.fbx",
+    "arm_right": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonArmRight.fbx",
+    "arm_left": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonArmLeft.fbx",
+    "blend": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonHero_Prep.blend"
+  },
+  "source": "C:\\Users\\Home\\Downloads\\futuristic+athlete+3d+model\\tripo_convert_2259b18c-7904-4bb7-bcaf-3ab3fbe3736a.fbx",
+  "out_dir": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep",
+  "target_height_cm": 195.0,
+  "grip_targets_camera_space": {
+    "right": [
+      40.0,
+      14.0,
+      -14.0
+    ],
+    "left": [
+      56.0,
+      8.0,
+      -10.0
+    ]
+  },
+  "weapon_note": "Weapon hierarchy untouched. Arms authored to meet grips only.",
+  "extraction_method": "spatial_flood (no armature in Blender FBX import)",
+  "previews": {
+    "hero": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\previews\\hero.png",
+    "arm_right": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\previews\\arm_right.png",
+    "arm_left": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\previews\\arm_left.png",
+    "arms_together": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\previews\\arms_together.png"
+  },
+  "validation_passed": true,
+  "summary": {
+    "hero_tris": 20261,
+    "right_tris": 9688,
+    "left_tris": 9450,
+    "right_hand": {
+      "ok": true,
+      "length_cm": 56.57,
+      "distal_verts": 1010,
+      "tip_verts": 235,
+      "tip_lobes": 31,
+      "loose_parts": 1,
+      "tris": 9688
+    },
+    "left_hand": {
+      "ok": true,
+      "length_cm": 55.89,
+      "distal_verts": 926,
+      "tip_verts": 220,
+      "tip_lobes": 25,
+      "loose_parts": 1,
+      "tris": 9450
+    },
+    "passed": true
+  },
+  "visual_qa": {
+    "hero": "Usable lookdev \u2014 human athlete, cyan accents, materials linked.",
+    "arms": "Exported as elbow-origin +Z T-pose extracts with welded islands and simple subdiv to ~9\u201310k tris. Procedural rifle-grip bend DISABLED \u2014 it destroyed finger topology on this unweighted Tripo mesh. Elbow plane-cap also unsafe (bisect wiped arms). Jagged proximal cut remains. Closed grip requires a future rigged/weighted pass or a better Tripo export with skin weights.",
+    "grip_pose_automated": false,
+    "unreal_import_ready": false,
+    "reason_not_import_ready": "Hands are open T-pose, not rifle grip; elbow cut is jagged; do not replace SM_PhotonArm* until grip posing is solved."
+  }
+}

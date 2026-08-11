@@ -1,0 +1,17 @@
+{
+  "source": "c:\\Users\\Home\\Downloads\\futuristic+athlete+auto+rig+3d+model\\tripo_convert_f39ddff3-5bcd-4573-ae6f-f52d132834c1.fbx",
+  "out": "C:\\Users\\Home\\Desktop\\100 men vs gorilla\\photon\\unreal\\PhotonUE\\Content\\Photon\\Characters\\HeroPrep\\PhotonHero_ForMixamo.fbx",
+  "height_cm": 195.0,
+  "width_cm": 194.83,
+  "tris": 20256,
+  "wider_than_tall": false,
+  "mixamo_steps": [
+    "Go to https://www.mixamo.com and sign in with Adobe",
+    "Click Upload Character",
+    "Upload PhotonHero_ForMixamo.fbx",
+    "Place markers (chin, wrists, elbows, knees, groin) if prompted",
+    "Next \u2192 Auto-Rig",
+    "Download \u2192 Format: FBX for Unreal (or FBX), Skin: With Skin, Pose: T-pose",
+    "Send the downloaded FBX path back for Blender validation"
+  ]
+}

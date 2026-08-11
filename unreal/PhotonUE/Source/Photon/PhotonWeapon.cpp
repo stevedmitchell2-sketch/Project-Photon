@@ -81,6 +81,18 @@ void APhotonWeapon::UpdateWeaponPose()
 		if (UStaticMeshComponent* View = OwnerChar->WeaponViewMesh)
 		{
 			View->SetRelativeTransform(Mesh->GetRelativeTransform());
+			// Glove lives on WeaponRoot in camera space — nudge with the same kick translation so
+			// it stays glued during fire without parenting under the 0.34-scaled viewmesh.
+			if (OwnerChar->RightGlove && OwnerChar->RightGlove->IsVisible())
+			{
+				OwnerChar->RightGlove->SetRelativeLocation(
+					OwnerChar->RightGripCamera + WeaponRecoilOffset);
+			}
+			if (OwnerChar->LeftGlove && OwnerChar->LeftGlove->IsVisible())
+			{
+				OwnerChar->LeftGlove->SetRelativeLocation(
+					OwnerChar->LeftGripCamera + WeaponRecoilOffset);
+			}
 		}
 	}
 }
