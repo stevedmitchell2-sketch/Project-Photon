@@ -153,11 +153,30 @@ UMaterialInterface* PhotonVisuals::GetEnergyMaterial()
 
 // Kept in step with Tools/build_photon_arena.py. Floor is darkest (faces the ceiling rig), cover
 // lifts clearly above it, structure sits between them as charcoal architecture.
-FLinearColor PhotonVisuals::Palette::Structure() { return FLinearColor(0.045f, 0.050f, 0.062f); }
-FLinearColor PhotonVisuals::Palette::Floor()     { return FLinearColor(0.014f, 0.016f, 0.022f); }
-FLinearColor PhotonVisuals::Palette::Cover()     { return FLinearColor(0.118f, 0.128f, 0.152f); }
-FLinearColor PhotonVisuals::Palette::Metal()     { return FLinearColor(0.070f, 0.076f, 0.092f); }
+//
+// Hue, not value, was the thing wrong with the last set. Every architectural entry carried a blue
+// bias of about 1.25:1 blue over red, every house light was authored at 206/226/255, and the result
+// measured out at 81% of all lit pixels reading as cyan across the eleven tour frames. When the
+// walls, the floor, the cover, the seating and the steel are all the same cyan as the energy
+// strips, the energy strips are not an accent, they are the ambient colour of the room — which is
+// exactly the "washed out, everything the same" read.
+//
+// So the architecture is now warm-neutral graphite: red very slightly ahead of blue, the way
+// concrete and painted steel actually photograph under white light. Cyan is reserved for emissive
+// energy and for the steel, which is allowed to stay cool because that is what makes it read as
+// metal next to the ceramic. Amber stays rationed to the suites and the Champion's Walk.
+//
+// Values sit about a fifth below the first warm-neutral set. That one measured with a median of
+// 75/255 and read as light concrete rather than the graphite the venue is meant to be built from;
+// the ratios between the four surfaces were right, the whole ladder was just standing too high.
+FLinearColor PhotonVisuals::Palette::Structure() { return FLinearColor(0.098f, 0.093f, 0.087f); }
+FLinearColor PhotonVisuals::Palette::Floor()     { return FLinearColor(0.044f, 0.042f, 0.041f); }
+FLinearColor PhotonVisuals::Palette::Cover()     { return FLinearColor(0.152f, 0.144f, 0.132f); }
+FLinearColor PhotonVisuals::Palette::Metal()     { return FLinearColor(0.112f, 0.117f, 0.130f); }
 FLinearColor PhotonVisuals::Palette::Energy()    { return FLinearColor(0.28f, 0.78f, 1.0f); }
+FLinearColor PhotonVisuals::Palette::Seat()      { return FLinearColor(0.054f, 0.049f, 0.046f); }
+FLinearColor PhotonVisuals::Palette::Amber()     { return FLinearColor(1.00f, 0.62f, 0.10f); }
+FLinearColor PhotonVisuals::Palette::Suite()     { return FLinearColor(1.00f, 0.66f, 0.34f); }
 
 void PhotonVisuals::ApplyTint(UPrimitiveComponent* Component, FLinearColor Color, float EmissiveScale)
 {
@@ -253,7 +272,7 @@ void PhotonVisuals::ApplyArenaPostProcess(UCameraComponent* Camera)
 	PP.BloomIntensity = CVarPhotonBloom.GetValueOnAnyThread();
 
 	PP.bOverride_VignetteIntensity = true;
-	PP.VignetteIntensity = 0.3f;
+	PP.VignetteIntensity = 0.22f;
 
 	Camera->PostProcessBlendWeight = 1.f;
 }
@@ -311,6 +330,9 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 
 	const FLinearColor Neon = Palette::Energy();
 	const FLinearColor Steel = Palette::Metal();
+	const FLinearColor Amber = Palette::Amber();
+	const FLinearColor Suite = Palette::Suite();
+	const FLinearColor Seat = Palette::Seat();
 
 	// Matched in order, first hit wins, on a substring of the actor's name and label. Order is
 	// load-bearing wherever one token contains another: SpawnGate before Spawn, CentreRing before
@@ -330,6 +352,28 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("Energy_CoverTrim"),EPhotonSurface::Energy,   Neon * 0.55f,                      1.5f },
 		{ TEXT("Energy_PylonCap"),EPhotonSurface::Energy,    Neon * 0.6f,                       2.0f },
 		{ TEXT("Energy_CofferPanel"),EPhotonSurface::Energy, FLinearColor(0.72f, 0.83f, 1.0f),  2.2f },
+		{ TEXT("Energy_CeilGrid"),EPhotonSurface::Energy,    FLinearColor(0.62f, 0.76f, 1.0f),  1.5f },
+		{ TEXT("Energy_CeilPanel"),EPhotonSurface::Energy,   FLinearColor(0.20f, 0.25f, 0.34f), 0.85f },
+
+		// --- Bowl and landmark emissives. Warm is rationed to two of them on purpose. -------------
+		{ TEXT("Energy_SuiteGlass"),EPhotonSurface::Energy,  Suite,                             1.5f },
+		{ TEXT("Energy_WalkNiche"),EPhotonSurface::Energy,   Amber,                             1.8f },
+		{ TEXT("Energy_WalkSill"),EPhotonSurface::Energy,    Amber,                             2.6f },
+		{ TEXT("Energy_Ribbon"),  EPhotonSurface::Energy,    Neon * 0.9f,                       2.8f },
+		{ TEXT("Energy_Coolant"), EPhotonSurface::Energy,    Neon * 0.8f,                       2.8f },
+		{ TEXT("Energy_MastRing"),EPhotonSurface::Energy,    Neon,                              3.2f },
+		{ TEXT("Energy_SkyShaft"),EPhotonSurface::Energy,    FLinearColor(0.66f, 0.80f, 1.0f),  2.4f },
+		{ TEXT("Energy_TrussPod"),EPhotonSurface::Energy,    FLinearColor(0.72f, 0.83f, 1.0f),  2.2f },
+		{ TEXT("Energy_GantryRail"),EPhotonSurface::Energy,  Neon * 0.55f,                      1.3f },
+		{ TEXT("Energy_ColumnBand"),EPhotonSurface::Energy,  Neon * 0.6f,                       1.6f },
+		{ TEXT("Energy_CornerStrip"),EPhotonSurface::Energy, Neon * 0.7f,                      2.0f },
+		{ TEXT("Energy_VomLip"),  EPhotonSurface::Energy,    Neon * 0.45f,                      1.1f },
+		{ TEXT("Energy_DeckEdge"),EPhotonSurface::Energy,    Neon * 0.5f,                       1.4f },
+		{ TEXT("Energy_RampEdge"),EPhotonSurface::Energy,    Neon * 0.5f,                       1.4f },
+		// The Core is the arena's one landmark, so it is also the arena's brightest emissive.
+		{ TEXT("Energy_CoreGlow"),EPhotonSurface::Energy,    Neon,                              4.2f },
+		{ TEXT("Energy_CoreHalo"),EPhotonSurface::Energy,    Neon * 0.8f,                       2.4f },
+
 		{ TEXT("Energy"),         EPhotonSurface::Energy,    Neon,                              3.0f },
 		{ TEXT("EnergyStrip"),    EPhotonSurface::Energy,    Neon,                              6.0f },
 		{ TEXT("CenterMark"),     EPhotonSurface::Energy,    Neon,                              3.0f },
@@ -338,7 +382,9 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("CenterCircle"),   EPhotonSurface::Energy,    Neon * 0.65f,                      1.4f },
 		{ TEXT("HalfCourt"),      EPhotonSurface::Energy,    Neon * 0.45f,                      0.85f },
 		{ TEXT("LaneMark_"),      EPhotonSurface::Energy,    Neon * 0.55f,                      1.1f },
-		{ TEXT("ScoreboardFace"), EPhotonSurface::Energy,    Neon * 0.18f,                      0.7f },
+		// A dead black rectangle is not a scoreboard. This is the brightest large surface in the
+		// arena on purpose: it is the thing you look at from spawn.
+		{ TEXT("ScoreboardFace"), EPhotonSurface::Energy,    Neon * 0.30f,                      1.5f },
 		{ TEXT("Signage_"),       EPhotonSurface::Energy,    Neon * 0.22f,                      0.55f },
 
 		// --- Structural metal: trusses, railings, the overhead rig, deck columns. ----------------
@@ -346,6 +392,7 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("Railing"),        EPhotonSurface::Metal,     Steel,                             0.0f },
 		{ TEXT("Gantry"),         EPhotonSurface::Metal,     Steel,                             0.0f },
 		{ TEXT("CentreRig"),      EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("CoreLantern"),    EPhotonSurface::Metal,     Steel * 1.2f,                      0.0f },
 		{ TEXT("DeckColumn"),     EPhotonSurface::Metal,     Steel,                             0.0f },
 		{ TEXT("ScoreboardFrame"),EPhotonSurface::Metal,     Steel * 1.15f,                     0.0f },
 
@@ -358,10 +405,14 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("TeamZone_Green"), EPhotonSurface::Floor,     FLinearColor(0.010f, 0.052f, 0.024f),0.0f },
 		{ TEXT("TeamZone_Blue"),  EPhotonSurface::Floor,     FLinearColor(0.012f, 0.030f, 0.060f),0.0f },
 		{ TEXT("TeamZone_Yellow"),EPhotonSurface::Floor,     FLinearColor(0.055f, 0.044f, 0.008f),0.0f },
-		{ TEXT("CentreDais"),     EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
+		// Half value, not 0.85. The dais sits directly under the only rect shadow caster in the
+		// arena and was measuring as its brightest large surface — a white pool where the
+		// centrepiece is supposed to be.
+		{ TEXT("CentreDais"),     EPhotonSurface::Cover,     Palette::Cover() * 0.50f,          0.0f },
 		{ TEXT("Beacon"),         EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
 		{ TEXT("DeckSlab"),       EPhotonSurface::Cover,     Palette::Cover() * 0.9f,           0.0f },
-		{ TEXT("DeckStep"),       EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
+		{ TEXT("DeckRampWall"),   EPhotonSurface::Cover,     Palette::Cover() * 0.75f,          0.0f },
+		{ TEXT("DeckRamp"),       EPhotonSurface::Cover,     Palette::Cover() * 0.60f,          0.0f },
 		{ TEXT("ArenaSpawn_"),    EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
 		{ TEXT("Cover"),          EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
 		{ TEXT("Elevated"),       EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
@@ -369,26 +420,59 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("Perch"),          EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
 
 		// --- Architecture. -----------------------------------------------------------------------
+		// --- Spectator bowl and the four landmarks. Everything here lives outside the play space,
+		// above the containment wall, and its whole job is to be a silhouette with depth. ---------
+		{ TEXT("SeatBank"),       EPhotonSurface::Structure, Seat,                              0.0f },
+		{ TEXT("Vomitory"),       EPhotonSurface::Structure, Seat * 0.35f,                      0.0f },
+		{ TEXT("SuiteBox"),       EPhotonSurface::Structure, Palette::Structure() * 1.5f,       0.0f },
+		{ TEXT("SuiteDeck"),      EPhotonSurface::Structure, Palette::Structure() * 1.2f,       0.0f },
+		{ TEXT("TowerDeck"),      EPhotonSurface::Structure, Palette::Structure() * 1.4f,       0.0f },
+		{ TEXT("TowerStair"),     EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("Parapet"),        EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
+		{ TEXT("OuterSkin"),      EPhotonSurface::Structure, Palette::Structure() * 0.5f,       0.0f },
+		{ TEXT("Concourse"),      EPhotonSurface::Floor,     Palette::Floor() * 0.7f,           0.0f },
+		{ TEXT("AtriumColumn"),   EPhotonSurface::Structure, Palette::Structure() * 1.35f,      0.0f },
+		{ TEXT("GantryRing"),     EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("TrussHanger"),    EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("TowerDrum"),      EPhotonSurface::Structure, Palette::Structure() * 1.25f,      0.0f },
+		{ TEXT("TowerMast"),      EPhotonSurface::Metal,     Steel * 1.1f,                      0.0f },
+		{ TEXT("BroadcastPod"),   EPhotonSurface::Structure, Palette::Structure() * 1.6f,       0.0f },
+		{ TEXT("Reactor"),        EPhotonSurface::Metal,     Steel * 1.05f,                     0.0f },
+		// The Walk is warm even unlit: a neutral colonnade with amber trim reads as a neutral
+		// colonnade, because the trim is 2% of its area.
+		{ TEXT("WalkArch"),       EPhotonSurface::Structure, FLinearColor(0.150f, 0.132f, 0.108f),0.0f },
+		{ TEXT("WalkWall"),       EPhotonSurface::Structure, FLinearColor(0.088f, 0.078f, 0.064f),0.0f },
+		{ TEXT("SkyDeck"),        EPhotonSurface::Metal,     Steel * 1.15f,                     0.0f },
+
 		{ TEXT("Pedestal"),       EPhotonSurface::Structure, Palette::Structure() * 1.6f,       0.0f },
 		{ TEXT("SpawnGate"),      EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
 		{ TEXT("CornerPylon"),    EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
 		{ TEXT("CeilingBay"),     EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
 		{ TEXT("Soffit"),         EPhotonSurface::Structure, Palette::Structure() * 1.7f,       0.0f },
-		{ TEXT("Clerestory"),     EPhotonSurface::Structure, Palette::Structure() * 0.8f,       0.0f },
+		{ TEXT("WallCornerPanel"),EPhotonSurface::Structure, Palette::Structure() * 0.62f,      0.0f },
+		{ TEXT("CornerCap"),      EPhotonSurface::Structure, Palette::Structure() * 1.7f,      0.0f },
+		{ TEXT("CornerFin"),      EPhotonSurface::Structure, Palette::Structure() * 1.25f,     0.0f },
+		{ TEXT("Clerestory"),     EPhotonSurface::Structure, Palette::Structure() * 0.8f,      0.0f },
 		{ TEXT("UpperWall"),      EPhotonSurface::Structure, Palette::Structure() * 0.9f,       0.0f },
 		{ TEXT("SignageBody"),    EPhotonSurface::Structure, Palette::Structure() * 1.2f,       0.0f },
 		{ TEXT("WallBay"),        EPhotonSurface::Structure, Palette::Structure(),              0.0f },
-		{ TEXT("Roof"),           EPhotonSurface::Structure, Palette::Structure() * 0.85f,      0.0f },
+		// Lifted above base structure, not below it. It is the one surface with nothing behind it to
+		// give it contrast, and at 0.85 it disappeared into the void it is supposed to close off.
+		{ TEXT("Roof"),           EPhotonSurface::Structure, Palette::Structure() * 1.30f,      0.0f },
 		// No bare "Panel" rule. It sits above the floor block, so it swallowed CourtPanelA/B and
 		// retinted the four court quadrants — the biggest surfaces in the arena — as pale structure.
 		{ TEXT("Shell"),          EPhotonSurface::Structure, Palette::Structure(),              0.0f },
 		{ TEXT("Wall"),           EPhotonSurface::Structure, Palette::Structure(),              0.0f },
 
 		// --- Floor. CourtSeam and CourtPanel before the bare Floor rule. -------------------------
+		// The court is the one large surface allowed to stay cool. With the architecture now
+		// warm-neutral, that single hue shift is what draws the competition area out of the
+		// building it sits in — a marked pitch rather than more of the same floor. The two panel
+		// values are a deliberate 4:3 checker so the court has a grain at grazing angles.
 		{ TEXT("CourtSeam"),      EPhotonSurface::Floor,     Palette::Floor() * 0.6f,           0.0f },
-		{ TEXT("CourtPanelA"),    EPhotonSurface::Floor,     FLinearColor(0.030f, 0.034f, 0.044f),0.0f },
-		{ TEXT("CourtPanelB"),    EPhotonSurface::Floor,     FLinearColor(0.024f, 0.027f, 0.036f),0.0f },
-		{ TEXT("Court"),          EPhotonSurface::Floor,     FLinearColor(0.030f, 0.034f, 0.044f),0.0f },
+		{ TEXT("CourtPanelA"),    EPhotonSurface::Floor,     FLinearColor(0.032f, 0.039f, 0.050f),0.0f },
+		{ TEXT("CourtPanelB"),    EPhotonSurface::Floor,     FLinearColor(0.023f, 0.029f, 0.039f),0.0f },
+		{ TEXT("Court"),          EPhotonSurface::Floor,     FLinearColor(0.032f, 0.039f, 0.050f),0.0f },
 		{ TEXT("Floor"),          EPhotonSurface::Floor,     Palette::Floor(),                  0.0f },
 	};
 

@@ -126,5 +126,18 @@ namespace PhotonVisuals
 		PHOTON_API FLinearColor Cover();
 		PHOTON_API FLinearColor Metal();
 		PHOTON_API FLinearColor Energy();
+
+		/** Spectator seating: reads as a mass, so it sits below every architectural value. */
+		PHOTON_API FLinearColor Seat();
+		/**
+		 * The one warm colour in the building.
+		 *
+		 * Apex allows itself exactly two warm surfaces — the suite glazing and the Champion's Walk
+		 * trim — against an otherwise charcoal-and-cyan venue. That restraint is the whole reason
+		 * they read as warm at all, and it is what stops a cyan arena reading as monochrome.
+		 */
+		PHOTON_API FLinearColor Amber();
+		/** Warm suite glazing, lighter and less saturated than Amber. */
+		PHOTON_API FLinearColor Suite();
 	}
 }
