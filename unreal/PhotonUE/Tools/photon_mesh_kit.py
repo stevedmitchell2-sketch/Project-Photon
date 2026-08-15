@@ -14,6 +14,8 @@ the player can walk through is a gameplay regression, not a visual one.
 Run:
   UnrealEditor-Cmd.exe PhotonUE.uproject -run=pythonscript -script=Tools/photon_mesh_kit.py
 """
+import math
+
 import unreal
 
 PKG = "/Game/Photon/Meshes"
@@ -326,6 +328,42 @@ def centre_rig():
     return bevel(m, 5.0)
 
 
+def core_lantern():
+    """Shell of the Photon Core: the arena's landmark, hung over the dais at 6 m.
+
+    Every earlier centrepiece attempt put mass on the floor, and the floor is the one place a
+    competitive arena cannot spare it — the dais is 12.8 m across and four teams have to fight over
+    it. This carries the vertical read entirely above head height instead, so it costs the court
+    nothing and is still the first thing in frame from all four spawns.
+
+    Four stacked rings widening upward, so it reads as a machine rather than a lampshade, with a
+    nose cone underneath that points at the centre spot.
+    """
+    m = new_mesh()
+    steps = [(0.0, 110.0), (108.0, 172.0), (216.0, 240.0), (324.0, 312.0)]
+    for z, r in steps:
+        m = cyl(m, 0, 0, z, r, 52, steps=12)
+        m = subtract(m, cyl(new_mesh(), 0, 0, z - 12, r - 40, 76, steps=12))
+    # Ribs bridging the rings, each leaning out to follow the taper.
+    for i in range(6):
+        a = math.radians(i * 60.0)
+        for (z0, r0), (z1, r1) in zip(steps, steps[1:]):
+            mid_r, mid_z = (r0 + r1) * 0.5, (z0 + z1) * 0.5 + 26
+            lean = math.degrees(math.atan2(r1 - r0, z1 - z0))
+            m = box(m, math.cos(a) * mid_r, math.sin(a) * mid_r, mid_z, 40, 40, 132,
+                    yaw=i * 60.0, pitch=0.0, roll=lean if abs(math.sin(a)) < 0.5 else 0.0)
+    m = cyl(m, 0, 0, 376, 348, 44, steps=12)                 # top flange, meets the rig above
+    m = cone(m, 0, 0, -96, 0.0, 118.0, 96, steps=12)         # nose, aimed at the centre spot
+    return bevel(m, 4.0)
+
+
+def core_glow():
+    """The emissive element inside the Core shell, sized to show through the gaps between rings."""
+    m = cone(new_mesh(), 0, 0, -30, 54.0, 268.0, 400, steps=16)
+    m = sphere(m, 0, 0, -56, 58, steps=16)
+    return m
+
+
 def deck_slab():
     """Elevated viewing deck. Ribbed underside so it reads as engineered from below."""
     m = new_mesh()
@@ -365,6 +403,115 @@ def spawn_gate():
     cut = box(new_mesh(), 0, 0, 372, 420, 140, 30)
     m = subtract(m, cut)
     return bevel(m, 4.0)
+
+
+# ==================================================================================================
+# SPECTATOR BOWL — adapted from the Apex venue (src/maps/arena02_apex.ts)
+#
+# Apex's central insight is that the building is not the play space. Its bounds stay at 60 x 60 while
+# the bowl occupies a ring entirely outside them, so the seating can be as deep as it likes without
+# costing a metre of court or shortening a single sight line. Everything below is authored to live in
+# that ring, above the containment wall, where it is scenery the player reads and never touches.
+# ==================================================================================================
+
+def seat_bank():
+    """A raked seating bank, 7 rows over a 10 m run. Local +Y is outward and up, away from the field.
+
+    One mesh rather than 7 riser actors plus 7 nosings: the bank is the single most repeated element
+    in the venue and placing it as 14 boxes per run would have put 450 actors in the bowl on its own.
+    The seat blocks matter more than they look — a smooth rake reads as a concrete ramp at any
+    distance, and it is the row of interrupted verticals that says "seating".
+    """
+    rows, pitch, rise = 7, 105.0, 64.0
+    m = new_mesh()
+    for r in range(rows):
+        y, z = r * pitch, r * rise
+        m = box(m, 0, y + pitch * 0.5, z + rise * 0.5, 1000, pitch, rise)
+        m = box(m, 0, y + 18, z + rise + 8, 1000, 30, 18)                 # tread nosing
+        for i in (-1, 0, 1):
+            m = box(m, i * 322, y + pitch - 28, z + rise + 36, 252, 32, 56)
+    # Central aisle: cut after the rows so the steps survive in the flanking blocks.
+    aisle = box(new_mesh(), 0, rows * pitch * 0.5, rows * rise * 0.5 + 60,
+                96, rows * pitch + 60, rows * rise + 200)
+    m = subtract(m, aisle)
+    m = box(m, 0, rows * pitch + 34, rows * rise * 0.5, 1000, 68, rows * rise + 80)   # back wall
+    return bevel(m, 2.5)
+
+
+def suite_box():
+    """A VIP suite / press box. The glazing is placed separately so it can carry the warm material."""
+    m = new_mesh()
+    m = box(m, 0, 0, 0, 900, 520, 36)                 # floor
+    m = box(m, 0, 0, 320, 900, 520, 36)               # roof
+    m = box(m, 0, 0, 344, 960, 570, 26)               # cornice, proud of the roof
+    for sx in (-1, 1):
+        m = box(m, sx * 436, 0, 160, 34, 520, 288)    # end mullions
+    m = box(m, 0, 0, 160, 240, 30, 288)               # centre mullion
+    m = box(m, 0, 248, 160, 900, 34, 288)             # back wall
+    return bevel(m, 3.0)
+
+
+def atrium_column():
+    """A 22.8 m fluted column. Eight of these ring the centre and carry the arena's vertical read.
+
+    Apex rings its atrium with columns that run the full height of the building, and that single
+    move is most of the difference between a room with a high ceiling and a venue. The flutes stop
+    short of the base and capital so the column has three distinct zones instead of one extrusion.
+    """
+    h = 2280.0
+    m = new_mesh()
+    m = box(m, 0, 0, h * 0.5, 150, 150, h)
+    for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        cut = box(new_mesh(), sx * 75, sy * 75, h * 0.5,
+                  34 if sx else 58, 58 if sx else 34, h - 520)
+        m = subtract(m, cut)
+    m = box(m, 0, 0, 62, 250, 250, 124)               # base plinth
+    m = box(m, 0, 0, 156, 202, 202, 64)               # base transition
+    m = box(m, 0, 0, h - 176, 196, 196, 72)           # capital transition
+    m = box(m, 0, 0, h - 88, 238, 238, 104)           # capital
+    return bevel(m, 5.0)
+
+
+def reactor_drum():
+    """A pressure vessel for the Fusion Reactor landmark. Placed several times at different scales."""
+    m = new_mesh()
+    m = cyl(m, 0, 0, 0, 300, 400, steps=20)
+    m = cyl(m, 0, 0, -16, 336, 32, steps=20)          # bottom flange
+    m = cyl(m, 0, 0, 384, 336, 32, steps=20)          # top flange
+    for i in range(8):
+        a = math.radians(i * 45.0)
+        m = box(m, math.cos(a) * 296, math.sin(a) * 296, 200, 46, 46, 320, yaw=i * 45.0)
+    return bevel(m, 3.0)
+
+
+def broadcast_pod():
+    """The commentary box that cantilevers off the Broadcast Tower toward the centre of the court."""
+    m = new_mesh()
+    m = box(m, 0, 0, 0, 620, 400, 34)                 # floor
+    m = box(m, 0, 0, 268, 620, 400, 38)               # roof
+    for sx in (-1, 1):
+        m = box(m, sx * 300, 0, 134, 36, 400, 234)    # side mullions
+    m = box(m, 0, 186, 134, 620, 36, 234)             # back
+    for sx in (-1, 1):
+        m = box(m, sx * 170, 90, -110, 44, 320, 200, pitch=24.0)   # cantilever props
+    return bevel(m, 3.0)
+
+
+def walk_arch():
+    """One bay of the Champion's Walk colonnade. Tiles at 340 so adjacent bays share a pier.
+
+    Apex's west wall is the only place in the venue that is warm, and the only place built from
+    voids rather than solids. Both are deliberate: it is the one elevation a player can name.
+    """
+    m = new_mesh()
+    for sx in (-1, 1):
+        m = box(m, sx * 170, 0, 250, 112, 150, 500)   # piers
+    m = box(m, 0, 0, 532, 340, 150, 64)               # arch head, three courses
+    m = box(m, 0, 0, 588, 252, 150, 48)
+    m = box(m, 0, 0, 632, 164, 150, 40)
+    m = box(m, 0, 62, 250, 232, 32, 500)              # recessed back panel
+    m = box(m, 0, 0, 14, 360, 190, 28)                # threshold
+    return bevel(m, 3.0)
 
 
 # ==================================================================================================
@@ -419,10 +566,22 @@ MODULES = [
     ("SM_PhotonCentreDais", centre_dais, True),
     ("SM_PhotonCentreRing", centre_ring, False),
     ("SM_PhotonCentreRig", centre_rig, False),
+    # The Core hangs at 6 m and is never touched, so no collision.
+    ("SM_PhotonCoreLantern", core_lantern, False),
+    ("SM_PhotonCoreGlow", core_glow, False),
     ("SM_PhotonDeckSlab", deck_slab, True),
     ("SM_PhotonRailing", railing, True),
     ("SM_PhotonPedestal", pedestal, True),
     ("SM_PhotonSpawnGate", spawn_gate, True),
+    # Spectator bowl. None of it is collidable: it all lives outside the play space, and convex
+    # hulls around a seven-row rake are both expensive and pointless.
+    ("SM_PhotonSeatBank", seat_bank, False),
+    ("SM_PhotonSuiteBox", suite_box, False),
+    ("SM_PhotonReactorDrum", reactor_drum, False),
+    ("SM_PhotonBroadcastPod", broadcast_pod, False),
+    ("SM_PhotonWalkArch", walk_arch, False),
+    # The columns stand in the court, so these do need collision.
+    ("SM_PhotonAtriumColumn", atrium_column, True),
     ("SM_PhotonArmRight", lambda: arm(False), False),
     ("SM_PhotonArmLeft", lambda: arm(True), False),
 ]
