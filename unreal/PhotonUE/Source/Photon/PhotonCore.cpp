@@ -97,8 +97,8 @@ APhotonGrenade::APhotonGrenade()
 
 	Glow = CreateDefaultSubobject<UPointLightComponent>(TEXT("Glow"));
 	Glow->SetupAttachment(Collision);
-	Glow->SetIntensity(1800.f);
-	Glow->SetAttenuationRadius(220.f);
+	Glow->SetIntensity(2400.f);
+	Glow->SetAttenuationRadius(280.f);
 	Glow->SetCastShadows(false);
 
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
@@ -109,7 +109,7 @@ APhotonGrenade::APhotonGrenade()
 	{
 		Body->SetStaticMesh(Sphere);
 	}
-	Body->SetRelativeScale3D(FVector(0.24f));
+	Body->SetRelativeScale3D(FVector(0.32f));
 
 	ExplosionFlash = CreateDefaultSubobject<UPointLightComponent>(TEXT("ExplosionFlash"));
 	ExplosionFlash->SetupAttachment(Collision);
@@ -137,7 +137,7 @@ void APhotonGrenade::InitialiseFrom(const UPhotonGrenadeData* InData, EPhotonTea
 	}
 	if (Body)
 	{
-		PhotonVisuals::ApplyEnergyTint(Body, Colour);
+		PhotonVisuals::ApplyEnergyTint(Body, Colour, 5.f);
 	}
 	Movement->ProjectileGravityScale = 1.f;
 	Movement->Bounciness = Data->Bounciness;
@@ -279,13 +279,13 @@ APhotonProjectile::APhotonProjectile()
 	{
 		Body->SetStaticMesh(Sphere);
 	}
-	// The engine sphere is 100 cm; a bolt reads best at roughly a hand's width, stretched along travel.
-	Body->SetRelativeScale3D(FVector(0.34f, 0.11f, 0.11f));
+	// The engine sphere is 100 cm; a bolt reads best slightly thicker than a thin needle at speed.
+	Body->SetRelativeScale3D(FVector(0.40f, 0.14f, 0.14f));
 
 	Glow = CreateDefaultSubobject<UPointLightComponent>(TEXT("Glow"));
 	Glow->SetupAttachment(Collision);
-	Glow->SetIntensity(2600.f);
-	Glow->SetAttenuationRadius(340.f);
+	Glow->SetIntensity(3200.f);
+	Glow->SetAttenuationRadius(380.f);
 	Glow->SetCastShadows(false);
 }
 
@@ -327,11 +327,11 @@ void APhotonProjectile::InitialiseFrom(const UPhotonWeaponData* Data, EPhotonTea
 	{
 		// Bright enough to read at speed, but not so bright that the tonemapper clips it: at 12 the
 		// bolt saturated to a white dot and lost the team colour entirely.
-		PhotonVisuals::ApplyEnergyTint(Body, Colour, 4.f);
+		PhotonVisuals::ApplyEnergyTint(Body, Colour, 5.f);
 		// A faster weapon gets a longer bolt, so PH-6 and PH-9 fire is visually distinguishable.
 		const float Stretch = FMath::GetMappedRangeValueClamped(
-			FVector2D(15000.f, 45000.f), FVector2D(0.26f, 0.62f), Data->ProjectileSpeed);
-		Body->SetRelativeScale3D(FVector(Stretch, 0.11f, 0.11f));
+			FVector2D(15000.f, 45000.f), FVector2D(0.30f, 0.70f), Data->ProjectileSpeed);
+		Body->SetRelativeScale3D(FVector(Stretch, 0.14f, 0.14f));
 	}
 	// InitialSpeed is only read by UProjectileMovementComponent::BeginPlay, which has already run by
 	// the time the weapon configures the bolt — setting it here did nothing and the self-test caught it
