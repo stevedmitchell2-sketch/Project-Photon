@@ -51,8 +51,12 @@ void APhotonWeapon::InitialiseFromData(const UPhotonWeaponData* InData)
 	}
 	Mesh->SetVisibility(false, true);
 	Mesh->SetHiddenInGame(true);
-	PhotonVisuals::ConfigureFirstPersonViewModel(Mesh);
-	PhotonVisuals::ApplyTint(Mesh, FLinearColor(0.55f, 0.60f, 0.68f));
+	const APhotonCharacter* OwnerChar = Cast<APhotonCharacter>(GetOwner());
+	if (!OwnerChar || !OwnerChar->bThirdPersonView)
+	{
+		PhotonVisuals::ConfigureFirstPersonViewModel(Mesh);
+		PhotonVisuals::ApplyTint(Mesh, FLinearColor(0.55f, 0.60f, 0.68f));
+	}
 	// The first-person pose is authored per weapon in the data asset, so a longer or shorter weapon
 	// sits correctly without code changes.
 	HipPose = Data->HipTransform;
@@ -112,9 +116,17 @@ void APhotonWeapon::SyncViewMesh(APhotonCharacter* OwnerChar)
 	{
 		View->SetStaticMesh(Mesh->GetStaticMesh());
 	}
+	UpdateWeaponPose();
+	// Third-person uses ThirdPersonWeaponMesh; never unhide FP via ConfigureFirstPersonViewModel.
+	if (OwnerChar->bThirdPersonView)
+	{
+		View->SetVisibility(false, true);
+		View->SetHiddenInGame(true);
+		View->SetOwnerNoSee(true);
+		return;
+	}
 	PhotonVisuals::ConfigureFirstPersonViewModel(View);
 	PhotonVisuals::ApplyTint(View, FLinearColor(0.55f, 0.60f, 0.68f), 0.35f);
-	UpdateWeaponPose();
 	View->SetVisibility(true, true);
 	View->SetHiddenInGame(false);
 }
@@ -381,8 +393,18 @@ void UPhotonInventoryComponent::BuildLoadout()
 			continue;
 		}
 		W->InitialiseFromData(D);
-		PhotonVisuals::ConfigureFirstPersonViewModel(W->Mesh);
-		// Attached to the hand proxy on the TEMPORARY FIRST-PERSON PRESENTATION PROXY hierarchy.
+		// Attached to Camera→WeaponRoot for muzzle/fire math. Presentation visibility is decided in
+		// ApplyActiveVisibility (TP keeps every actor hidden; FP shows the active one).
+		if (!Owner->bThirdPersonView)
+		{
+			PhotonVisuals::ConfigureFirstPersonViewModel(W->Mesh);
+		}
+		else if (W->Mesh)
+		{
+			W->Mesh->SetVisibility(false, true);
+			W->Mesh->SetHiddenInGame(true);
+			W->Mesh->SetLightingChannels(true, false, false);
+		}
 		W->AttachToComponent(Owner->WeaponRoot, FAttachmentTransformRules::KeepRelativeTransform);
 		W->SetActorHiddenInGame(true);
 		Weapons.Add(W);
@@ -412,9 +434,13 @@ bool UPhotonInventoryComponent::EquipIndex(int32 Index)
 	ApplyActiveVisibility();
 	// Report the resulting state, not the request. Returning true from "I asked it to equip" is how a
 	// switch that did nothing gets reported as working.
-	const bool bOk = GetActiveWeapon() != nullptr && !GetActiveWeapon()->IsHidden();
-	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY equip index=%d id=%s visible=%d"),
-		ActiveIndex, *GetActiveWeaponId().ToString(), bOk);
+	APhotonCharacter* OwnerChar = Cast<APhotonCharacter>(GetOwner());
+	const bool bTp = OwnerChar && OwnerChar->bThirdPersonView;
+	const bool bOk = GetActiveWeapon() != nullptr
+		&& (bTp || !GetActiveWeapon()->IsHidden());
+	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONVERIFY equip index=%d id=%s visible=%d tp=%d"),
+		ActiveIndex, *GetActiveWeaponId().ToString(),
+		GetActiveWeapon() && !GetActiveWeapon()->IsHidden() ? 1 : 0, bTp ? 1 : 0);
 	return bOk;
 }
 
@@ -430,11 +456,25 @@ bool UPhotonInventoryComponent::EquipNext()
 void UPhotonInventoryComponent::ApplyActiveVisibility()
 {
 	APhotonCharacter* OwnerChar = Cast<APhotonCharacter>(GetOwner());
+	const bool bTp = OwnerChar && OwnerChar->bThirdPersonView;
 	for (int32 i = 0; i < Weapons.Num(); ++i)
 	{
-		if (Weapons[i])
+		if (!Weapons[i])
 		{
-			Weapons[i]->SetActorHiddenInGame(i != ActiveIndex);
+			continue;
+		}
+		// TP: every camera-parented weapon actor stays hidden — hand gun is ThirdPersonWeaponMesh.
+		// FP: only the active weapon actor is shown on WeaponRoot.
+		const bool bHideActor = bTp || (i != ActiveIndex);
+		Weapons[i]->SetActorHiddenInGame(bHideActor);
+		if (UStaticMeshComponent* WMesh = Weapons[i]->Mesh)
+		{
+			WMesh->SetVisibility(!bHideActor, true);
+			WMesh->SetHiddenInGame(bHideActor);
+			if (bTp)
+			{
+				WMesh->SetOwnerNoSee(true);
+			}
 		}
 	}
 	if (OwnerChar && OwnerChar->WeaponViewMesh)

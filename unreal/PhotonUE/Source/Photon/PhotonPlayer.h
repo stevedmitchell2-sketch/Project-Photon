@@ -48,6 +48,17 @@ public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<UCameraComponent> Camera;
 
+	/** Boom for third-person follow camera (Capsule → SpringArm → Camera). */
+	UPROPERTY(VisibleAnywhere, Category = "Photon|Camera")
+	TObjectPtr<class USpringArmComponent> SpringArm;
+
+	/**
+	 * When true (default), local player sees the Mixamo hero + chase cam for arena movement.
+	 * Pass -PhotonFirstPerson to restore the FP viewmodel path (arms/gloves still paused/rough).
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Photon|Camera")
+	bool bThirdPersonView = true;
+
 	/** The first-person weapon root. Parented to the camera; see the constructor for why. */
 	UPROPERTY(VisibleAnywhere, Category = "Photon") TObjectPtr<USceneComponent> WeaponRoot;
 
@@ -139,12 +150,24 @@ public:
 	 */
 	void RunSelfTest();
 
+	/** Applies third-person chase cam + visible hero, or FP viewmodel path. */
+	void ApplyViewPresentation();
+
+	/** Keep Mixamo root bone glued to the capsule (clips otherwise drift the body out of frame). */
+	void LockHeroRootMotion();
+
+	/** Log hips/head/hand spans — catches T-pose / exploded skinning in -PhotonShot. */
+	void LogHeroBoneFrame(const TCHAR* Tag) const;
+
+	/** Level chase pitch so the Mixamo body sits mid-lower frame (not a floor stare). */
+	void ApplyThirdPersonLookDefaults();
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void PossessedBy(AController* NewController) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	/** Loads SK_PhotonHero / SK_PhotonFPArms, sockets, and locomotion clips when present. */
 	void SetupHeroPresentation();
 	/** Ensures SOCKET_weapon_right exists on the hero skeletal mesh (authored offsets). */
 	void EnsureWeaponSocket(class USkeletalMesh* MeshAsset);
@@ -185,6 +208,11 @@ protected:
 	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> HeroAnimRun;
 	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> HeroAnimSprint;
 	UPROPERTY(Transient) TObjectPtr<class UAnimSequence> ActiveHeroClip;
+
+	/** Cached mesh relative location after hips re-anchor (avoids fighting anim every tick). */
+	bool bHeroMeshOffsetLocked = false;
+	FVector HeroMeshLockedRelative = FVector(0.f, 0.f, -97.5f);
+	float HeroMeshOffsetRecheckTimer = 0.f;
 };
 
 /**
