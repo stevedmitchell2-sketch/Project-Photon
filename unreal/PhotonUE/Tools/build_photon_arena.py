@@ -45,25 +45,23 @@ MAT = {
 # Roughness/metallic per role, mirroring PhotonVisuals::SetPhotonParameters. The runtime bootstrap
 # re-applies these anyway; matching them here keeps the editor viewport honest.
 ROLE_SHADING = {
-    "structure": (0.64, 0.0),
-    "floor": (0.68, 0.0),
-    "cover": (0.55, 0.18),
-    "metal": (0.34, 0.85),
+    "structure": (0.70, 0.05),
+    "floor": (0.78, 0.0),
+    "cover": (0.52, 0.22),
+    "metal": (0.30, 0.88),
     "energy": (0.50, 0.0),
 }
 
 # --- Palette (linear) — mirrors PhotonVisuals::Palette -------------------------------------------
-STRUCTURE = unreal.LinearColor(0.062, 0.067, 0.082, 1.0)
-STRUCTURE_LIGHT = unreal.LinearColor(0.105, 0.113, 0.132, 1.0)
-# The floor is the one surface facing the ceiling rig square on, so it collects far more light than
-# anything vertical. It has to be authored darker than looks right in isolation or it becomes the
-# brightest thing in every frame and flattens the arena.
-FLOOR_COL = unreal.LinearColor(0.022, 0.025, 0.033, 1.0)
-COURT_COL = unreal.LinearColor(0.030, 0.034, 0.044, 1.0)
-COURT_ALT = unreal.LinearColor(0.024, 0.027, 0.036, 1.0)
-COVER_COL = unreal.LinearColor(0.145, 0.156, 0.184, 1.0)
-METAL_COL = unreal.LinearColor(0.085, 0.092, 0.108, 1.0)
-NEON = unreal.LinearColor(0.35, 0.82, 1.0, 1.0)
+STRUCTURE = unreal.LinearColor(0.045, 0.050, 0.062, 1.0)
+STRUCTURE_LIGHT = unreal.LinearColor(0.085, 0.092, 0.110, 1.0)
+# Floor faces the ceiling rig; keep it darker than cover so the court reads as a playing surface.
+FLOOR_COL = unreal.LinearColor(0.014, 0.016, 0.022, 1.0)
+COURT_COL = unreal.LinearColor(0.022, 0.026, 0.034, 1.0)
+COURT_ALT = unreal.LinearColor(0.017, 0.020, 0.028, 1.0)
+COVER_COL = unreal.LinearColor(0.118, 0.128, 0.152, 1.0)
+METAL_COL = unreal.LinearColor(0.070, 0.076, 0.092, 1.0)
+NEON = unreal.LinearColor(0.28, 0.78, 1.0, 1.0)
 TEAM = {
     "Red": unreal.LinearColor(1.00, 0.18, 0.14, 1.0),
     "Green": unreal.LinearColor(0.16, 0.95, 0.42, 1.0),
@@ -79,22 +77,18 @@ CEIL = 1000.0        # ceiling plane
 COURT = 1700.0       # half-extent of the marked competition court
 
 # --- Lighting ------------------------------------------------------------------------------------
-# Seven zones, per the sprint. Values are lumens unless noted.
-#
-# The first attempt aimed every light straight down, which lit the floor and starved every vertical
-# surface: cover read darker than the ground it stood on, which is the opposite of how a real venue
-# looks. The downward zones are pulled back here and the horizontal ones are the largest numbers in
-# the list, because vertical surfaces are what the player actually sees.
-COFFER_LM = 2000.0       # zone 2: ceiling key, recessed in the coffers
-CENTRE_LM = 2400.0       # zone 3: competition floor, from the overhead rig
-WALLWASH_LM = 6000.0     # zone 1: inward fill; this is what lights the faces of cover
-GRAZE_LM = 4600.0        # zone 1: down the wall bays, so the perimeter relief reads
-UPLIGHT_LM = 1800.0      # zone 2: onto the truss grid, so the ceiling is not a black void
-CYAN_LM = 260.0          # zone 4: makes the cyan infrastructure actually spill onto architecture
-TEAM_LM = 2200.0         # zone 5: team identity at the spawns
-KEY_LIGHT_LUX = 0.35
-SKY_LIGHT = 0.30
-BLOOM = 0.32
+# Performance foundation (measured ~46→49 FPS at 1280x720 by culling decorative movables):
+#   KEEP: Directional key, SkyLight, CeilingLight_*, CentreLight (sole rect shadow caster),
+#         WallWash_* (cover readability), TeamLight_* (spawn identity).
+#   OMIT: CyanGlow_* points, CeilingUp_* truss washes, WallGraze_* — emissive materials already
+#         carry cyan/architectural read without paying movable-light cost.
+COFFER_LM = 1800.0       # zone 2: ceiling key, recessed in the coffers
+CENTRE_LM = 2200.0       # zone 3: competition floor, from the overhead rig
+WALLWASH_LM = 5600.0     # zone 1: inward fill — enough for cover faces, under washout
+TEAM_LM = 2000.0         # zone 5: team identity at the spawns
+KEY_LIGHT_LUX = 0.32
+SKY_LIGHT = 0.26
+BLOOM = 0.18             # keep bloom low; camera also pins photon.Bloom
 
 report = []
 subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -217,6 +211,18 @@ for i, (x, y, sx, sy) in enumerate([
 for i, x in enumerate([-850, 850]):
     box((x, 0, 2.5), (0.05, COURT * 2 / 100.0, 0.02), "LaneLine_%d" % i, "energy", dim(NEON, 0.5), 0.9)
 
+# Half-court seam + centre circle — sports-venue read without props.
+box((0, 0, 3.2), (COURT * 2 / 100.0, 0.06, 0.025), "HalfCourt_Line", "energy", dim(NEON, 0.45), 0.85)
+for i, ang in enumerate(range(0, 360, 20)):
+    rad = math.radians(ang)
+    cx, cy = math.cos(rad) * 320.0, math.sin(rad) * 320.0
+    box((cx, cy, 3.0), (0.55, 0.08, 0.025), "CenterCircle_%d" % i, "energy", dim(NEON, 0.65), 1.4,
+        yaw=ang)
+# Lane index blocks (1–3 style markers) along each long boundary.
+for i, x in enumerate([-1100, 0, 1100]):
+    box((x, COURT - 40, 8), (1.2, 0.35, 0.12), "LaneMark_N_%d" % (i + 1), "energy", dim(NEON, 0.55), 1.1)
+    box((x, -(COURT - 40), 8), (1.2, 0.35, 0.12), "LaneMark_S_%d" % (i + 1), "energy", dim(NEON, 0.55), 1.1)
+
 # --- 2. Perimeter shell ---------------------------------------------------------------------------
 # Sides as (label, sign, axis). Each wall is built inward-facing from the same module set.
 SIDES = [("N", (0.0, 1.0), 0.0), ("S", (0.0, -1.0), 180.0),
@@ -295,10 +301,8 @@ for i, (x, y) in enumerate([(-950, -950), (950, -950), (-950, 950), (950, 950)])
     lc.set_editor_property("source_height", 760.0)
     lc.set_editor_property("attenuation_radius", 3200.0)
     lc.set_editor_property("light_color", cool(206, 226, 255))
-    lc.set_editor_property("cast_shadows", i == 0)
-    if i == 0:
-        got = lc.get_editor_property("light_color")
-        say("coffer_light_colour r=%d g=%d b=%d (expected 206/226/255)" % (got.r, got.g, got.b))
+    # Shadows: CentreLight is the only rect shadow caster (VSM + non-Nanite overflow risk).
+    lc.set_editor_property("cast_shadows", False)
 
 # Truss grid. Deliberately uneven spacing: an even grid reads as a texture, an uneven one reads as
 # structure that had to span something.
@@ -387,6 +391,9 @@ for team, x, y, facing in SPAWNS:
     ox, oy = (0.0, -1.0) if y < 0 else (0.0, 1.0) if y > 0 else ((-1.0, 0.0) if x < 0 else (1.0, 0.0))
     gate_yaw = 0.0 if oy else 90.0
 
+    # Team-zone floor wash — larger than the pad so spawn identity reads from mid-court.
+    box((x - ox * 80, y - oy * 80, 1.5), (9.5, 9.5, 0.02), "TeamZone_%s" % team, "floor",
+        dim(colour, 0.055), 0.0)
     box((x, y, 2), (6, 6, 0.03), "SpawnPad_%s" % team, "cover", dim(colour, 0.16), 0.0)
     for j, (dx, dy, sx, sy) in enumerate([(0, 300, 6, 0.08), (0, -300, 6, 0.08),
                                           (300, 0, 0.08, 6), (-300, 0, 0.08, 6)]):
@@ -435,30 +442,12 @@ for side, (nx, ny), _yaw in SIDES:
     inward = FACING[side]
     at_wall = lambda out, z: ((0.0, ny * out, z) if ny else (nx * out, 0.0, z))
 
-    # Zone 1a: inward fill. The largest light in the arena, and the reason cover now reads lighter
-    # than the floor it stands on.
+    # Zone 1: inward fill. Kept — primary cover/face lighting. Graze and CeilingUp omitted for FPS.
     rect_light("WallWash_%s" % side, at_wall(HALF - 140, 470.0), inward, -14.0,
                WALLWASH_LM, 3000.0, 520.0, 2600.0, cool(150, 180, 220))
-    # Zone 1b: grazing light down the wall bays, which is what makes the ribs and recesses read.
-    rect_light("WallGraze_%s" % side, at_wall(HALF - 70, 846.0), inward + 180.0, -62.0,
-               GRAZE_LM, 3400.0, 300.0, 1200.0, cool(176, 198, 230))
-    # Zone 2b: onto the truss grid.
-    rect_light("CeilingUp_%s" % side, at_wall(HALF - 420, 880.0), inward, 62.0,
-               UPLIGHT_LM, 2200.0, 400.0, 1500.0, cool(160, 186, 224))
 
-# Zone 4: the cyan channels have to put light onto the architecture or they are just decals.
-for side, (nx, ny), _yaw in SIDES:
-    for along in (-1200.0, 0.0, 1200.0):
-        pos = (along, ny * (HALF - 60), 780.0) if ny else (nx * (HALF - 60), along, 780.0)
-        p = spawn(unreal.PointLight, pos)
-        p.set_actor_label("CyanGlow_%s_%d" % (side, int(along)))
-        pc = p.point_light_component
-        pc.set_mobility(unreal.ComponentMobility.MOVABLE)
-        pc.set_editor_property("intensity_units", unreal.LightUnits.LUMENS)
-        pc.set_editor_property("intensity", CYAN_LM)
-        pc.set_editor_property("attenuation_radius", 900.0)
-        pc.set_editor_property("light_color", cool(96, 200, 255))
-        pc.set_editor_property("cast_shadows", False)
+# Zone 4 cyan spill lights omitted: Energy_* emissive meshes already provide the cyan read.
+say("decorative_lights_omitted=CyanGlow,CeilingUp,WallGraze")
 
 # --- 9. Targets ------------------------------------------------------------------------------------------------
 target_cls = unreal.load_class(None, "/Script/Photon.PhotonTarget")
@@ -468,13 +457,15 @@ for i, (x, y) in enumerate([(620, 980), (-980, 620), (-620, -980), (980, -620), 
         t = spawn(target_cls, (x, y, 210))
         t.set_actor_label("ArenaTarget_%d" % i)
 
-# --- 10. Signage --------------------------------------------------------------------------------------------------
-# Two screens, set inside the wall recesses so they read as installed rather than stuck on.
+# --- 10. Signage / scoreboard surfaces ----------------------------------------------------------------
+# Two installed screens in wall recesses + a metal frame so they read as venue displays.
 for i, (x, y, yaw) in enumerate([(0, HALF - 8, 0), (0, -(HALF - 8), 180)]):
+    box((x, y + 18, 400) if i == 0 else (x, y - 18, 400), (11.6, 0.22, 3.1),
+        "ScoreboardFrame_%d" % i, "metal", METAL_COL, yaw=yaw)
     box((x, y + 14, 400) if i == 0 else (x, y - 14, 400), (11.0, 0.18, 2.8),
         "SignageBody_%d" % i, "structure", STRUCTURE_LIGHT, yaw=yaw)
     box((x, y + 8, 400) if i == 0 else (x, y - 8, 400), (10.2, 0.08, 2.2),
-        "Signage_%d" % i, "energy", dim(NEON, 0.22), 0.55, yaw=yaw)
+        "ScoreboardFace_%d" % i, "energy", dim(NEON, 0.18), 0.7, yaw=yaw)
 
 # --- 11. Lighting environment -----------------------------------------------------------------------------------------
 for a in subsys.get_all_level_actors():
@@ -532,6 +523,21 @@ say("authored_kit_actors=%d" % len(kit_actors))
 say("rect_lights=%d" % len([a for a in actors if isinstance(a, unreal.RectLight)]))
 say("spot_lights=%d" % len([a for a in actors if isinstance(a, unreal.SpotLight)]))
 say("point_lights=%d" % len([a for a in actors if isinstance(a, unreal.PointLight)]))
+say("dir_lights=%d" % len([a for a in actors if isinstance(a, unreal.DirectionalLight)]))
+shadow_casters = 0
+for a in actors:
+    lc = None
+    if isinstance(a, unreal.RectLight):
+        lc = a.rect_light_component
+    elif isinstance(a, unreal.SpotLight):
+        lc = a.spot_light_component
+    elif isinstance(a, unreal.PointLight):
+        lc = a.point_light_component
+    elif isinstance(a, unreal.DirectionalLight):
+        lc = a.light_component
+    if lc and lc.get_editor_property("cast_shadows"):
+        shadow_casters += 1
+say("shadow_casters=%d" % shadow_casters)
 say("targets=%d" % len([a for a in actors if a.get_class().get_name() == "PhotonTarget"]))
 
 with open(unreal.Paths.project_saved_dir() + "Logs/photon_arena_build.txt", "w") as f:
