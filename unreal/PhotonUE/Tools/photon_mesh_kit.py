@@ -171,67 +171,76 @@ def finalise(mesh, name, collision=True):
 # ==================================================================================================
 
 def cover_low():
-    """Cover A — low competition barrier. Waist high, wide, mounted on a plinth."""
+    """Cover A — competition barrier. A sports divider, not a crate: kick plate, recessed faces,
+    overhanging rail, and end posts that stand proud like stanchions."""
     m = new_mesh()
-    m = box(m, 0, 0, 8, 280, 96, 16)          # plinth
-    m = box(m, 0, 0, 60, 258, 76, 88)         # body
-    m = box(m, 0, 0, 106, 268, 88, 12)        # capping rail
+    m = box(m, 0, 0, 10, 292, 108, 20)                 # plinth
+    m = box(m, 0, 0, 28, 276, 92, 18)                  # kick plate, set back
+    m = box(m, 0, 0, 68, 250, 70, 72)                  # body, narrower than the rail
+    m = box(m, 0, 0, 112, 286, 96, 16)                 # capping rail, overhangs the body
     for sx in (-1, 1):
-        m = box(m, sx * 131, 0, 62, 22, 92, 96)   # end posts, proud of the body
-    # Recessed channel down both long faces: this is the detail that stops it reading as a slab.
+        m = box(m, sx * 142, 0, 64, 28, 100, 108)      # end stanchions
+        m = box(m, sx * 142, 0, 126, 36, 108, 14)      # stanchion caps
     for sy in (-1, 1):
-        cut = box(new_mesh(), 0, sy * 40, 66, 220, 26, 20)
+        cut = box(new_mesh(), 0, sy * 38, 70, 210, 22, 36)
         m = subtract(m, cut)
     return bevel(m, 3.5)
 
 
 def cover_angled():
-    """Cover B — angled divider. A leaning panel that breaks sightlines diagonally."""
+    """Cover B — blast shield. A framed leaning panel on a substantial plinth."""
     m = new_mesh()
-    m = box(m, 0, 0, 15, 230, 96, 30)                       # base wedge
-    m = box(m, 0, 24, 110, 206, 30, 186, roll=-14.0)        # leaning panel
+    m = box(m, 0, 0, 18, 246, 110, 36)                      # plinth
+    m = box(m, 0, 28, 108, 214, 36, 180, roll=-14.0)        # leaning panel
     for sx in (-1, 1):
-        m = box(m, sx * 104, 12, 96, 22, 46, 168, roll=-14.0)   # edge frames
-    cut = box(new_mesh(), 0, 24, 120, 150, 44, 96, roll=-14.0)
+        m = box(m, sx * 110, 16, 96, 26, 52, 176, roll=-14.0)
+    cut = box(new_mesh(), 0, 28, 118, 156, 48, 100, roll=-14.0)
     m = subtract(m, cut)
-    m = box(m, 0, 24, 120, 150, 18, 96, roll=-14.0)         # recessed inner panel, set back
+    m = box(m, 0, 26, 118, 156, 16, 100, roll=-14.0)        # recessed inner panel
+    m = box(m, 0, 18, 198, 220, 48, 14, roll=-14.0)         # top rail
     return bevel(m, 3.0)
 
 
 def cover_pod():
-    """Cover C — technical pod. Chunky arena equipment: stacked masses and side fins."""
+    """Cover C — pitchside equipment cabinet. Stacked masses, side handles, a collar on top."""
     m = new_mesh()
-    m = box(m, 0, 0, 20, 168, 168, 40)        # base
-    m = box(m, 0, 0, 88, 140, 140, 100)       # main mass
-    m = box(m, 0, 0, 148, 172, 172, 22)       # overhanging cap
+    m = box(m, 0, 0, 18, 176, 176, 36)        # base
+    m = box(m, 0, 0, 86, 136, 136, 104)       # cabinet
+    m = box(m, 0, 0, 146, 168, 168, 18)       # overhanging lid
+    m = cyl(m, 0, 0, 154, 48, 36, steps=12)   # collar, where the energy cap sits
     for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        m = box(m, sx * 78, sy * 78, 86, 14 if sx else 120, 120 if sx else 14, 76)  # fins
+        m = box(m, sx * 82, sy * 82, 86, 16 if sx else 110, 110 if sx else 16, 70)
     for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        cut = box(new_mesh(), sx * 66, sy * 66, 96, 26 if sx else 84, 84 if sx else 26, 44)
+        cut = box(new_mesh(), sx * 64, sy * 64, 92, 24 if sx else 80, 80 if sx else 24, 48)
         m = subtract(m, cut)
     return bevel(m, 4.0)
 
 
 def cover_pylon():
-    """Cover D — vertical panel. Tall, narrow, fluted; reads at range and gives head cover."""
+    """Cover D — venue totem. Stepped base, fluted shaft, a ring under the cap for the energy band."""
     m = new_mesh()
-    m = box(m, 0, 0, 14, 124, 124, 28)        # foot
-    m = box(m, 0, 0, 140, 78, 78, 240)        # column
-    m = box(m, 0, 0, 268, 108, 108, 20)       # cap
+    m = box(m, 0, 0, 16, 140, 140, 32)        # foot
+    m = box(m, 0, 0, 42, 108, 108, 22)        # step
+    m = box(m, 0, 0, 150, 72, 72, 216)        # shaft
+    m = box(m, 0, 0, 262, 96, 96, 14)         # energy ring seat
+    m = box(m, 0, 0, 278, 112, 112, 22)       # cap
     for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        cut = box(new_mesh(), sx * 38, sy * 38, 150, 14 if sx else 34, 34 if sx else 14, 190)
+        cut = box(new_mesh(), sx * 36, sy * 36, 150, 16 if sx else 32, 32 if sx else 16, 180)
         m = subtract(m, cut)
     return bevel(m, 3.0)
 
 
 def cover_bench():
-    """Cover E — long low run. Fills lanes without adding another silhouette to parse."""
+    """Cover E — lane divider. A long low run with a backboard, so it reads as furniture not a crate."""
     m = new_mesh()
-    m = box(m, 0, 0, 10, 460, 110, 20)
-    m = box(m, 0, 0, 46, 430, 84, 56)
-    m = box(m, 0, 0, 80, 450, 100, 14)
+    m = box(m, 0, 0, 10, 480, 118, 20)        # plinth
+    m = box(m, 0, 0, 48, 448, 88, 58)         # seat / body
+    m = box(m, 0, -28, 92, 448, 22, 54)       # backboard, offset to one long edge
+    m = box(m, 0, 0, 82, 468, 104, 12)        # capping rail
     for i in (-1, 0, 1):
-        m = box(m, i * 150, 0, 44, 18, 116, 62)   # transverse ribs
+        m = box(m, i * 160, 0, 46, 20, 124, 68)
+    for sx in (-1, 1):
+        m = box(m, sx * 236, 0, 50, 22, 118, 80)
     return bevel(m, 3.0)
 
 
@@ -372,6 +381,47 @@ def deck_slab():
         m = box(m, i * 260, 0, -44, 60, 800, 46)      # underside ribs
     m = box(m, 0, 0, 30, 1160, 760, 16)               # walking surface, inset
     return bevel(m, 3.0)
+
+
+def deck_ramp():
+    """Walkable mezzanine ramp. Origin at the foot, +X up the run, walking surface on top.
+
+    Authored already pitched, so the builder places it at the foot with yaw only — no actor pitch,
+    which is what made the previous three-box ramp photograph as a fallen slab. Rise 278, run 380,
+    width 340: those numbers are the deck's inner edge minus the dais clearance, and they keep the
+    slope at 36 degrees, under the pawn's 44.4 walkable limit.
+    """
+    run, rise, width = 380.0, 278.0, 340.0
+    pitch = math.degrees(math.atan2(rise, run))
+    length = math.hypot(run, rise)
+    m = new_mesh()
+    m = box(m, run * 0.5, 0, rise * 0.5, length, width, 32, pitch=pitch)
+    for sy in (-1, 1):
+        m = box(m, run * 0.5, sy * (width * 0.5 - 14), rise * 0.5 + 48,
+                length, 28, 88, pitch=pitch)
+        m = box(m, run * 0.5, sy * (width * 0.5 - 14), rise * 0.5 + 94,
+                length, 34, 12, pitch=pitch)           # rail cap, energy strip sits on this
+    for i in range(4):
+        t = (i + 1) / 5.0
+        m = box(m, run * t, 0, rise * t - 24, 30, width - 40, 36, pitch=pitch)
+    m = box(m, 10, 0, 22, 20, width + 8, 44)           # kick plate at the foot
+    m = box(m, run - 8, 0, rise + 16, 24, width, 20, pitch=pitch)  # landing nosing
+    return bevel(m, 3.0)
+
+
+def scoreboard():
+    """League board. 20 m wide, recessed face, side ears. Type sits in the recess."""
+    m = new_mesh()
+    m = box(m, 0, 0, 0, 2000, 36, 360)                 # body
+    cut = box(new_mesh(), 0, -12, 8, 1760, 28, 260)
+    m = subtract(m, cut)
+    m = box(m, 0, 6, 8, 1780, 16, 280)                 # back panel, the face type sits in front of
+    for sx in (-1, 1):
+        m = box(m, sx * 1020, 0, 0, 56, 48, 380)
+        m = box(m, sx * 1020, 0, 200, 64, 56, 28)      # ear caps
+    m = box(m, 0, 0, 196, 2040, 44, 24)                # top lintel
+    m = box(m, 0, 0, -196, 2040, 44, 24)               # bottom lintel
+    return bevel(m, 4.0)
 
 
 def railing():
@@ -570,6 +620,8 @@ MODULES = [
     ("SM_PhotonCoreLantern", core_lantern, False),
     ("SM_PhotonCoreGlow", core_glow, False),
     ("SM_PhotonDeckSlab", deck_slab, True),
+    ("SM_PhotonDeckRamp", deck_ramp, True),
+    ("SM_PhotonScoreboard", scoreboard, False),
     ("SM_PhotonRailing", railing, True),
     ("SM_PhotonPedestal", pedestal, True),
     ("SM_PhotonSpawnGate", spawn_gate, True),
@@ -596,6 +648,8 @@ for name, fn, collide in MODULES:
     except Exception as exc:
         say("  %-28s EXCEPTION %s: %s" % (name, type(exc).__name__, exc))
 say("built %d/%d" % (ok, len(MODULES)))
+for line in report:
+    print("PHOTONKIT %s" % line)
 
 with open(unreal.Paths.project_saved_dir() + "Logs/photon_mesh_kit.txt", "w") as f:
     f.write("\n".join(report))

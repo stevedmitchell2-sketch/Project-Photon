@@ -245,20 +245,28 @@ def text_sign(loc, label, text, yaw, size, colour):
         c.set_world_size(size)
         c.set_text_render_color(colour)
         # The engine's own enum is misspelled ("Aligment") and its members carry the EHTA_/EVRTA_
-        # prefixes, so the obvious `HorizTextAligment.CENTER` does not exist. The first attempt
-        # tried exactly that inside a hasattr guard, which meant every sign silently kept the
-        # default left/bottom alignment: "PHOTON LEAGUE" started at the middle of the scoreboard
-        # and ran off its right edge. Candidates, and a report when none of them land.
+        # prefixes. Try every known spelling, then fall back to the integer (Center=1, TextCenter=2).
+        aligned = False
         for enum_name, setter, members in (
-                ("HorizTextAligment", "set_horizontal_alignment", ("EHTA_CENTER", "CENTER")),
+                ("HorizTextAligment", "set_horizontal_alignment",
+                 ("EHTA_CENTER", "CENTER", "Center")),
                 ("VerticalTextAligment", "set_vertical_alignment",
-                 ("EVRTA_TEXT_CENTER", "TEXT_CENTER"))):
+                 ("EVRTA_TEXT_CENTER", "TEXT_CENTER", "TextCenter"))):
             enum = getattr(unreal, enum_name, None)
             member = next((m for m in members if enum is not None and hasattr(enum, m)), None)
             if member:
                 getattr(c, setter)(getattr(enum, member))
+                aligned = True
             else:
-                say("text_sign %s: no %s member among %s" % (label, enum_name, list(members)))
+                try:
+                    c.set_editor_property(
+                        "horizontal_alignment" if "Horiz" in enum_name else "vertical_alignment",
+                        1 if "Horiz" in enum_name else 2)
+                    aligned = True
+                except Exception:
+                    say("text_sign %s: no %s member among %s" % (label, enum_name, list(members)))
+        if aligned:
+            say("text_sign %s aligned size=%.0f" % (label, size))
         return a
     except Exception as exc:
         say("text_sign %s failed: %s" % (label, exc))
@@ -573,10 +581,10 @@ for i, (x, y) in enumerate([(-2300, 0), (2300, 0), (0, -2300), (0, 2300),
         unreal.LinearColor(0.72, 0.83, 1.0, 1.0), 2.2)
 
 # --- 8. Centre: the competition anchor ------------------------------------------------------------
-place("SM_PhotonCentreDais", (0, 0, 0), "CentreDais", "cover", dim(COVER_COL, 0.85))
+place("SM_PhotonCentreDais", (0, 0, 0), "CentreDais", "cover", dim(COVER_COL, 0.50))
 place("SM_PhotonCentreRing", (0, 0, 27), "Energy_CentreRing", "energy", dim(NEON, 0.75), 2.6)
-place("SM_PhotonCoverPylon", (0, 0, 28), "Beacon_Centre", "cover", COVER_COL, scale=0.95)
-box((0, 0, 300), (0.98, 0.98, 0.10), "Energy_BeaconTop", "energy", NEON, 4.0)
+# No floor beacon. The Core above is the landmark, and a 2.8 m pylon on the dais was the thing
+# that ate the left half of "PHOTON LEAGUE" from spawn and from centre court.
 
 # The overhead half of the anchor, now suspended at 10 m inside the colonnade rather than sitting
 # just under a 10 m lid. Cables run on up to the truss so the eye follows it to the roof.
@@ -637,11 +645,20 @@ for q in range(4):
         wx, wy = x * ca - y * sa, x * sa + y * ca
         place(asset, (wx, wy, 0), "Cover_%s_%d" % (kind, q), "cover", COVER_COL, yaw=yaw + q * 90.0)
         if kind == "Low":
-            box((wx, wy, 114), (2.6, 0.9, 0.05), "Energy_CoverTrim_%d" % q, "energy",
+            box((wx, wy, 112), (2.7, 0.96, 0.05), "Energy_CoverTrim_%d" % q, "energy",
                 dim(NEON, 0.55), 1.5, yaw=yaw + q * 90.0)
         if kind == "Pylon":
-            box((wx, wy, 280), (1.0, 1.0, 0.08), "Energy_PylonCap_%d" % q, "energy",
+            box((wx, wy, 262), (0.96, 0.96, 0.06), "Energy_PylonCap_%d" % q, "energy",
                 dim(NEON, 0.6), 2.0, yaw=yaw + q * 90.0)
+        if kind == "Pod":
+            box((wx, wy, 176), (0.9, 0.9, 0.08), "Energy_PodCollar_%d" % q, "energy",
+                dim(NEON, 0.65), 2.2, yaw=yaw + q * 90.0)
+        if kind == "Bench":
+            box((wx, wy, 92), (4.5, 0.22, 0.05), "Energy_BenchRail_%d" % q, "energy",
+                dim(NEON, 0.5), 1.4, yaw=yaw + q * 90.0)
+        if kind == "Angled":
+            box((wx, wy, 198), (2.1, 0.48, 0.05), "Energy_ShieldRail_%d" % q, "energy",
+                dim(NEON, 0.55), 1.5, yaw=yaw + q * 90.0)
 
 # --- 10. Verticality: two elevated decks on the diagonal -------------------------------------------
 # Apex is two-fold, and its mezzanine is a pair of corner brackets rather than a ring. Two decks on
@@ -685,22 +702,16 @@ for name, base_ang in (("NE", 45.0), ("SW", 225.0)):
         place("SM_PhotonRailing", to_world(600, ly, MEZZ + 38), "Railing_%s_End_%d" % (name, ly),
               "metal", METAL_COL, yaw=base_ang + 90.0)
 
-    # A box yawed by `a` and pitched by `p` sends its local +X along
-    # (cos a cos p, sin a cos p, sin p), which is exactly "radially outward and up".
     run = (DECK_R - 600.0) - RAMP_FOOT
     pitch = math.degrees(math.atan2(DECK_TOP, run))
-    length = math.hypot(run, DECK_TOP)
+    fx, fy = on_circle(RAMP_FOOT, base_ang)
+    place("SM_PhotonDeckRamp", (fx, fy, 0), "DeckRamp_%s" % name, "cover", dim(COVER_COL, 0.7),
+          yaw=base_ang)
     mx, my = on_circle(RAMP_FOOT + run * 0.5, base_ang)
-    box((mx, my, DECK_TOP * 0.5), (length / 100.0, RAMP_HALF_W * 2 / 100.0, 0.3),
-        "DeckRamp_%s" % name, "cover", dim(COVER_COL, 0.6), yaw=base_ang, pitch=pitch)
-    # Solid balustrades rather than a bare deck. A pitched slab on its own photographs as a fallen
-    # panel — it needs two edges running up with it before it reads as a ramp.
     for sy in (-1.0, 1.0):
-        ox, oy = -sy * RAMP_HALF_W * sa, sy * RAMP_HALF_W * ca
-        box((mx + ox, my + oy, DECK_TOP * 0.5 + 52), (length / 100.0, 0.24, 0.86),
-            "DeckRampWall_%s_%d" % (name, sy), "cover", dim(COVER_COL, 0.75),
-            yaw=base_ang, pitch=pitch)
-        box((mx + ox, my + oy, DECK_TOP * 0.5 + 96), (length / 100.0, 0.30, 0.06),
+        ox, oy = -sy * (RAMP_HALF_W - 14.0) * sa, sy * (RAMP_HALF_W - 14.0) * ca
+        box((mx + ox, my + oy, DECK_TOP * 0.5 + 94),
+            (math.hypot(run, DECK_TOP) / 100.0, 0.34, 0.08),
             "Energy_RampEdge_%s_%d" % (name, sy), "energy", dim(NEON, 0.5), 1.4,
             yaw=base_ang, pitch=pitch)
     box(to_world(0, 0, MEZZ + 66), (11.4, 0.14, 0.06), "Energy_DeckEdge_%s" % name, "energy",
@@ -805,24 +816,17 @@ for i, (x, y) in enumerate([(620, 980), (-980, 620), (-620, -980), (980, -620), 
 
 # --- 14. Signage, scoreboards, branding --------------------------------------------------------------
 
-# The wall's visible inner face is at HALF, and the bay ribs stand 37 uu proud of it, so the board
-# has to be mounted in front of 1963 or it is a scoreboard installed inside a wall. The previous
-# build offset it the wrong way and buried all three layers.
-for i, (x, wall_y, yaw) in enumerate([(0.0, HALF, 0.0), (0.0, -HALF, 180.0)]):
+# Authored 20 m board, recessed face. The previous three-box board was 11.6 m and the glyph at
+# world-size 104 was ~7.4 m wide, so even centred it ran off the right ear — and left-aligned it
+# started at the middle and lost "PHO". 20 m of recess plus a 78-high glyph (~5.6 m) leaves margin
+# either way. The floor beacon that used to sit in front of it is gone.
+for i, (wall_y, yaw) in enumerate(((HALF, 0.0), (-HALF, 180.0))):
     inward = -1.0 if wall_y > 0 else 1.0
-    box((x, wall_y + inward * 45.0, 640), (11.6, 0.22, 3.1), "ScoreboardFrame_%d" % i, "metal",
-        METAL_COL, yaw=yaw)
-    box((x, wall_y + inward * 52.0, 640), (11.0, 0.18, 2.8), "SignageBody_%d" % i, "structure",
-        STRUCTURE_LIGHT, yaw=yaw)
-    box((x, wall_y + inward * 60.0, 640), (10.2, 0.08, 2.2), "ScoreboardFace_%d" % i, "energy",
-        dim(NEON, 0.18), 0.7, yaw=yaw)
+    place("SM_PhotonScoreboard", (0.0, wall_y + inward * 70.0, 640.0), "Scoreboard_%d" % i,
+          "metal", dim(METAL_COL, 1.15), yaw=yaw)
+    box((0.0, wall_y + inward * 92.0, 648.0), (17.6, 0.06, 2.6), "ScoreboardFace_%d" % i, "energy",
+        dim(NEON, 0.22), 1.1, yaw=yaw)
 
-# Real type on the board. The previous build hedged on UTextRenderComponent's forward axis by
-# spawning each sign twice, at yaw 90 and 270, on the same spot — hoping the wrong one would be
-# swallowed by the panel behind. A text render is a flat double-sided quad with nothing between the
-# two copies, so instead both drew and the tour caught "PHOTON LEAGUE" superimposed on its own
-# mirror image. One actor per sign now.
-#
 # UTextRenderComponent lays its glyphs out in the local YZ plane advancing along -Y, so a reader has
 # to be standing on the actor's local +X side: local +X points at the audience. TEXT_FACES is the
 # one place to flip if a render comes back mirrored.
@@ -836,10 +840,10 @@ def wall_text(loc, label, text, size, colour):
 
 
 BRANDING = [
-    ((0.0, HALF - 68.0, 686.0), "PHOTON LEAGUE", 104.0, cool(160, 230, 255)),
-    ((0.0, HALF - 68.0, 572.0), "APEX  DIVISION  ONE", 50.0, cool(120, 180, 215)),
-    ((0.0, -(HALF - 68.0), 686.0), "PHOTON LEAGUE", 104.0, cool(160, 230, 255)),
-    ((0.0, -(HALF - 68.0), 572.0), "CHAMPIONSHIP  FINALS", 50.0, cool(120, 180, 215)),
+    ((0.0, HALF - 96.0, 700.0), "PHOTON LEAGUE", 78.0, cool(210, 240, 255)),
+    ((0.0, HALF - 96.0, 590.0), "APEX  DIVISION  ONE", 38.0, cool(150, 200, 230)),
+    ((0.0, -(HALF - 96.0), 700.0), "PHOTON LEAGUE", 78.0, cool(210, 240, 255)),
+    ((0.0, -(HALF - 96.0), 590.0), "CHAMPIONSHIP  FINALS", 38.0, cool(150, 200, 230)),
 ]
 for i, (loc, text, size, colour) in enumerate(BRANDING):
     wall_text(loc, "Signage_Text_%d" % i, text, size, colour)

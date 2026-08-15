@@ -351,6 +351,9 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("Energy_BeaconTop"),EPhotonSurface::Energy,   Neon,                              5.0f },
 		{ TEXT("Energy_CoverTrim"),EPhotonSurface::Energy,   Neon * 0.55f,                      1.5f },
 		{ TEXT("Energy_PylonCap"),EPhotonSurface::Energy,    Neon * 0.6f,                       2.0f },
+		{ TEXT("Energy_PodCollar"),EPhotonSurface::Energy,   Neon * 0.65f,                      2.2f },
+		{ TEXT("Energy_BenchRail"),EPhotonSurface::Energy,   Neon * 0.5f,                       1.4f },
+		{ TEXT("Energy_ShieldRail"),EPhotonSurface::Energy,  Neon * 0.55f,                      1.5f },
 		{ TEXT("Energy_CofferPanel"),EPhotonSurface::Energy, FLinearColor(0.72f, 0.83f, 1.0f),  2.2f },
 		{ TEXT("Energy_CeilGrid"),EPhotonSurface::Energy,    FLinearColor(0.62f, 0.76f, 1.0f),  1.5f },
 		{ TEXT("Energy_CeilPanel"),EPhotonSurface::Energy,   FLinearColor(0.20f, 0.25f, 0.34f), 0.85f },
@@ -384,7 +387,8 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("LaneMark_"),      EPhotonSurface::Energy,    Neon * 0.55f,                      1.1f },
 		// A dead black rectangle is not a scoreboard. This is the brightest large surface in the
 		// arena on purpose: it is the thing you look at from spawn.
-		{ TEXT("ScoreboardFace"), EPhotonSurface::Energy,    Neon * 0.30f,                      1.5f },
+		{ TEXT("ScoreboardFace"), EPhotonSurface::Energy,    Neon * 0.22f,                      1.1f },
+		{ TEXT("Scoreboard"),     EPhotonSurface::Metal,     Steel * 1.15f,                     0.0f },
 		{ TEXT("Signage_"),       EPhotonSurface::Energy,    Neon * 0.22f,                      0.55f },
 
 		// --- Structural metal: trusses, railings, the overhead rig, deck columns. ----------------

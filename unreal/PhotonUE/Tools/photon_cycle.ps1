@@ -49,7 +49,7 @@ function Run-Py($path, $filter) {
 
 if ($Kit) {
     Section "MESH KIT"
-    Run-Py (Join-Path $PSScriptRoot "photon_mesh_kit.py") "built |FAILED|EXCEPTION|Traceback|Error:"
+    Run-Py (Join-Path $PSScriptRoot "photon_mesh_kit.py") "PHOTONKIT|built |FAILED|EXCEPTION|Traceback|Error:"
 }
 
 if ($Arena) {
@@ -84,17 +84,12 @@ function Wait-Shots($pattern, $expected, $minutes) {
         Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
 }
 
-# The VSM non-Nanite overflow warning prints itself across the top of every captured frame, which
-# both spoils the render and skews any measurement taken from it. It is advisory — the arena is
-# authored non-Nanite on purpose — so it is silenced for captures only, not for normal play.
-$QuietHud = "-ExecCmds=r.Shadow.Virtual.AllowScreenOverflowMessages 0"
-
 if ($Tour) {
     Section "TOUR"
     Remove-Item "$ShotDir\Photon_0*.png", "$ShotDir\Photon_1*.png" -Force -EA SilentlyContinue
     Start-Process -FilePath $UE -ArgumentList "`"$PROJ`"", $MAP, "-game", "-windowed",
-        "-ResX=1600", "-ResY=900", "-PhotonTour", $QuietHud, "-log"
-    Wait-Shots "Photon_*.png" 11 4
+        "-ResX=1600", "-ResY=900", "-PhotonTour", "-log"
+    Wait-Shots "Photon_*.png" 11 5
 }
 
 if ($Shot) {
