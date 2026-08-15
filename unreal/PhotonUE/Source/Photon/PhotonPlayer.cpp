@@ -2529,7 +2529,74 @@ namespace
 		{ TEXT("06_ArenaCorner"),   FVector(1150.f, -1150.f, 150.f), FRotator(6.f, -46.f, 0.f) },
 		{ TEXT("07_WeaponView"),    FVector(240.f, -1420.f, 150.f),  FRotator(-6.f, 78.f, 0.f) },
 		{ TEXT("08_TeamSpawn"),     FVector(820.f, 120.f, 150.f),    FRotator(0.f, -8.f, 0.f) },
+		// Added with the bowl: the venue is mostly above the containment wall, and the eight poses
+		// above all look at the floor, so none of them could ever show whether it landed.
+		{ TEXT("09_CentreAnchor"),  FVector(0.f, -1120.f, 150.f),    FRotator(14.f, 90.f, 0.f) },
+		{ TEXT("10_NorthBowl"),     FVector(0.f, 500.f, 150.f),      FRotator(24.f, 90.f, 0.f) },
+		// Aimed at the Champion's Walk, which is 15 m up on the west shelf. From -900 at 18 degrees
+		// the frame was filled by the Green spawn gate and the wall behind it, so the one landmark
+		// this pose exists to photograph was never in it.
+		{ TEXT("11_WalkColonnade"), FVector(-40.f, 0.f, 150.f),      FRotator(27.f, 180.f, 0.f) },
 	};
+}
+
+void APhotonGameMode::PreparePhotonTourView()
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	APhotonCharacter* Character = PC ? Cast<APhotonCharacter>(PC->GetPawn()) : nullptr;
+	if (!Character)
+	{
+		return;
+	}
+
+	// The virtual shadow map's non-Nanite overflow warning draws itself across the top of the
+	// viewport, so it lands in the captures and in any measurement taken from them. Passing the
+	// CVar on the command line silenced it only intermittently; setting it here, on the frame the
+	// tour starts, is deterministic. The arena is authored non-Nanite by choice, so the warning has
+	// nothing to tell us.
+	if (IConsoleVariable* Overflow = IConsoleManager::Get().FindConsoleVariable(
+			TEXT("r.Shadow.Virtual.AllowScreenOverflowMessages")))
+	{
+		Overflow->Set(0, ECVF_SetByCode);
+	}
+
+	// The tour is a survey of the architecture, and the third-person rig is the wrong instrument for
+	// it: the camera trails 450 uu behind the pawn, so every viewpoint in the table was photographed
+	// from 4.5 m behind where it was written, half of them from inside a cover volume, with the hero
+	// filling the near third of the frame. Collapsing the arm onto the pawn origin makes the
+	// viewpoint table mean what it says.
+	if (Character->SpringArm)
+	{
+		Character->SpringArm->TargetArmLength = 0.f;
+		Character->SpringArm->SocketOffset = FVector::ZeroVector;
+		Character->SpringArm->TargetOffset = FVector::ZeroVector;
+		Character->SpringArm->bDoCollisionTest = false;
+	}
+	if (USkeletalMeshComponent* Body = Character->GetMesh())
+	{
+		Body->SetHiddenInGame(true);
+		Body->SetVisibility(false, true);
+	}
+	if (Character->ThirdPersonWeaponMesh)
+	{
+		Character->ThirdPersonWeaponMesh->SetHiddenInGame(true);
+		Character->ThirdPersonWeaponMesh->SetVisibility(false, true);
+	}
+	if (Character->Camera)
+	{
+		TArray<USceneComponent*> CamKids;
+		Character->Camera->GetChildrenComponents(true, CamKids);
+		for (USceneComponent* Kid : CamKids)
+		{
+			if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Kid))
+			{
+				Prim->SetHiddenInGame(true);
+				Prim->SetVisibility(false, true);
+			}
+		}
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTOUR camera cleared, kids_hidden=%d"), CamKids.Num());
+	}
 }
 
 void APhotonGameMode::StepPhotonTour()
@@ -2539,6 +2606,11 @@ void APhotonGameMode::StepPhotonTour()
 		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONTOUR complete, exiting"));
 		FPlatformMisc::RequestExit(false);
 		return;
+	}
+
+	if (TourIndex == 0)
+	{
+		PreparePhotonTourView();
 	}
 
 	const FPhotonViewpoint& View = PhotonTour[TourIndex];

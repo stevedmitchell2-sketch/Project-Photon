@@ -1,69 +1,49 @@
-"""Report spawn orientation, lighting actors and Photon material wiring for the visual sprint.
+"""Report what is actually standing in the play space, and how big it is.
 
-Writes to Saved/Logs/photon_probe.txt: unreal.log Display output is swallowed when running as a
-commandlet, so the report goes to a file rather than the engine log.
+Written because a tour frame came back with an unidentified wall filling two thirds of it and no
+amount of reading the build script found the culprit. Listing bounds is faster than guessing.
 """
 import unreal
 
 MAP = "/Game/Photon/Maps/L_PhotonGrey"
-OUT = unreal.Paths.project_saved_dir() + "Logs/photon_probe.txt"
-
-lines = []
-
-
-def say(text):
-    lines.append(text)
-
+PLAY_HALF = 2000.0
+EYE = 190.0
 
 unreal.EditorLoadingAndSavingUtils.load_map(MAP)
-
 subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-actors = subsys.get_all_level_actors()
-say("total_actors=%d" % len(actors))
 
-for a in actors:
-    if isinstance(a, unreal.PlayerStart):
-        r = a.get_actor_rotation()
-        say("playerstart label=%s loc=%s roll=%.1f pitch=%.1f yaw=%.1f"
-            % (a.get_actor_label(), a.get_actor_location(), r.roll, r.pitch, r.yaw))
-    elif isinstance(a, unreal.DirectionalLight):
-        r = a.get_actor_rotation()
-        say("dirlight label=%s intensity=%.3f pitch=%.1f yaw=%.1f mobility=%s"
-            % (a.get_actor_label(), a.light_component.intensity, r.pitch, r.yaw,
-               a.light_component.mobility))
-    elif isinstance(a, unreal.SkyLight):
-        say("skylight label=%s intensity=%.3f" % (a.get_actor_label(), a.light_component.intensity))
-    elif isinstance(a, unreal.PostProcessVolume):
-        say("postprocess label=%s unbound=%s" % (a.get_actor_label(), a.unbound))
-    elif isinstance(a, unreal.ExponentialHeightFog):
-        say("fog label=%s" % a.get_actor_label())
-    elif isinstance(a, unreal.SkyAtmosphere):
-        say("skyatmosphere label=%s" % a.get_actor_label())
-
-for name in ["M_PhotonSurface", "M_PhotonFloor", "M_PhotonCover", "M_PhotonGlow"]:
-    path = "/Game/Photon/Materials/%s" % name
-    mat = unreal.EditorAssetLibrary.load_asset(path)
-    if not mat:
-        say("material MISSING %s" % name)
+lines = []
+occluders = []
+for a in subsys.get_all_level_actors():
+    if not isinstance(a, unreal.StaticMeshActor):
         continue
-    mel = unreal.MaterialEditingLibrary
-    vectors = [str(p) for p in mel.get_vector_parameter_names(mat)]
-    scalars = [str(p) for p in mel.get_scalar_parameter_names(mat)]
-    say("material %s shading=%s vectors=%s scalars=%s"
-        % (name, mat.get_editor_property("shading_model"), vectors, scalars))
-    for p in mel.get_vector_parameter_names(mat):
-        say("  %s.%s default=%s" % (name, p, mel.get_material_default_vector_parameter_value(mat, p)))
-    for p in mel.get_scalar_parameter_names(mat):
-        say("  %s.%s default=%s" % (name, p, mel.get_material_default_scalar_parameter_value(mat, p)))
-
-sampled = 0
-for a in actors:
-    if not isinstance(a, unreal.StaticMeshActor) or sampled >= 10:
+    origin, extent = a.get_actor_bounds(False)
+    # Inside the play space, tall enough to block a standing player, and not the floor.
+    if abs(origin.x) > PLAY_HALF or abs(origin.y) > PLAY_HALF:
         continue
-    smc = a.static_mesh_component
-    m0 = smc.get_material(0)
-    say("actor %s material0=%s" % (a.get_actor_label(), m0.get_name() if m0 else "None"))
-    sampled += 1
+    if origin.z - extent.z > EYE or origin.z + extent.z < 40.0:
+        continue
+    if extent.z < 40.0:
+        continue
+    occluders.append((extent.x * extent.y * extent.z, a.get_actor_label(), origin, extent))
 
-with open(OUT, "w") as f:
+occluders.sort(reverse=True, key=lambda t: t[0])
+lines.append("=== volumes inside the play space that block eye height, largest first ===")
+for _vol, label, o, e in occluders[:30]:
+    lines.append("  %-28s at (%7.0f %7.0f %7.0f)  half-extent (%6.0f %6.0f %6.0f)"
+                 % (label, o.x, o.y, o.z, e.x, e.y, e.z))
+
+lines.append("")
+lines.append("=== anything at all within 1100 uu of the centre dais ===")
+for a in subsys.get_all_level_actors():
+    if not isinstance(a, unreal.StaticMeshActor):
+        continue
+    o, e = a.get_actor_bounds(False)
+    if o.x * o.x + o.y * o.y < 1100.0 * 1100.0 and o.z < 1200.0:
+        lines.append("  %-28s at (%7.0f %7.0f %7.0f)  half-extent (%6.0f %6.0f %6.0f)"
+                     % (a.get_actor_label(), o.x, o.y, o.z, e.x, e.y, e.z))
+
+for line in lines:
+    unreal.log("PHOTONPROBE %s" % line)
+with open(unreal.Paths.project_saved_dir() + "Logs/photon_arena_probe.txt", "w") as f:
     f.write("\n".join(lines))

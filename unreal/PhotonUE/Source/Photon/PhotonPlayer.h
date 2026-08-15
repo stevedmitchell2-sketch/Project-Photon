@@ -324,6 +324,9 @@ protected:
 	void StepPhotonTour();
 	void CaptureTourShot();
 
+	/** Collapse the chase rig onto the pawn origin and hide the hero, so the tour photographs the arena. */
+	void PreparePhotonTourView();
+
 	/** -PhotonPerf: sample FPS / frame times after the level settles, then exit. */
 	void StartPhotonPerfSample();
 	void TickPhotonPerfSample();
