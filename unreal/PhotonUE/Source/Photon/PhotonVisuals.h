@@ -88,12 +88,25 @@ namespace PhotonVisuals
 	PHOTON_API void BootstrapArenaVisuals(UWorld* World);
 
 	/**
-	 * Cheap runtime performance hygiene for the arena (no gameplay changes).
+	 * Inventory-only arena performance probe (no BeginPlay light culling).
 	 *
-	 * Always counts lights/shadow casters. When bApplyFixes is true, clamps Virtual Shadow Map
-	 * pressure from non-Nanite greybox (seen as VSM overflow in PhotonTour).
+	 * Light configuration is authored by Tools/build_photon_arena.py. bApplyFixes is retained for
+	 * call-site compatibility but is ignored.
 	 */
 	PHOTON_API FString BootstrapArenaPerformance(UWorld* World, bool bApplyFixes = true);
+
+	/**
+	 * Temporary rendering A/B probes (command-line only; does not save the map).
+	 *
+	 *   -PhotonABDirShadowOff  → DirectionalLight CastShadows = false
+	 *   -PhotonABLumenOff      → r.DynamicGlobalIlluminationMethod 0, r.ReflectionMethod 0
+	 *
+	 * Mutually exclusive by convention — callers must not pass both.
+	 */
+	PHOTON_API FString ApplyRenderingABProbe(UWorld* World);
+
+	/** Classify StaticMeshActors for the 202-mesh inventory (logged once). */
+	PHOTON_API void LogStaticMeshActorClassification(UWorld* World);
 
 	/**
 	 * Third-person Mixamo hero materials: dark metal shell + team-colour energy accents.

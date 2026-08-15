@@ -15,21 +15,23 @@
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "PhotonCore.h"
 #include "PhotonPlayer.h"
 #include "PhotonWeapon.h"
 
 static TAutoConsoleVariable<float> CVarPhotonExposure(
-	TEXT("photon.Exposure"), 18.f,
+	TEXT("photon.Exposure"), 12.f,
 	TEXT("Fixed arena exposure. Min and max adaptation are both pinned to this, which disables eye "
 		 "adaptation. Higher is darker."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<float> CVarPhotonExposureBias(
-	TEXT("photon.ExposureBias"), 0.f, TEXT("Arena exposure compensation in stops."), ECVF_Default);
+	TEXT("photon.ExposureBias"), 0.35f, TEXT("Arena exposure compensation in stops."), ECVF_Default);
 
 static TAutoConsoleVariable<float> CVarPhotonBloom(
-	TEXT("photon.Bloom"), 0.22f, TEXT("Arena bloom intensity (kept low for FPS)."), ECVF_Default);
+	TEXT("photon.Bloom"), 0.18f, TEXT("Arena bloom intensity (kept low for FPS)."), ECVF_Default);
 
 namespace
 {
@@ -84,22 +86,20 @@ namespace
 		switch (Role)
 		{
 		case EPhotonSurface::Floor:
-			MID->SetScalarParameterValue(TEXT("Roughness"), 0.68f);
+			MID->SetScalarParameterValue(TEXT("Roughness"), 0.78f);
 			MID->SetScalarParameterValue(TEXT("Metallic"), 0.f);
 			break;
 		case EPhotonSurface::Cover:
-			MID->SetScalarParameterValue(TEXT("Roughness"), 0.55f);
-			MID->SetScalarParameterValue(TEXT("Metallic"), 0.18f);
+			MID->SetScalarParameterValue(TEXT("Roughness"), 0.52f);
+			MID->SetScalarParameterValue(TEXT("Metallic"), 0.22f);
 			break;
 		case EPhotonSurface::Metal:
-			// Smooth and fully metallic. In an arena this dark, structural steel can only be told
-			// apart from graphite by how it catches the ceiling rig, not by its albedo.
-			MID->SetScalarParameterValue(TEXT("Roughness"), 0.34f);
-			MID->SetScalarParameterValue(TEXT("Metallic"), 0.85f);
+			MID->SetScalarParameterValue(TEXT("Roughness"), 0.30f);
+			MID->SetScalarParameterValue(TEXT("Metallic"), 0.88f);
 			break;
 		case EPhotonSurface::Structure:
-			MID->SetScalarParameterValue(TEXT("Roughness"), 0.64f);
-			MID->SetScalarParameterValue(TEXT("Metallic"), 0.f);
+			MID->SetScalarParameterValue(TEXT("Roughness"), 0.70f);
+			MID->SetScalarParameterValue(TEXT("Metallic"), 0.05f);
 			break;
 		case EPhotonSurface::Energy:
 		default:
@@ -151,15 +151,13 @@ UMaterialInterface* PhotonVisuals::GetEnergyMaterial()
 	return GetSurfaceMaterial(EPhotonSurface::Energy);
 }
 
-// Kept in step with Tools/build_photon_arena.py. The floor is authored much darker than it looks
-// like it should be: it is the only large surface facing the ceiling rig head on, so it collects
-// several times the light any vertical surface does, and at the previous 0.030 it still rendered as
-// the brightest thing in frame with cover reading darker than the ground beneath it.
-FLinearColor PhotonVisuals::Palette::Structure() { return FLinearColor(0.062f, 0.067f, 0.082f); }
-FLinearColor PhotonVisuals::Palette::Floor()     { return FLinearColor(0.022f, 0.025f, 0.033f); }
-FLinearColor PhotonVisuals::Palette::Cover()     { return FLinearColor(0.145f, 0.156f, 0.184f); }
-FLinearColor PhotonVisuals::Palette::Metal()     { return FLinearColor(0.085f, 0.092f, 0.108f); }
-FLinearColor PhotonVisuals::Palette::Energy()    { return FLinearColor(0.35f, 0.82f, 1.0f); }
+// Kept in step with Tools/build_photon_arena.py. Floor is darkest (faces the ceiling rig), cover
+// lifts clearly above it, structure sits between them as charcoal architecture.
+FLinearColor PhotonVisuals::Palette::Structure() { return FLinearColor(0.045f, 0.050f, 0.062f); }
+FLinearColor PhotonVisuals::Palette::Floor()     { return FLinearColor(0.014f, 0.016f, 0.022f); }
+FLinearColor PhotonVisuals::Palette::Cover()     { return FLinearColor(0.118f, 0.128f, 0.152f); }
+FLinearColor PhotonVisuals::Palette::Metal()     { return FLinearColor(0.070f, 0.076f, 0.092f); }
+FLinearColor PhotonVisuals::Palette::Energy()    { return FLinearColor(0.28f, 0.78f, 1.0f); }
 
 void PhotonVisuals::ApplyTint(UPrimitiveComponent* Component, FLinearColor Color, float EmissiveScale)
 {
@@ -337,6 +335,10 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("CenterMark"),     EPhotonSurface::Energy,    Neon,                              3.0f },
 		{ TEXT("LaneLine"),       EPhotonSurface::Energy,    Neon * 0.5f,                       0.9f },
 		{ TEXT("BoundaryLine"),   EPhotonSurface::Energy,    Neon,                              1.6f },
+		{ TEXT("CenterCircle"),   EPhotonSurface::Energy,    Neon * 0.65f,                      1.4f },
+		{ TEXT("HalfCourt"),      EPhotonSurface::Energy,    Neon * 0.45f,                      0.85f },
+		{ TEXT("LaneMark_"),      EPhotonSurface::Energy,    Neon * 0.55f,                      1.1f },
+		{ TEXT("ScoreboardFace"), EPhotonSurface::Energy,    Neon * 0.18f,                      0.7f },
 		{ TEXT("Signage_"),       EPhotonSurface::Energy,    Neon * 0.22f,                      0.55f },
 
 		// --- Structural metal: trusses, railings, the overhead rig, deck columns. ----------------
@@ -345,12 +347,17 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 		{ TEXT("Gantry"),         EPhotonSurface::Metal,     Steel,                             0.0f },
 		{ TEXT("CentreRig"),      EPhotonSurface::Metal,     Steel,                             0.0f },
 		{ TEXT("DeckColumn"),     EPhotonSurface::Metal,     Steel,                             0.0f },
+		{ TEXT("ScoreboardFrame"),EPhotonSurface::Metal,     Steel * 1.15f,                     0.0f },
 
 		// --- Cover volumes and the things the player stands on. ----------------------------------
 		{ TEXT("SpawnPad_Red"),   EPhotonSurface::Cover,     FLinearColor(0.16f, 0.030f, 0.023f),0.0f },
 		{ TEXT("SpawnPad_Green"), EPhotonSurface::Cover,     FLinearColor(0.026f, 0.152f, 0.067f),0.0f },
 		{ TEXT("SpawnPad_Blue"),  EPhotonSurface::Cover,     FLinearColor(0.032f, 0.088f, 0.16f),0.0f },
 		{ TEXT("SpawnPad_Yellow"),EPhotonSurface::Cover,     FLinearColor(0.16f, 0.128f, 0.019f),0.0f },
+		{ TEXT("TeamZone_Red"),   EPhotonSurface::Floor,     FLinearColor(0.055f, 0.012f, 0.010f),0.0f },
+		{ TEXT("TeamZone_Green"), EPhotonSurface::Floor,     FLinearColor(0.010f, 0.052f, 0.024f),0.0f },
+		{ TEXT("TeamZone_Blue"),  EPhotonSurface::Floor,     FLinearColor(0.012f, 0.030f, 0.060f),0.0f },
+		{ TEXT("TeamZone_Yellow"),EPhotonSurface::Floor,     FLinearColor(0.055f, 0.044f, 0.008f),0.0f },
 		{ TEXT("CentreDais"),     EPhotonSurface::Cover,     Palette::Cover() * 0.85f,          0.0f },
 		{ TEXT("Beacon"),         EPhotonSurface::Cover,     Palette::Cover(),                  0.0f },
 		{ TEXT("DeckSlab"),       EPhotonSurface::Cover,     Palette::Cover() * 0.9f,           0.0f },
@@ -386,6 +393,7 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 	};
 
 	int32 Retinted = 0;
+	int32 Unmatched = 0;
 	for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
 	{
 		AStaticMeshActor* Actor = *It;
@@ -399,14 +407,23 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 			continue;
 		}
 		const FString Identity = ArenaIdentity(Actor);
+		bool bMatched = false;
 		for (const FArenaRule& Rule : Rules)
 		{
 			if (Identity.Contains(Rule.Token))
 			{
 				ApplySurface(Mesh, Rule.Role, Rule.Color, Rule.Emissive);
 				++Retinted;
+				bMatched = true;
 				break;
 			}
+		}
+		if (!bMatched)
+		{
+			// Never leave BasicShapeMaterial white in the playable volume.
+			ApplySurface(Mesh, EPhotonSurface::Structure, Palette::Structure(), 0.f);
+			++Retinted;
+			++Unmatched;
 		}
 	}
 
@@ -414,14 +431,15 @@ void PhotonVisuals::BootstrapArenaVisuals(UWorld* World)
 	{
 		if (APhotonTarget* Target = *It; Target && Target->Mesh)
 		{
-			ApplyEnergyTint(Target->Mesh, PhotonTeamColor(Target->Team), 4.f);
+			ApplyEnergyTint(Target->Mesh, PhotonTeamColor(Target->Team), 5.f);
 			++Retinted;
 		}
 	}
 
 	UE_LOG(LogTemp, Display,
-		TEXT("[Photon] PHOTONVERIFY arena surfaces retinted=%d structure=%s floor=%s cover=%s energy=%s"),
-		Retinted,
+		TEXT("[Photon] PHOTONVERIFY arena surfaces retinted=%d unmatched_defaulted=%d "
+			 "structure=%s floor=%s cover=%s energy=%s"),
+		Retinted, Unmatched,
 		*GetNameSafe(GetSurfaceMaterial(EPhotonSurface::Structure)),
 		*GetNameSafe(GetSurfaceMaterial(EPhotonSurface::Floor)),
 		*GetNameSafe(GetSurfaceMaterial(EPhotonSurface::Cover)),
@@ -435,11 +453,18 @@ FString PhotonVisuals::BootstrapArenaPerformance(UWorld* World, bool bApplyFixes
 		return TEXT("skipped");
 	}
 
+	// Light configuration is authored by Tools/build_photon_arena.py. This path only inventories
+	// — it must not disable lights at BeginPlay (that was a temporary probe).
+	(void)bApplyFixes;
+
 	int32 RectLights = 0;
 	int32 SpotLights = 0;
 	int32 PointLights = 0;
 	int32 DirLights = 0;
 	int32 ShadowCasters = 0;
+	int32 StaticMeshes = 0;
+	int32 SkeletalMeshes = 0;
+	int32 VisibleSkel = 0;
 
 	auto CountLight = [&ShadowCasters](AActor* Actor, int32& Counter)
 	{
@@ -450,7 +475,7 @@ FString PhotonVisuals::BootstrapArenaPerformance(UWorld* World, bool bApplyFixes
 		++Counter;
 		if (const ULightComponent* Light = Actor->FindComponentByClass<ULightComponent>())
 		{
-			if (Light->CastShadows)
+			if (Light->IsVisible() && Light->Intensity > 0.f && Light->CastShadows)
 			{
 				++ShadowCasters;
 			}
@@ -473,26 +498,174 @@ FString PhotonVisuals::BootstrapArenaPerformance(UWorld* World, bool bApplyFixes
 	{
 		CountLight(*It, DirLights);
 	}
+	for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
+	{
+		++StaticMeshes;
+	}
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		TArray<USkeletalMeshComponent*> Skels;
+		(*It)->GetComponents<USkeletalMeshComponent>(Skels);
+		for (USkeletalMeshComponent* Skel : Skels)
+		{
+			++SkeletalMeshes;
+			if (Skel && Skel->IsVisible() && !Skel->bHiddenInGame)
+			{
+				++VisibleSkel;
+			}
+		}
+	}
 
 	int32 VsmState = -1;
 	if (IConsoleVariable* Vsm = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shadow.Virtual.Enable")))
 	{
-		// Measured: forcing VSM off regressed avg FPS (42.3 → 38.2 at 1280x720). Keep VSM on and
-		// attack movable-light count / non-Nanite coverage instead. bApplyFixes reserved for a
-		// future win that beats baseline.
-		if (bApplyFixes)
-		{
-			UE_LOG(LogTemp, Display,
-				TEXT("[Photon] PHOTONPERF fixes requested but VSM clamp skipped (prior regression)"));
-		}
 		VsmState = Vsm->GetInt();
+	}
+	int32 LumenState = -1;
+	if (IConsoleVariable* Lumen = IConsoleManager::Get().FindConsoleVariable(
+			TEXT("r.DynamicGlobalIlluminationMethod")))
+	{
+		LumenState = Lumen->GetInt();
 	}
 
 	const FString Summary = FString::Printf(
-		TEXT("rect=%d spot=%d point=%d dir=%d shadow_casters=%d vsm=%d fixes_applied=0"),
-		RectLights, SpotLights, PointLights, DirLights, ShadowCasters, VsmState);
+		TEXT("rect=%d spot=%d point=%d dir=%d shadow_casters=%d vsm=%d lumen_gi=%d "
+			 "static_mesh_actors=%d skel_comps=%d skel_visible=%d"),
+		RectLights, SpotLights, PointLights, DirLights, ShadowCasters, VsmState, LumenState,
+		StaticMeshes, SkeletalMeshes, VisibleSkel);
 	UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONPERF arena_lights %s"), *Summary);
 	return Summary;
+}
+
+FString PhotonVisuals::ApplyRenderingABProbe(UWorld* World)
+{
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
+	{
+		return TEXT("skipped");
+	}
+
+	const bool bDirOff = FParse::Param(FCommandLine::Get(), TEXT("PhotonABDirShadowOff"));
+	const bool bLumenOff = FParse::Param(FCommandLine::Get(), TEXT("PhotonABLumenOff"));
+	if (bDirOff && bLumenOff)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[Photon] PHOTONAB refused: do not combine PhotonABDirShadowOff and PhotonABLumenOff"));
+		return TEXT("refused_combined");
+	}
+
+	FString Mode = TEXT("baseline");
+	if (bDirOff)
+	{
+		Mode = TEXT("dir_shadow_off");
+		int32 Touched = 0;
+		for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+		{
+			if (ULightComponent* Light = (*It)->FindComponentByClass<ULightComponent>())
+			{
+				Light->SetCastShadows(false);
+				++Touched;
+			}
+		}
+		UE_LOG(LogTemp, Display,
+			TEXT("[Photon] PHOTONAB dir_shadow_off applied to %d directional light(s)"), Touched);
+	}
+	else if (bLumenOff)
+	{
+		Mode = TEXT("lumen_off");
+		if (IConsoleVariable* Gi = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("r.DynamicGlobalIlluminationMethod")))
+		{
+			Gi->Set(0, ECVF_SetByCode);
+		}
+		if (IConsoleVariable* Refl = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("r.ReflectionMethod")))
+		{
+			Refl->Set(0, ECVF_SetByCode);
+		}
+		UE_LOG(LogTemp, Display, TEXT("[Photon] PHOTONAB lumen_off: GI=0 Reflection=0"));
+	}
+
+	return Mode;
+}
+
+void PhotonVisuals::LogStaticMeshActorClassification(UWorld* World)
+{
+	if (!World)
+	{
+		return;
+	}
+
+	int32 Architecture = 0;
+	int32 Gameplay = 0;
+	int32 Decorative = 0;
+	int32 TinyDetail = 0;
+	int32 Energy = 0;
+	int32 Other = 0;
+	int32 Total = 0;
+
+	auto Classify = [&](const FString& Name)
+	{
+		++Total;
+		if (Name.Contains(TEXT("Cover")) || Name.Contains(TEXT("SpawnPad"))
+			|| Name.Contains(TEXT("SpawnGate")) || Name.Contains(TEXT("CentreDais"))
+			|| Name.Contains(TEXT("Deck")) || Name.Contains(TEXT("Step"))
+			|| Name.Contains(TEXT("Beacon")) || Name.Contains(TEXT("Pedestal")))
+		{
+			++Gameplay;
+		}
+		else if (Name.Contains(TEXT("Floor")) || Name.Contains(TEXT("Court"))
+			|| Name.Contains(TEXT("Wall")) || Name.Contains(TEXT("Roof"))
+			|| Name.Contains(TEXT("Shell")) || Name.Contains(TEXT("Soffit"))
+			|| Name.Contains(TEXT("Clerestory")) || Name.Contains(TEXT("CeilingBay"))
+			|| Name.Contains(TEXT("CornerPylon")) || Name.Contains(TEXT("UpperWall"))
+			|| Name.Contains(TEXT("WallBay")))
+		{
+			++Architecture;
+		}
+		else if (Name.Contains(TEXT("Energy")) || Name.Contains(TEXT("BoundaryLine"))
+			|| Name.Contains(TEXT("LaneLine")) || Name.Contains(TEXT("SpawnStrip"))
+			|| Name.Contains(TEXT("Signage")) || Name.Contains(TEXT("CenterMark"))
+			|| Name.Contains(TEXT("CenterCircle")) || Name.Contains(TEXT("HalfCourt"))
+			|| Name.Contains(TEXT("LaneMark")) || Name.Contains(TEXT("ScoreboardFace"))
+			|| Name.Contains(TEXT("TeamZone")))
+		{
+			++Energy;
+		}
+		else if (Name.Contains(TEXT("Truss")) || Name.Contains(TEXT("Railing"))
+			|| Name.Contains(TEXT("Gantry")) || Name.Contains(TEXT("CentreRig"))
+			|| Name.Contains(TEXT("DeckColumn")) || Name.Contains(TEXT("ScoreboardFrame")))
+		{
+			++Decorative;
+		}
+		else if (Name.Contains(TEXT("Trim")) || Name.Contains(TEXT("Cap"))
+			|| Name.Contains(TEXT("Seam")) || Name.Contains(TEXT("CofferPanel")))
+		{
+			++TinyDetail;
+		}
+		else
+		{
+			++Other;
+		}
+	};
+
+	for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
+	{
+		AStaticMeshActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+		FString Name = Actor->GetName();
+#if WITH_EDITOR
+		Name += TEXT("|") + Actor->GetActorLabel();
+#endif
+		Classify(Name);
+	}
+
+	UE_LOG(LogTemp, Display,
+		TEXT("[Photon] PHOTONPERF mesh_class total=%d architecture=%d gameplay=%d "
+			 "energy_accent=%d decorative=%d tiny_detail=%d other=%d"),
+		Total, Architecture, Gameplay, Energy, Decorative, TinyDetail, Other);
 }
 
 void PhotonVisuals::ApplyHeroTeamPresentation(USkeletalMeshComponent* Body, EPhotonTeam InTeam)
@@ -502,26 +675,54 @@ void PhotonVisuals::ApplyHeroTeamPresentation(USkeletalMeshComponent* Body, EPho
 		return;
 	}
 
-	// Mixamo hero is typically one material slot — keep a coherent dark shell and lean team colour
-	// into a cool metal tint so RED/GREEN/BLUE/YELLOW read as accents, not full paint.
 	const EPhotonTeam TeamId = (InTeam == EPhotonTeam::None) ? EPhotonTeam::Blue : InTeam;
 	const FLinearColor Accent = PhotonTeamColor(TeamId);
-	const FLinearColor Shell = FLinearColor(
-		FMath::Lerp(Palette::Metal().R, Accent.R, 0.18f),
-		FMath::Lerp(Palette::Metal().G, Accent.G, 0.18f),
-		FMath::Lerp(Palette::Metal().B, Accent.B, 0.18f));
-	ApplySurface(Body, EPhotonSurface::Metal, Shell, 0.0f);
 
-	// Soft team emissive on a second slot when the import exposes trim/accents.
-	const int32 Slots = Body->GetNumMaterials();
-	if (Slots >= 2)
+	// Dedicated hero material (UsedWithSkeletalMesh compiled in). Fall back to Cover / BasicShape.
+	UMaterialInterface* HeroParent = LoadObject<UMaterialInterface>(nullptr,
+		TEXT("/Game/Photon/Materials/M_PhotonHero.M_PhotonHero"));
+	if (!HeroParent)
 	{
-		UMaterialInterface* EnergyParent = GetSurfaceMaterial(EPhotonSurface::Energy);
-		if (EnergyParent)
+		HeroParent = GetSurfaceMaterial(EPhotonSurface::Cover);
+	}
+	if (!HeroParent)
+	{
+		HeroParent = LoadObject<UMaterialInterface>(nullptr,
+			TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	}
+
+	const FLinearColor Shell = FLinearColor(
+		FMath::Lerp(0.22f, Accent.R, 0.40f),
+		FMath::Lerp(0.26f, Accent.G, 0.40f),
+		FMath::Lerp(0.32f, Accent.B, 0.45f));
+
+	const int32 SlotCount = FMath::Max(1, Body->GetNumMaterials());
+	for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+	{
+		if (HeroParent)
 		{
-			Body->SetMaterial(1, EnergyParent);
-			SetPhotonParameters(Body->CreateAndSetMaterialInstanceDynamic(1),
-				EPhotonSurface::Energy, Accent, 1.8f);
+			Body->SetMaterial(Slot, HeroParent);
+		}
+		if (UMaterialInstanceDynamic* Mid = Body->CreateAndSetMaterialInstanceDynamic(Slot))
+		{
+			// BasicShapeMaterial uses "Color"; Photon materials use TintColor — set both.
+			Mid->SetVectorParameterValue(TEXT("Color"), Shell);
+			Mid->SetVectorParameterValue(TEXT("TintColor"), Shell);
+			// Low emissive so chase cam reads a figure, not a cyan light splat.
+			Mid->SetScalarParameterValue(TEXT("EmissiveStrength"), 0.12f);
 		}
 	}
+
+	Body->SetVisibility(true, true);
+	Body->SetHiddenInGame(false);
+	Body->SetOwnerNoSee(false);
+	Body->SetOnlyOwnerSee(false);
+	Body->SetLightingChannels(true, false, false);
+	Body->SetCastShadow(true);
+	Body->MarkRenderStateDirty();
+
+	UE_LOG(LogTemp, Display,
+		TEXT("[Photon] hero presentation team=%d parent=%s slots=%d color=(%.2f,%.2f,%.2f)"),
+		static_cast<int32>(TeamId), *GetNameSafe(HeroParent), SlotCount,
+		Shell.R, Shell.G, Shell.B);
 }
